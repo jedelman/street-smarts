@@ -195,6 +195,130 @@
   li.voice-row[data-family="activist"] .subscores .bar .fill { background: var(--equity); }
   li.voice-row[data-family="geometric"] .subscores .bar .fill { background: var(--geo); }
 
+  /* ── Map ──────────────────────────────────────────────────────── */
+  .map-caveat {
+    font-size: 0.84rem;
+    color: var(--muted);
+    font-style: italic;
+    margin: 0 0 .5rem;
+    line-height: 1.45;
+  }
+  .map-caveat strong { color: var(--ink); font-style: normal; }
+
+  .voice-picker {
+    margin: .8rem 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    align-items: baseline;
+  }
+  .voice-picker .label {
+    font-size: 0.84rem;
+    color: var(--muted);
+    margin-right: .3rem;
+    font-style: italic;
+  }
+  .voice-picker button {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: .3rem .65rem;
+    font: inherit;
+    font-size: 0.86rem;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .voice-picker button:hover { background: var(--highlight); }
+  .voice-picker button.active {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .voice-picker button.geometric.active { background: var(--geo); border-color: var(--geo); }
+  .voice-picker button.activist.active  { background: var(--equity); border-color: var(--equity); }
+
+  .map-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    margin: 0 0 1rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #ebe6d6;
+  }
+  .map-tiles {
+    position: absolute; inset: 0;
+    filter: saturate(0.15) brightness(1.06) contrast(0.92);
+    opacity: 0.72;
+    pointer-events: none;
+  }
+  .map-tiles img {
+    position: absolute;
+    width: 256px;
+    height: 256px;
+    image-rendering: auto;
+    user-select: none;
+    /* Hide broken tiles silently (e.g. if OSM is blocked or offline) */
+    background: transparent;
+  }
+  .map-tiles img.broken { display: none; }
+
+  .map-svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+  .map-svg polygon {
+    transition: fill 200ms ease, fill-opacity 200ms ease, stroke 150ms ease;
+    cursor: default;
+  }
+  .map-svg polygon.muted { fill-opacity: 0.18; }
+  .map-svg polygon.highlight {
+    stroke: var(--ink) !important;
+    stroke-width: 1.5px !important;
+    stroke-opacity: 1 !important;
+  }
+
+  .map-legend {
+    position: absolute;
+    bottom: 6px;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .6rem;
+    align-items: center;
+    font-size: 0.74rem;
+    color: var(--ink);
+    background: rgba(246, 243, 237, 0.85);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .25rem .5rem;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+  }
+  .map-legend .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 1px solid rgba(0,0,0,0.25);
+    margin-right: .3rem;
+    vertical-align: -1px;
+  }
+
+  .map-attrib {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 0.66rem;
+    color: var(--muted);
+    background: rgba(246, 243, 237, 0.75);
+    padding: 1px 5px;
+    border-radius: 2px;
+    pointer-events: auto;
+  }
+  .map-attrib a { color: var(--muted); }
+
   .questions {
     background: var(--highlight);
     border: 1px solid #d3c89e;
@@ -264,6 +388,22 @@
     to <em>live in</em>.
   </div>
 
+  <section id="map-section" hidden>
+    <p class="map-caveat">
+      <strong>The map is one more opinion.</strong> Parcels are an administrative cut by
+      Norfolk City GIS — they are not buildings, sidewalks, or the way people walk this place.
+      A neighborhood is more than its polygons. Basemap tiles fetched from openstreetmap.org;
+      if those don't load the parcels still work.
+    </p>
+    <div class="voice-picker" id="voice-picker"><span class="label">Recolor parcels by:</span></div>
+    <div class="map-stage" id="map-stage">
+      <div class="map-tiles" id="map-tiles" aria-hidden="true"></div>
+      <svg class="map-svg" id="map-svg" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="map-legend" id="map-legend"></div>
+      <div class="map-attrib">basemap © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OSM</a> contributors</div>
+    </div>
+  </section>
+
   <div id="report"><div class="loading">Loading the chorus…</div></div>
 
   <footer>
@@ -294,6 +434,12 @@
 
   const $report = document.getElementById("report");
   const $version = document.getElementById("version-line");
+  const $mapSection = document.getElementById("map-section");
+  const $mapStage = document.getElementById("map-stage");
+  const $mapTiles = document.getElementById("map-tiles");
+  const $mapSvg = document.getElementById("map-svg");
+  const $mapLegend = document.getElementById("map-legend");
+  const $voicePicker = document.getElementById("voice-picker");
 
   function fmt(v) { return v === null || v === undefined ? "—" : v.toFixed(2); }
 
@@ -305,6 +451,315 @@
       vlm: "Vision-language model",
       human: "Human",
     })[f] || f;
+  }
+
+  // ─── Map: projection + tiles + parcels ─────────────────────────────────────
+
+  // Web Mercator (used by OSM tiles).
+  function lonLatToMercatorPx(lon, lat, zoom) {
+    const n = 256 * Math.pow(2, zoom);
+    const x = ((lon + 180) / 360) * n;
+    const latRad = lat * Math.PI / 180;
+    const y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n;
+    return [x, y];
+  }
+
+  /**
+   * Pick the largest zoom level where the entire bbox fits inside a ~800px-wide
+   * map stage. Zoom 17 covers ~150m wide per tile at this latitude, so for our
+   * ~1500m bbox we want around z=17.
+   */
+  function chooseZoom(bbox, stagePx) {
+    const [minLng, minLat, maxLng, maxLat] = bbox;
+    for (let z = 19; z >= 10; z--) {
+      const [x0] = lonLatToMercatorPx(minLng, minLat, z);
+      const [x1] = lonLatToMercatorPx(maxLng, minLat, z);
+      const [, y0] = lonLatToMercatorPx(minLng, minLat, z);
+      const [, y1] = lonLatToMercatorPx(minLng, maxLat, z);
+      const w = Math.abs(x1 - x0);
+      const h = Math.abs(y1 - y0);
+      if (w <= stagePx * 0.95 && h <= stagePx * 0.95) return z;
+    }
+    return 14;
+  }
+
+  function setupMap(neighborhood, report) {
+    $mapSection.hidden = false;
+    const stagePx = $mapStage.getBoundingClientRect().width || 720;
+    const bbox = neighborhood.bbox_wgs84;
+    const [minLng, minLat, maxLng, maxLat] = bbox;
+    // Pad bbox by 8% on each side so parcels aren't flush with the frame.
+    const padLng = (maxLng - minLng) * 0.08;
+    const padLat = (maxLat - minLat) * 0.08;
+    const view = [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat];
+    const z = chooseZoom(view, stagePx);
+
+    // Pixel-space bbox of our padded view at zoom z.
+    const [vx0, vy1] = lonLatToMercatorPx(view[0], view[1], z); // SW
+    const [vx1, vy0] = lonLatToMercatorPx(view[2], view[3], z); // NE — note y-flip
+    const viewW = vx1 - vx0;
+    const viewH = vy1 - vy0;
+
+    // Scale Mercator px → SVG px (so map fills the stage).
+    const scale = Math.min(stagePx / viewW, stagePx / viewH);
+    const svgW = viewW * scale;
+    const svgH = viewH * scale;
+    // Center the content inside the stage.
+    const offX = (stagePx - svgW) / 2;
+    const offY = (stagePx - svgH) / 2;
+
+    $mapSvg.setAttribute("viewBox", `0 0 ${stagePx} ${stagePx}`);
+
+    function project([lng, lat]) {
+      const [mx, my] = lonLatToMercatorPx(lng, lat, z);
+      return [(mx - vx0) * scale + offX, (my - vy0) * scale + offY];
+    }
+
+    // ─── Tiles ────────────────────────────────────────────────────────────
+    $mapTiles.innerHTML = "";
+    const t0x = Math.floor(vx0 / 256);
+    const t1x = Math.floor(vx1 / 256);
+    const t0y = Math.floor(vy0 / 256);
+    const t1y = Math.floor(vy1 / 256);
+    for (let tx = t0x; tx <= t1x; tx++) {
+      for (let ty = t0y; ty <= t1y; ty++) {
+        const tileMx = tx * 256;
+        const tileMy = ty * 256;
+        const px = (tileMx - vx0) * scale + offX;
+        const py = (tileMy - vy0) * scale + offY;
+        const sz = 256 * scale;
+        const img = document.createElement("img");
+        img.src = `https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`;
+        img.alt = "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.style.left = `${px}px`;
+        img.style.top  = `${py}px`;
+        img.style.width = `${sz}px`;
+        img.style.height = `${sz}px`;
+        img.addEventListener("error", () => img.classList.add("broken"));
+        $mapTiles.appendChild(img);
+      }
+    }
+
+    // ─── Parcels ──────────────────────────────────────────────────────────
+    const parcels = neighborhood.parcels;
+    const parcelById = new Map();
+    const ns = "http://www.w3.org/2000/svg";
+    while ($mapSvg.firstChild) $mapSvg.removeChild($mapSvg.firstChild);
+
+    // Z-order: context first (under), then EDA — large EDA under small EDA so
+    // the small civic/CLT plots sit visibly on top of MALL_CORE etc.
+    const ordered = [...parcels].sort((a, b) => {
+      if (a.is_eda !== b.is_eda) return Number(a.is_eda) - Number(b.is_eda);
+      // Both non-EDA: order doesn't matter much. Both EDA: large first.
+      return (b.area_acres || 0) - (a.area_acres || 0);
+    });
+    for (const p of ordered) {
+      const ring = p.polygon.outer;
+      const pts = ring.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+      const poly = document.createElementNS(ns, "polygon");
+      poly.setAttribute("points", pts);
+      poly.dataset.parcelId = p.id;
+      poly.dataset.spec = p.spec || "";
+      poly.dataset.isEda = String(!!p.is_eda);
+      poly.dataset.areaAcres = String(p.area_acres || 0);
+      poly.setAttribute("stroke-width", "0.5");
+      poly.setAttribute("stroke-opacity", "0.35");
+      $mapSvg.appendChild(poly);
+      parcelById.set(p.id, poly);
+    }
+
+    return { parcelById, parcels };
+  }
+
+  // ─── Voice picker / parcel recoloring ──────────────────────────────────────
+
+  const VOICES = {
+    /** default fills */
+    base: {
+      label: "Base layer",
+      family: "neutral",
+      fillFor: (p) => p.is_eda ? "#c84a2c" : "#d6cfbe",
+      opacityFor: () => 0.55,
+      strokeFor: () => "#1a1814",
+      legend: [
+        { swatch: "#c84a2c", label: "Eastside Commons proposal (EDA parcels)" },
+        { swatch: "#d6cfbe", label: "Surrounding context" },
+      ],
+    },
+    levels_of_scale: {
+      label: "levels_of_scale",
+      family: "geometric",
+      // Color by log-binned area band. Quantile-ish palette, green family.
+      build: (parcels) => {
+        const sizes = parcels.map(p => Math.max(1, p.area_acres * 4046.86)).sort((a,b) => a - b);
+        if (sizes.length < 2) return null;
+        const lo = Math.log(sizes[0]);
+        const hi = Math.log(sizes[sizes.length - 1]);
+        const bands = 7;
+        const palette = ["#e8efe2", "#cfdcbf", "#b2c69a", "#92ad75", "#74935a", "#577642", "#3b5a2c"];
+        const bandFor = (a) => {
+          if (a <= 0) return 0;
+          const t = (Math.log(a) - lo) / (hi - lo);
+          return Math.min(bands - 1, Math.max(0, Math.floor(t * bands)));
+        };
+        return {
+          fill: (p) => palette[bandFor(p.area_acres * 4046.86)],
+          opacity: () => 0.78,
+          stroke: () => "#1a1814",
+          legend: palette.map((c, i) => ({
+            swatch: c,
+            label: i === 0 ? "smallest" : i === bands - 1 ? "largest" : `L${i + 1}`,
+          })),
+          note: "Each parcel colored by which of 7 scale bands it falls into (smallest → largest area).",
+        };
+      },
+    },
+    strong_centers: {
+      label: "strong_centers",
+      family: "geometric",
+      // Color: top-5 contributing parcels glow; the rest are dim. Plus
+      // highlight any EDA parcel that's a center (CIVIC_, MAIN_ST_, MALL_, CLT_).
+      build: (parcels, voiceEv) => {
+        const top = new Set(voiceEv?.output?.contributing_features || []);
+        const isCenterSpec = (s) => s && (s.startsWith("CIVIC_") || s.startsWith("MAIN_ST_") || s.startsWith("MALL_") || s.startsWith("CLT_"));
+        const isCenter = (p) => top.has(p.id) || isCenterSpec(p.spec);
+        return {
+          fill: (p) => {
+            if (top.has(p.id)) return "#3b5a2c";              // top contributing
+            if (isCenter(p))   return "#92ad75";              // other tagged centers
+            return p.is_eda ? "#cfdcbf" : "#ebe6d6";          // dim background
+          },
+          opacity: (p) => isCenter(p) ? 0.92 : 0.45,
+          stroke: () => "#1a1814",
+          legend: [
+            { swatch: "#3b5a2c", label: "Top 5 contributing centers" },
+            { swatch: "#92ad75", label: "Other detected centers" },
+            { swatch: "#ebe6d6", label: "Not a center" },
+          ],
+          note: "Top-5 by weight come from this voice's contributing_features.",
+        };
+      },
+    },
+    ownership_pattern: {
+      label: "ownership_pattern",
+      family: "activist",
+      build: (parcels, voiceEv) => {
+        const bucketOf = (p) => {
+          if (!p.is_eda) {
+            if (p.ownership === "clt") return "clt";
+            if (p.ownership === "cooperative") return "coop";
+            if (p.ownership === "commons" || p.ownership === "public") return "public";
+            if (p.ownership === "private") return "private";
+            return "unknown";
+          }
+          const s = p.spec || "";
+          if (s.startsWith("CLT_")) return "clt";
+          if (s.startsWith("CIVIC_") || s.startsWith("MAIN_ST_") || s.startsWith("HOUSING_") || s.startsWith("SPONGE_") || s.startsWith("MALL_")) return "public";
+          return "public"; // unspec'd EDA defaults to commons-aspirational
+        };
+        const colors = {
+          clt:     "#7a3e2e",
+          coop:    "#a8553a",
+          public:  "#c6694b",
+          private: "#5a514a",
+          unknown: "#ebe6d6",
+        };
+        const opacity = {
+          clt: 0.92, coop: 0.92, public: 0.88, private: 0.65, unknown: 0.35,
+        };
+        return {
+          fill: (p) => colors[bucketOf(p)],
+          opacity: (p) => opacity[bucketOf(p)],
+          stroke: () => "#1a1814",
+          legend: [
+            { swatch: colors.clt,     label: "Community Land Trust" },
+            { swatch: colors.public,  label: "Civic / public / commons" },
+            { swatch: colors.private, label: "Private" },
+            { swatch: colors.unknown, label: "Untagged" },
+          ],
+          note: "EDA parcels colored by their spec code; non-EDA parcels by their ownership tag (mostly untagged in v0.1).",
+        };
+      },
+    },
+  };
+
+  let activeMap = null; // { parcelById, parcels }
+  let activeReport = null;
+
+  function applyVoice(voiceName) {
+    if (!activeMap) return;
+    const { parcels, parcelById } = activeMap;
+    let scheme;
+    if (voiceName === "base") {
+      scheme = {
+        fill: VOICES.base.fillFor,
+        opacity: VOICES.base.opacityFor,
+        stroke: VOICES.base.strokeFor,
+        legend: VOICES.base.legend,
+        note: "EDA parcels (proposed Eastside Commons site) vs. surrounding context.",
+      };
+    } else {
+      const def = VOICES[voiceName];
+      const voiceEv = activeReport?.opinions?.find(e => e.opinion.name === voiceName);
+      scheme = def?.build(parcels, voiceEv);
+      if (!scheme) {
+        scheme = {
+          fill: VOICES.base.fillFor,
+          opacity: VOICES.base.opacityFor,
+          stroke: VOICES.base.strokeFor,
+          legend: VOICES.base.legend,
+          note: "This voice abstained; showing base layer.",
+        };
+      }
+    }
+    for (const p of parcels) {
+      const poly = parcelById.get(p.id);
+      if (!poly) continue;
+      poly.setAttribute("fill", scheme.fill(p));
+      poly.setAttribute("fill-opacity", String(scheme.opacity(p)));
+      poly.setAttribute("stroke", scheme.stroke(p));
+    }
+    // Legend
+    while ($mapLegend.firstChild) $mapLegend.removeChild($mapLegend.firstChild);
+    for (const item of scheme.legend) {
+      const span = document.createElement("span");
+      span.innerHTML = `<span class="swatch" style="background:${item.swatch}"></span>${escapeHtml(item.label)}`;
+      $mapLegend.appendChild(span);
+    }
+    if (scheme.note) {
+      const note = document.createElement("span");
+      note.style.opacity = "0.75";
+      note.style.fontStyle = "italic";
+      note.style.flexBasis = "100%";
+      note.textContent = scheme.note;
+      $mapLegend.appendChild(note);
+    }
+  }
+
+  function buildVoicePicker(report) {
+    while ($voicePicker.childNodes.length > 1) $voicePicker.removeChild($voicePicker.lastChild);
+    const buttons = [];
+    const addBtn = (name, label, family, isActive) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.voice = name;
+      if (family) b.classList.add(family);
+      if (isActive) b.classList.add("active");
+      b.addEventListener("click", () => {
+        buttons.forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        applyVoice(name);
+      });
+      $voicePicker.appendChild(b);
+      buttons.push(b);
+    };
+    addBtn("base", "base layer", null, true);
+    for (const ev of report.opinions) {
+      const family = ev.opinion.family;
+      addBtn(ev.opinion.name, ev.opinion.name, family, false);
+    }
   }
 
   function render(report) {
@@ -437,8 +892,13 @@
       const resp = await fetch(FIXTURES[name]);
       if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
       const raw = await resp.text();
+      const neighborhood = JSON.parse(raw);
       const reportJson = analyze_neighborhood(raw);
       const report = JSON.parse(reportJson);
+      activeReport = report;
+      activeMap = setupMap(neighborhood, report);
+      buildVoicePicker(report);
+      applyVoice("base");
       render(report);
     } catch (e) {
       $report.innerHTML = `<div class="error">Could not load fixture <code>${name}</code>: ${escapeHtml(String(e.message || e))}</div>`;
