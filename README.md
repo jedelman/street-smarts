@@ -64,13 +64,23 @@ cd public && python3 -m http.server 8000
 
 ## Deploy
 
-Workers Assets static deploy:
+### Auto-deploy (recommended)
+
+A GitHub Actions workflow at `.github/workflows/deploy.yml` builds and deploys on every push to `main`. **One-time setup:** add two secrets to the `street-smarts` repo's Settings → Secrets and variables → Actions:
+
+- `CLOUDFLARE_API_TOKEN` — copy the same value from the `jason-edelman.org` repo
+- `CLOUDFLARE_ACCOUNT_ID` — `543fde7feabd0af945bfae926ceea7ad`
+
+After that, `git push` deploys to `street-smarts.<jedelman-subdomain>.workers.dev`.
+
+### Manual deploy
+
+From a machine with wrangler authenticated to the jedelman Cloudflare account:
 
 ```bash
+./scripts/build.sh
 wrangler deploy             # → street-smarts.<your-subdomain>.workers.dev
 ```
-
-The wrangler.toml is preconfigured for the jedelman Cloudflare account.
 
 ## License
 
