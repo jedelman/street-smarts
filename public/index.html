@@ -195,6 +195,107 @@
   li.voice-row[data-family="activist"] .subscores .bar .fill { background: var(--equity); }
   li.voice-row[data-family="geometric"] .subscores .bar .fill { background: var(--geo); }
 
+  /* ── Generate proposal panel ─────────────────────────────────── */
+  .generate-panel {
+    margin: 1rem 0 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: white;
+  }
+  .generate-panel > summary {
+    padding: .75rem 1.1rem;
+    cursor: pointer;
+    font-size: 0.96rem;
+    color: var(--ink);
+    font-style: italic;
+    list-style: none;
+  }
+  .generate-panel > summary::before {
+    content: "▸ ";
+    color: var(--muted);
+  }
+  .generate-panel[open] > summary::before { content: "▾ "; }
+  .generate-body { padding: 0 1.1rem 1rem; }
+  .generate-caveat {
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin: 0 0 .8rem;
+    line-height: 1.5;
+  }
+  .generate-caveat strong { color: var(--ink); }
+  .generate-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .6rem .9rem;
+    font-size: 0.92rem;
+  }
+  .generate-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    color: var(--muted);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84rem;
+  }
+  .generate-row select, .generate-row input {
+    font: inherit;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.86rem;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .25rem .45rem;
+  }
+  .generate-row input { width: 6.5rem; }
+  .generate-row button {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: .35rem .75rem;
+    font: inherit;
+    font-size: 0.86rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .generate-row button:hover { background: var(--highlight); }
+  .generate-row button.generate-go {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .generate-row button.generate-go:hover { opacity: 0.85; }
+  .generate-row button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .generate-status {
+    margin: .8rem 0 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .generate-status.success { color: var(--geo); font-style: normal; }
+  .generate-status.error { color: var(--warn); font-style: normal; }
+  #gen-trace { margin-top: .6rem; font-size: 0.86rem; color: var(--muted); }
+  #gen-trace ul { margin: .3rem 0 0; padding-left: 1.2rem; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.78rem; }
+  #gen-trace li { margin: .15rem 0; }
+
+  /* Generated-fixture banner sitting above the chorus */
+  .generated-banner {
+    background: #f0e8d6;
+    border: 1px solid #d3c89e;
+    border-left: 4px solid var(--warn);
+    border-radius: 4px;
+    padding: .75rem 1rem;
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+    color: var(--ink);
+  }
+  .generated-banner strong { color: var(--warn); }
+  .generated-banner small { display: block; color: var(--muted); font-size: 0.82rem; margin-top: .25rem; font-style: italic; }
+
   /* ── Map ──────────────────────────────────────────────────────── */
   .map-caveat {
     font-size: 0.84rem;
@@ -404,6 +505,29 @@
     </div>
   </section>
 
+  <section id="generate-section" hidden>
+    <details class="generate-panel">
+      <summary>Generate an auto-proposal (experimental)</summary>
+      <div class="generate-body">
+        <p class="generate-caveat">
+          <strong>An auto-proposal is one more opinion — the opinion of an algorithm encoding an Alexander pattern.</strong>
+          It is NOT a coalition product. The Eastside Commons coalition's proposal is the one labeled "Proposal" above.
+          Generated proposals are signed by the algorithm and the seed, so the coalition can decide
+          for itself whether any variant deserves a conversation.
+        </p>
+        <div class="generate-row">
+          <label>Parcel: <select id="gen-parcel"></select></label>
+          <label>Pattern: <select id="gen-operator"></select></label>
+          <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
+          <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
+          <button id="gen-run" type="button" class="generate-go">Generate</button>
+        </div>
+        <p id="gen-status" class="generate-status"></p>
+        <details id="gen-trace" hidden><summary>What the operator did (step trace)</summary><div id="gen-trace-body"></div></details>
+      </div>
+    </details>
+  </section>
+
   <div id="report"><div class="loading">Loading the chorus…</div></div>
 
   <footer>
@@ -425,7 +549,7 @@
 </div>
 
 <script type="module">
-  import init, { analyze_neighborhood, version } from "/pkg/street_smarts_web.js";
+  import init, { analyze_neighborhood, version, list_operators, subdivide_parcel } from "/pkg/street_smarts_web.js";
 
   const FIXTURES = {
     proposal: "/data/eastside-proposal.json",
@@ -440,6 +564,22 @@
   const $mapSvg = document.getElementById("map-svg");
   const $mapLegend = document.getElementById("map-legend");
   const $voicePicker = document.getElementById("voice-picker");
+  const $generateSection = document.getElementById("generate-section");
+  const $genParcel = document.getElementById("gen-parcel");
+  const $genOperator = document.getElementById("gen-operator");
+  const $genSeed = document.getElementById("gen-seed");
+  const $genReseed = document.getElementById("gen-reseed");
+  const $genRun = document.getElementById("gen-run");
+  const $genStatus = document.getElementById("gen-status");
+  const $genTrace = document.getElementById("gen-trace");
+  const $genTraceBody = document.getElementById("gen-trace-body");
+  const $fixtureNav = document.getElementById("fixture-nav");
+
+  // In-memory store for generated proposals. Keyed by an auto-incremented id.
+  const generated = new Map();
+  let generatedCounter = 0;
+  // Most-recently-loaded raw neighborhood text (for re-subdivision).
+  let activeRawNeighborhood = null;
 
   function fmt(v) { return v === null || v === undefined ? "—" : v.toFixed(2); }
 
@@ -762,8 +902,19 @@
     }
   }
 
-  function render(report) {
+  function render(report, generatedMeta = null) {
     const html = [];
+    if (generatedMeta) {
+      html.push(`
+        <div class="generated-banner">
+          <strong>Auto-generated proposal.</strong> Produced by the street-smarts subdivision engine
+          (operator <code>${escapeHtml(generatedMeta.operator)}</code>, seed <code>${escapeHtml(generatedMeta.seed)}</code>).
+          This is NOT an Eastside Commons coalition proposal — it is one algorithm's reading of one Alexander pattern.
+          The chorus below scored it; the conversation is yours.
+          <small>${escapeHtml(generatedMeta.trace.headline)}</small>
+        </div>
+      `);
+    }
     const geo = report.geometric_summary;
     const eq = report.activist_summary;
 
@@ -889,37 +1040,161 @@
   async function loadFixture(name) {
     $report.innerHTML = `<div class="loading">Loading ${name}…</div>`;
     try {
-      const resp = await fetch(FIXTURES[name]);
-      if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
-      const raw = await resp.text();
-      const neighborhood = JSON.parse(raw);
+      let raw, neighborhood, generatedMeta = null;
+      if (generated.has(name)) {
+        const entry = generated.get(name);
+        neighborhood = entry.neighborhood;
+        raw = JSON.stringify(neighborhood);
+        generatedMeta = entry.meta;
+      } else if (FIXTURES[name]) {
+        const resp = await fetch(FIXTURES[name]);
+        if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+        raw = await resp.text();
+        neighborhood = JSON.parse(raw);
+      } else {
+        throw new Error(`unknown fixture: ${name}`);
+      }
+      activeRawNeighborhood = raw;
       const reportJson = analyze_neighborhood(raw);
       const report = JSON.parse(reportJson);
       activeReport = report;
       activeMap = setupMap(neighborhood, report);
       buildVoicePicker(report);
       applyVoice("base");
-      render(report);
+      render(report, generatedMeta);
+      // Show the generate panel only when on a real fixture (not on a generated one,
+      // to avoid recursive subdivision in v0.1).
+      $generateSection.hidden = !!generatedMeta;
+      if (!generatedMeta) populateParcelOptions(neighborhood);
     } catch (e) {
-      $report.innerHTML = `<div class="error">Could not load fixture <code>${name}</code>: ${escapeHtml(String(e.message || e))}</div>`;
+      $report.innerHTML = `<div class="error">Could not load fixture <code>${escapeHtml(name)}</code>: ${escapeHtml(String(e.message || e))}</div>`;
     }
   }
 
   function wireNav() {
-    const buttons = document.querySelectorAll("#fixture-nav button");
-    buttons.forEach(b => {
-      b.addEventListener("click", () => {
-        buttons.forEach(x => x.classList.remove("active"));
-        b.classList.add("active");
-        loadFixture(b.dataset.fixture);
-      });
+    $fixtureNav.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-fixture]");
+      if (!b) return;
+      $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      loadFixture(b.dataset.fixture);
+    });
+  }
+
+  function populateParcelOptions(neighborhood) {
+    // For v0.1, only allow generation on MALL_CORE (the parcel the v0.1
+    // operator is tuned for). Show others as disabled so it's clear we
+    // intend to support them in v0.2.
+    const candidates = neighborhood.parcels
+      .filter(p => p.is_eda || (p.spec || "").includes("MALL"))
+      .sort((a, b) => (b.area_acres || 0) - (a.area_acres || 0));
+    $genParcel.innerHTML = "";
+    for (const p of candidates) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      const label = `${p.id} — ${p.spec || "unspec"} (${(p.area_acres || 0).toFixed(2)} ac)`;
+      opt.textContent = label;
+      // For now only MALL_CORE is enabled; others are disabled with a note.
+      if (p.spec !== "MALL_CORE") {
+        opt.disabled = true;
+        opt.textContent = `${label} — v0.2`;
+      }
+      $genParcel.appendChild(opt);
+    }
+    // Ensure MALL_CORE is the default selection.
+    const mall = candidates.find(p => p.spec === "MALL_CORE");
+    if (mall) $genParcel.value = mall.id;
+  }
+
+  async function populateOperators() {
+    try {
+      const ops = JSON.parse(list_operators());
+      $genOperator.innerHTML = "";
+      for (const op of ops) {
+        const opt = document.createElement("option");
+        opt.value = op.name;
+        opt.textContent = `${op.name} — ${op.description}`;
+        opt.title = op.source.display;
+        $genOperator.appendChild(opt);
+      }
+    } catch (e) {
+      $genOperator.innerHTML = `<option value="">(no operators)</option>`;
+    }
+  }
+
+  function wireGenerate() {
+    $genReseed.addEventListener("click", () => {
+      // Range 0..999999 — keeps the input compact.
+      $genSeed.value = String(Math.floor(Math.random() * 1_000_000));
+    });
+
+    $genRun.addEventListener("click", async () => {
+      if (!activeRawNeighborhood) {
+        $genStatus.textContent = "Load a fixture first.";
+        $genStatus.className = "generate-status error";
+        return;
+      }
+      const parcelId = $genParcel.value;
+      const operator = $genOperator.value;
+      const seed = BigInt($genSeed.value || "0");
+      if (!parcelId || !operator) {
+        $genStatus.textContent = "Pick a parcel and an operator.";
+        $genStatus.className = "generate-status error";
+        return;
+      }
+      $genRun.disabled = true;
+      $genStatus.textContent = "Generating…";
+      $genStatus.className = "generate-status";
+      // Defer so the spinner-style message paints before WASM blocks.
+      await new Promise(r => setTimeout(r, 16));
+      try {
+        const t0 = performance.now();
+        const result = subdivide_parcel(activeRawNeighborhood, parcelId, operator, seed);
+        const parsed = JSON.parse(result);
+        const dt = (performance.now() - t0).toFixed(0);
+
+        generatedCounter += 1;
+        const key = `gen-${generatedCounter}`;
+        const label = `Generated: ${parcelId} × ${operator} × seed=${seed}`;
+        generated.set(key, {
+          neighborhood: parsed.neighborhood,
+          meta: { label, trace: parsed.trace, parcelId, operator, seed: String(seed) },
+        });
+
+        // Add a nav button for this generated proposal and activate it.
+        const btn = document.createElement("button");
+        btn.dataset.fixture = key;
+        btn.textContent = `Gen: ${parcelId.slice(-4)} P95 ${seed}`;
+        btn.title = label;
+        $fixtureNav.appendChild(btn);
+        $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+        btn.classList.add("active");
+
+        $genStatus.textContent = `Built in ${dt} ms · ${parsed.trace.headline}`;
+        $genStatus.className = "generate-status success";
+
+        // Trace
+        $genTrace.hidden = false;
+        $genTraceBody.innerHTML = "<ul>" + parsed.trace.steps.map(s => `<li>${escapeHtml(s)}</li>`).join("") + "</ul>";
+
+        // Load the generated neighborhood.
+        loadFixture(key);
+      } catch (e) {
+        $genStatus.textContent = `Generation failed: ${String(e.message || e)}`;
+        $genStatus.className = "generate-status error";
+      } finally {
+        $genRun.disabled = false;
+      }
     });
   }
 
   (async () => {
     await init();
     $version.textContent = `${version()} — Rust → WASM`;
+    $generateSection.hidden = false;
+    await populateOperators();
     wireNav();
+    wireGenerate();
     loadFixture("proposal");
   })();
 </script>

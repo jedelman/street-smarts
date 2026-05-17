@@ -13,6 +13,18 @@ export function _start(): void;
 export function analyze_neighborhood(neighborhood_json: string): string;
 
 /**
+ * List available pattern operators as a JSON array. Each entry has
+ * `name`, `description`, and a `source` citation.
+ */
+export function list_operators(): string;
+
+/**
+ * Apply a pattern operator to a parcel inside the given neighborhood JSON.
+ * Returns a JSON object: `{ "neighborhood": ..., "trace": ... }`.
+ */
+export function subdivide_parcel(neighborhood_json: string, parcel_id: string, operator_name: string, seed: bigint): string;
+
+/**
  * Library version string for the UI footer.
  */
 export function version(): string;
@@ -23,6 +35,8 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly _start: () => void;
     readonly analyze_neighborhood: (a: number, b: number, c: number) => void;
+    readonly list_operators: (a: number) => void;
+    readonly subdivide_parcel: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: bigint) => void;
     readonly version: (a: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

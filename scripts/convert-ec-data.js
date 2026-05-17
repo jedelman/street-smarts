@@ -46,24 +46,101 @@ function ringToLngLat(ring) {
   return ring.map(([lng, lat]) => ({ lng, lat }));
 }
 
+// Determine ring orientation. ESRI: clockwise = outer, counter-clockwise = hole.
+// In lng/lat where lat increases northward, signed area > 0 = clockwise.
+function signedArea(ring) {
+  let s = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return s * 0.5;
+}
+
+// Test whether `inner`'s centroid lies inside `outer`. Crude (centroid only)
+// but sufficient for separating disjoint parts from genuine holes in this data.
+function ringCentroid(ring) {
+  let lng = 0, lat = 0;
+  for (const [x, y] of ring) { lng += x; lat += y; }
+  return [lng / ring.length, lat / ring.length];
+}
+
+function pointInRing(pt, ring) {
+  let inside = false;
+  let j = ring.length - 1;
+  for (let i = 0; i < ring.length; i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (((yi > pt[1]) !== (yj > pt[1])) &&
+        (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+    j = i;
+  }
+  return inside;
+}
+
+/**
+ * Group ESRI multi-rings into (outer, [holes]) parts.
+ * - Rings with negative signed area whose centroid lies inside some other
+ *   ring are treated as holes of that ring.
+ * - All other rings become separate parts.
+ *
+ * For the EC data this correctly identifies MALL_CORE and parcel 00001129 as
+ * two-part polygons rather than polygon-with-hole.
+ */
+function ringsToParts(rings) {
+  const outers = [];
+  const candidateHoles = [];
+  for (const ring of rings) {
+    if (signedArea(ring) > 0) {
+      outers.push({ ring, holes: [] });
+    } else {
+      candidateHoles.push(ring);
+    }
+  }
+  if (outers.length === 0) {
+    for (const ring of rings) outers.push({ ring, holes: [] });
+  } else {
+    for (const hole of candidateHoles) {
+      const c = ringCentroid(hole);
+      const host = outers.find(o => pointInRing(c, o.ring));
+      if (host) host.holes.push(hole);
+      else outers.push({ ring: hole, holes: [] });
+    }
+  }
+  // Sort parts by absolute area descending so `parts[0]` is always the largest.
+  outers.sort((a, b) => Math.abs(signedArea(b.ring)) - Math.abs(signedArea(a.ring)));
+  return outers.map(o => ({
+    outer: ringToLngLat(o.ring),
+    holes: o.holes.map(ringToLngLat),
+  }));
+}
+
 function parcelsToNIR(parcels, label, idPrefix) {
   const allRings = parcels.flatMap(p => p.rings);
   const bbox = bboxOf(allRings);
   return {
     id: idPrefix,
     bbox_wgs84: bbox,
-    parcels: parcels.map((p, i) => ({
-      id: p.acct || `${idPrefix}-parcel-${i}`,
-      polygon: {
-        outer: ringToLngLat(p.rings[0]),
-        holes: (p.rings.slice(1) || []).map(ringToLngLat),
-      },
-      area_acres: p.area_ac || 0,
-      use_category: null,
-      ownership: null, // baseline: ownership unknown; proposal: inferred via is_eda
-      is_eda: !!p.is_eda,
-      spec: p.spec || null,
-    })),
+    parcels: parcels.map((p, i) => {
+      const parts = ringsToParts(p.rings);
+      const primary = parts[0] || { outer: [], holes: [] };
+      return {
+        id: p.acct || `${idPrefix}-parcel-${i}`,
+        polygon: {
+          outer: primary.outer,
+          holes: primary.holes,
+          parts: parts,
+        },
+        area_acres: p.area_ac || 0,
+        use_category: null,
+        ownership: null,
+        is_eda: !!p.is_eda,
+        spec: p.spec || null,
+      };
+    }),
     buildings: [],
     streets: [],
     open_space: [],

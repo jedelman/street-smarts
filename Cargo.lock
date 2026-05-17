@@ -216,6 +216,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "street-smarts-patterns"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "street-smarts-core",
+]
+
+[[package]]
 name = "street-smarts-web"
 version = "0.1.0"
 dependencies = [
@@ -226,6 +235,7 @@ dependencies = [
  "street-smarts-conflict",
  "street-smarts-core",
  "street-smarts-opinions",
+ "street-smarts-patterns",
  "wasm-bindgen",
  "web-sys",
 ]

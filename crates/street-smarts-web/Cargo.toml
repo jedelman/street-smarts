@@ -20,3 +20,4 @@ console_error_panic_hook = { workspace = true }
 street-smarts-core = { workspace = true }
 street-smarts-opinions = { workspace = true }
 street-smarts-conflict = { workspace = true }
+street-smarts-patterns = { workspace = true }

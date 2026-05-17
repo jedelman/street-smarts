@@ -19,6 +19,7 @@ members = [
     "crates/street-smarts-conflict",
     "crates/street-smarts-ledger",
     "crates/street-smarts-generator",
+    "crates/street-smarts-patterns",
     "crates/street-smarts-web",
 ]
 
@@ -44,6 +45,7 @@ street-smarts-opinions = { path = "crates/street-smarts-opinions" }
 street-smarts-conflict = { path = "crates/street-smarts-conflict" }
 street-smarts-ledger = { path = "crates/street-smarts-ledger" }
 street-smarts-generator = { path = "crates/street-smarts-generator" }
+street-smarts-patterns = { path = "crates/street-smarts-patterns" }
 
 [profile.release]
 opt-level = "z"     # optimize for size, WASM bundle constraint
