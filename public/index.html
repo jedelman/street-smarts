@@ -2,101 +2,335 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>street-smarts · Eastside Commons</title>
-<link rel="stylesheet" href="./style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<title>street-smarts — Eastside Commons</title>
+<meta name="description" content="A Christopher Alexander provocation engine for neighborhood imagination. v0.1.">
+<style>
+  :root {
+    --bg: #f6f3ed;
+    --ink: #1a1814;
+    --muted: #6b6457;
+    --line: #d6cfbe;
+    --geo: #4a6741;
+    --equity: #7a3e2e;
+    --abstain: #8a7f6b;
+    --highlight: #e5dec7;
+    --warn: #b8602a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 1.25rem; margin-bottom: 1.5rem; }
+  header h1 { font-size: 1.85rem; margin: 0 0 .25rem; font-weight: 600; letter-spacing: -0.01em; }
+  header .tag { color: var(--muted); font-size: 0.92rem; font-style: italic; margin: 0; }
+  header nav { margin-top: .9rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+  header nav button {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: .35rem .75rem;
+    font: inherit;
+    font-size: 0.92rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  header nav button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  header nav button:hover:not(.active) { background: var(--highlight); }
+
+  .lede {
+    font-size: 1.08rem;
+    color: var(--ink);
+    margin: 0 0 2rem;
+    padding: 0 0 0 1rem;
+    border-left: 3px solid var(--line);
+  }
+  .lede em { color: var(--muted); }
+
+  section.card {
+    background: white;
+    border: 1px solid var(--line);
+    padding: 1.25rem 1.4rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+  }
+  section.card h2 { margin: 0 0 .5rem; font-size: 1.15rem; font-weight: 600; }
+  section.card .headline {
+    font-size: 1.0rem;
+    color: var(--ink);
+    margin: 0;
+  }
+  section.card .summary-meta { color: var(--muted); font-size: 0.88rem; margin-top: .4rem; }
+
+  .chorus-geometric h2 { color: var(--geo); }
+  .chorus-activist h2 { color: var(--equity); }
+
+  ul.voices { list-style: none; padding: 0; margin: 1rem 0 0; }
+  ul.voices li {
+    padding: .75rem 0;
+    border-top: 1px dashed var(--line);
+  }
+  ul.voices li:first-child { border-top: none; padding-top: .25rem; }
+  .voice-head { display: flex; justify-content: space-between; gap: .75rem; align-items: baseline; }
+  .voice-name { font-weight: 600; }
+  .voice-name small { color: var(--muted); font-weight: normal; font-style: italic; margin-left: .35rem; }
+  .voice-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .voice-value.abstain { color: var(--abstain); font-style: italic; font-weight: normal; font-size: 0.95rem; }
+  .voice-method {
+    color: var(--ink);
+    font-size: 0.95rem;
+    margin: .25rem 0 .35rem;
+  }
+  .voice-source {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-style: italic;
+  }
+  details.caveats { margin-top: .35rem; font-size: 0.88rem; color: var(--muted); }
+  details.caveats summary { cursor: pointer; }
+  details.caveats ul { margin: .35rem 0 0; padding-left: 1.1rem; }
+
+  .questions {
+    background: var(--highlight);
+    border: 1px solid #d3c89e;
+    border-radius: 4px;
+    padding: 1.1rem 1.4rem;
+    margin: 1.5rem 0;
+  }
+  .questions h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+  .questions .q { margin: .8rem 0 0; padding: 0; }
+  .questions .q:first-of-type { margin-top: 0; }
+  .questions .q .question { font-size: 1.04rem; margin: 0; }
+  .questions .q .why { color: var(--muted); font-size: 0.92rem; margin: .3rem 0 0; }
+
+  .abstentions { padding: .75rem 1rem; background: transparent; border-left: 2px solid var(--abstain); margin: 1rem 0; color: var(--muted); font-size: 0.92rem; }
+  .abstentions h3 { margin: 0 0 .35rem; font-size: 0.95rem; color: var(--ink); }
+  .abstentions ul { margin: 0; padding-left: 1.2rem; }
+  .abstentions li { margin: .25rem 0; }
+
+  .preamble {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1rem 1.25rem;
+    margin: 0 0 1.5rem;
+    font-size: 0.95rem;
+  }
+  .preamble strong { color: var(--ink); }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  footer p { margin: .35rem 0; }
+  footer a { color: var(--muted); }
+
+  .loading { padding: 2rem 0; text-align: center; color: var(--muted); font-style: italic; }
+  .error { color: var(--warn); padding: 1rem; border: 1px solid var(--warn); border-radius: 4px; }
+</style>
 </head>
 <body>
+<div class="wrap">
 
-<header class="topbar">
-  <div class="brand">
-    <span class="mark">street-smarts</span>
-    <span class="version">v0.1</span>
+  <header>
+    <h1>street-smarts</h1>
+    <p class="tag">A Christopher Alexander provocation engine for neighborhood imagination. v0.1.</p>
+    <nav id="fixture-nav">
+      <button data-fixture="proposal" class="active">Eastside Commons — Proposal</button>
+      <button data-fixture="baseline">Eastside Commons — Baseline (current)</button>
+    </nav>
+  </header>
+
+  <p class="lede">
+    This tool does <em>not</em> measure your neighborhood. Aliveness is what Alexander called the
+    <em>quality without a name</em> — by definition not fully namable. What you're about to read is a
+    chorus of opinions, each citing its source, encoded in math. The interesting part is where
+    they disagree, or where they tell you what they couldn't see.
+  </p>
+
+  <div class="preamble">
+    <strong>What's accurate is the record of what people decide.</strong>
+    Everything below is one or another opinion. The geometric voices come from Alexander &amp;
+    Salingaros. The activist voice comes from Jason and the Eastside Commons coalition. Your
+    voice — the one not yet captured here — is the only one that knows whether this place is alive
+    to <em>live in</em>.
   </div>
-  <div class="tagline">A provocation engine for neighborhood imagination.<br>
-    The library speaks as a chorus of cited opinions, never in its own voice.</div>
-</header>
 
-<main>
+  <div id="report"><div class="loading">Loading the chorus…</div></div>
 
-<section class="intro">
-  <h1>Eastside Commons</h1>
-  <p class="lede">
-    73 acres at Military Circle, Norfolk. The current parcel fabric — a
-    dying mall and its parking lots — alongside the proposed Eastside
-    Commons scheme generated by the EC_FieldSolver: 19 designated parcels
-    organizing 2,400–4,000 homes, civic spaces, a sponge park, and a
-    commons-owned main street.
-  </p>
-  <p class="lede">
-    Below, three opinions look at the place from three angles. They are
-    <em>opinions</em> — encoded interpretations of Christopher Alexander
-    (via Salingaros 2025) and of the Eastside Commons coalition's politics.
-    None of them claim to measure aliveness. What's accurate here is not
-    the numbers; it's the record of what you decide after looking at them.
-  </p>
-</section>
-
-<section class="picker">
-  <button class="tab active" data-target="baseline">Current fabric (baseline)</button>
-  <button class="tab" data-target="proposal">EC proposal</button>
-</section>
-
-<section id="report-baseline" class="report visible">
-  <div class="loading">Loading…</div>
-</section>
-
-<section id="report-proposal" class="report">
-  <div class="loading">Loading…</div>
-</section>
-
-<section class="footer-notes">
-  <details>
-    <summary>What is this?</summary>
+  <footer>
+    <p id="version-line">street-smarts v0.1 — Rust → WASM</p>
     <p>
-      <strong>street-smarts</strong> is a Rust + WebAssembly library that runs
-      entirely in your browser. It takes neighborhood data and runs three
-      opinions against it:
-    </p>
-    <ul>
-      <li><strong>Levels of Scale</strong> — Alexander's 1st fundamental property of wholeness, after Salingaros 2025. Asks: does this place have variety of sizes, with ratios in the 2–5× band?</li>
-      <li><strong>Strong Centers</strong> — Alexander's 2nd property. Asks: does this place have a hierarchy of named centers spread across it?</li>
-      <li><strong>Ownership Pattern</strong> — an <em>activist</em> opinion (not Alexander's). Asks: who owns this land? Commons / CLT / cooperative / public, or private?</li>
-    </ul>
-    <p>
-      Activist opinions are <strong>not</strong> averaged with geometric ones.
-      Alexandrian beauty cannot be traded for displacement. The two choruses
-      are surfaced separately.
+      Source: <a href="https://github.com/jedelman/street-smarts" target="_blank" rel="noopener">github.com/jedelman/street-smarts</a> ·
+      License: AGPL-3.0
     </p>
     <p>
-      Each opinion explicitly declares <em>what it doesn't see</em>. An
-      opinion that can't speak to a case returns "no view" — a first-class
-      output. The library refuses to fake confidence.
+      Built on the Eastside Commons solver output (<a href="https://jason-edelman.org/eastside-commons/" target="_blank" rel="noopener">jason-edelman.org/eastside-commons</a>).
+      Parcel data: Norfolk City GIS, public records.
     </p>
     <p>
-      <strong>Disagreement is the point.</strong> When opinions agree, the
-      interesting question is what they're all missing. When they disagree,
-      the interesting question is which voice belongs in this conversation.
+      <em>v0.1 is diagnostic only. v0.2 adds direct manipulation, pattern operators,
+      and 13 more geometric opinions. v0.3 adds the public argument forum.</em>
     </p>
-  </details>
-  <details>
-    <summary>Repository, license, status</summary>
-    <p>
-      Source: <a href="https://github.com/jedelman/street-smarts">github.com/jedelman/street-smarts</a>.
-      License: AGPL-3.0-or-later. v0.1 is a working skeleton.
-    </p>
-    <p>
-      Three opinions in v0.1. The full v0.2 spec adds the remaining
-      12 geometric opinions, ~40 pattern-presence opinions, the remaining
-      equity opinions (affordability, displacement, ecology, mobility,
-      cultural continuity), the steering generator, and direct manipulation.
-      Then v0.3: a forum to argue with strangers on the Internet.
-    </p>
-  </details>
-</section>
+  </footer>
 
-</main>
+</div>
 
-<script type="module" src="./app.js"></script>
+<script type="module">
+  import init, { analyze_neighborhood, version } from "/pkg/street_smarts_web.js";
+
+  const FIXTURES = {
+    proposal: "/data/eastside-proposal.json",
+    baseline: "/data/eastside-baseline.json",
+  };
+
+  const $report = document.getElementById("report");
+  const $version = document.getElementById("version-line");
+
+  function fmt(v) { return v === null || v === undefined ? "—" : v.toFixed(2); }
+
+  function familyLabel(f) {
+    return ({
+      geometric: "Geometric (after Alexander/Salingaros)",
+      activist: "Activist (equity guard)",
+      pattern: "Pattern presence",
+      vlm: "Vision-language model",
+      human: "Human",
+    })[f] || f;
+  }
+
+  function render(report) {
+    const html = [];
+    const geo = report.geometric_summary;
+    const eq = report.activist_summary;
+
+    html.push(`
+      <section class="card chorus-geometric">
+        <h2>Geometric chorus</h2>
+        <p class="headline">${escapeHtml(geo.headline)}</p>
+        <p class="summary-meta">${geo.n_voices} voice(s) speaking, ${geo.n_abstentions} abstaining${
+          geo.mean_value !== null ? `. Mean ${fmt(geo.mean_value)}` : ""
+        }${geo.spread !== null ? `, spread ${fmt(geo.spread)}` : ""}.</p>
+      </section>
+    `);
+
+    html.push(`
+      <section class="card chorus-activist">
+        <h2>Activist chorus <small style="font-weight:normal;font-style:italic;color:var(--muted);">— equity guard, non-substitutable</small></h2>
+        <p class="headline">${escapeHtml(eq.headline)}</p>
+        <p class="summary-meta">${eq.n_voices} voice(s) speaking, ${eq.n_abstentions} abstaining${
+          eq.mean_value !== null ? `. Mean ${fmt(eq.mean_value)}` : ""
+        }.</p>
+      </section>
+    `);
+
+    if (report.questions_for_humans?.length) {
+      html.push(`<div class="questions"><h2>What to argue about</h2>`);
+      for (const q of report.questions_for_humans) {
+        html.push(`
+          <div class="q">
+            <p class="question">${escapeHtml(q.question)}</p>
+            <p class="why">${escapeHtml(q.why_it_matters)}</p>
+          </div>
+        `);
+      }
+      html.push(`</div>`);
+    }
+
+    html.push(`<section class="card"><h2>Each voice in detail</h2><ul class="voices">`);
+    for (const ev of report.opinions) {
+      const op = ev.opinion;
+      const out = ev.output;
+      const isValue = out.kind === "value";
+      html.push(`<li>`);
+      html.push(`<div class="voice-head">`);
+      html.push(`<span class="voice-name">${escapeHtml(op.name)}<small>${familyLabel(op.family)}</small></span>`);
+      if (isValue) {
+        html.push(`<span class="voice-value">${fmt(out.value)}</span>`);
+      } else {
+        html.push(`<span class="voice-value abstain">no view</span>`);
+      }
+      html.push(`</div>`);
+      if (isValue) {
+        html.push(`<p class="voice-method">${escapeHtml(out.method_summary)}</p>`);
+      } else {
+        html.push(`<p class="voice-method"><em>${escapeHtml(out.reason)}</em></p>`);
+      }
+      html.push(`<p class="voice-source">— ${escapeHtml(op.source.display)}${op.source.url ? ` · <a href="${escapeHtml(op.source.url)}" target="_blank" rel="noopener">source</a>` : ""}</p>`);
+      if (isValue && out.caveats?.length) {
+        html.push(`<details class="caveats"><summary>What this voice explicitly can't see</summary><ul>`);
+        for (const c of out.caveats) {
+          html.push(`<li>${escapeHtml(c)}</li>`);
+        }
+        html.push(`</ul></details>`);
+      }
+      html.push(`</li>`);
+    }
+    html.push(`</ul></section>`);
+
+    if (report.abstentions?.length) {
+      html.push(`<div class="abstentions"><h3>Voices that declined to speak</h3><ul>`);
+      for (const a of report.abstentions) {
+        html.push(`<li><strong>${escapeHtml(a.opinion_name)}</strong> (${familyLabel(a.family)}): ${escapeHtml(a.reason)}</li>`);
+      }
+      html.push(`</ul></div>`);
+    }
+
+    $report.innerHTML = html.join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  async function loadFixture(name) {
+    $report.innerHTML = `<div class="loading">Loading ${name}…</div>`;
+    try {
+      const resp = await fetch(FIXTURES[name]);
+      if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+      const raw = await resp.text();
+      const reportJson = analyze_neighborhood(raw);
+      const report = JSON.parse(reportJson);
+      render(report);
+    } catch (e) {
+      $report.innerHTML = `<div class="error">Could not load fixture <code>${name}</code>: ${escapeHtml(String(e.message || e))}</div>`;
+    }
+  }
+
+  function wireNav() {
+    const buttons = document.querySelectorAll("#fixture-nav button");
+    buttons.forEach(b => {
+      b.addEventListener("click", () => {
+        buttons.forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        loadFixture(b.dataset.fixture);
+      });
+    });
+  }
+
+  (async () => {
+    await init();
+    $version.textContent = `${version()} — Rust → WASM`;
+    wireNav();
+    loadFixture("proposal");
+  })();
+</script>
+
 </body>
 </html>

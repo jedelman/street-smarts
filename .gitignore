@@ -1,6 +1,5 @@
-/target
-**/*.rs.bk
-*.swp
-.DS_Store
+target/
 node_modules/
+.DS_Store
 .wrangler/
+*.log

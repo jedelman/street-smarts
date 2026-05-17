@@ -1,0 +1,16 @@
+{
+  "name": "street-smarts-web",
+  "type": "module",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "files": [
+    "street_smarts_web_bg.wasm",
+    "street_smarts_web.js",
+    "street_smarts_web.d.ts"
+  ],
+  "main": "street_smarts_web.js",
+  "types": "street_smarts_web.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
