@@ -36,6 +36,7 @@ wasm-bindgen = "0.2"
 js-sys = "0.3"
 web-sys = "0.3"
 console_error_panic_hook = "0.1"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
 
 # Internal
 street-smarts-core = { path = "crates/street-smarts-core" }

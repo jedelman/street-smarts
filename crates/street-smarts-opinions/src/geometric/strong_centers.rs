@@ -23,9 +23,11 @@
 //!
 //! NoView if the data lacks both activity_nodes and any spec-named civic parcels.
 
+use std::collections::BTreeMap;
 use street_smarts_core::geometry::{haversine_m, LngLat};
 use street_smarts_core::nir::{ActivityKind, Neighborhood, OpenSpaceKind};
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
+use street_smarts_core::timer::Timer;
 
 pub struct StrongCenters;
 
@@ -50,6 +52,7 @@ impl Opinion for StrongCenters {
     fn value_range(&self) -> (f64, f64) { (0.0, 1.0) }
 
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
+        let timer = Timer::start();
         let mut centers: Vec<Center> = Vec::new();
 
         // 1. Activity nodes are explicit centers.
@@ -113,23 +116,31 @@ impl Opinion for StrongCenters {
             return OpinionOutput::NoView {
                 reason: "No activity nodes, plazas, parks, or spec-named landmarks present. \
                         This opinion has no way to discuss centers in this data.".into(),
-                runtime_ms: 0,
+                runtime_ms: timer.elapsed_ms(),
             };
         }
 
         if centers.len() == 1 {
+            let mut details = BTreeMap::new();
+            details.insert("n_centers".into(), "1".into());
             return OpinionOutput::Value {
                 value: 0.2,
                 method_summary: format!(
                     "Found exactly one center ({}). Alexander argued living structures have *multiple* nested centers; a single center is not a hierarchy.",
                     centers[0].label
                 ),
+                sub_scores: BTreeMap::from([
+                    ("presence".into(), 0.2),
+                    ("hierarchy".into(), 0.0),
+                    ("distribution".into(), 0.0),
+                ]),
+                details,
                 caveats: vec![
                     "This opinion sees only NIR-tagged centers. It cannot detect emergent centers \
                      in building massing, façade composition, or pedestrian flow.".into(),
                 ],
                 contributing_features: vec![centers[0].source_id.clone()],
-                runtime_ms: 0,
+                runtime_ms: timer.elapsed_ms(),
             };
         }
 
@@ -180,8 +191,13 @@ impl Opinion for StrongCenters {
         };
 
         // Combine: presence (have multiple centers), hierarchy, distribution.
-        let presence_score = (centers.len() as f64 / 5.0).min(1.0); // 5+ centers saturate
+        let presence_score = (centers.len() as f64 / 5.0).min(1.0);
         let value = (presence_score * 0.4 + hierarchy_score * 0.3 + distribution_score * 0.3).clamp(0.0, 1.0);
+
+        // Pick top-5 centers by weight for contributing_features (don't dump all 16+).
+        let mut by_weight: Vec<&Center> = centers.iter().collect();
+        by_weight.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        let top_features: Vec<String> = by_weight.iter().take(5).map(|c| c.source_id.clone()).collect();
 
         let summary = format!(
             "Found {} centers; weight hierarchy spans {:.1}× (smallest→largest); mean nearest-neighbor distance is {:.0}m, which is {:.1}% of the bounding-box diagonal. Presence/hierarchy/distribution scored as {:.2}/{:.2}/{:.2}.",
@@ -192,9 +208,24 @@ impl Opinion for StrongCenters {
             presence_score, hierarchy_score, distribution_score,
         );
 
+        let mut sub_scores = BTreeMap::new();
+        sub_scores.insert("presence".into(), presence_score);
+        sub_scores.insert("hierarchy".into(), hierarchy_score);
+        sub_scores.insert("distribution".into(), distribution_score);
+
+        let mut details = BTreeMap::new();
+        details.insert("n_centers".into(), centers.len().to_string());
+        details.insert("hierarchy_ratio".into(), format!("{:.1}×", hierarchy_ratio));
+        details.insert("mean_nearest_neighbor_m".into(), format!("{:.0} m", mean_nn));
+        details.insert("bbox_diagonal_m".into(), format!("{:.0} m", diag_m));
+        details.insert("nn_distance_as_pct_of_bbox".into(), format!("{:.1}%", nn_ratio * 100.0));
+        details.insert("target_nn_pct_range".into(), "5–15%".into());
+
         OpinionOutput::Value {
             value,
             method_summary: summary,
+            sub_scores,
+            details,
             caveats: vec![
                 "Counts only NIR-tagged centers (activity nodes, plazas/parks, spec-named landmarks). \
                  An emergent center created by, say, a clustering of small shops would be invisible to this opinion."
@@ -203,8 +234,8 @@ impl Opinion for StrongCenters {
                  but the lived experience of those is very different. The activist `ownership` opinion sees that difference; this one does not."
                     .into(),
             ],
-            contributing_features: centers.into_iter().map(|c| c.source_id).collect(),
-            runtime_ms: 0,
+            contributing_features: top_features,
+            runtime_ms: timer.elapsed_ms(),
         }
     }
 }

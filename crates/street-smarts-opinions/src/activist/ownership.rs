@@ -14,8 +14,10 @@
 //! Source: this opinion's politics come from Jason and the Eastside Commons spec.
 //! Not Alexander, not Salingaros. Honest about whose voice this is.
 
+use std::collections::BTreeMap;
 use street_smarts_core::nir::{Neighborhood, Ownership};
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
+use street_smarts_core::timer::Timer;
 
 pub struct OwnershipPattern;
 
@@ -32,14 +34,21 @@ impl Opinion for OwnershipPattern {
     fn value_range(&self) -> (f64, f64) { (0.0, 1.0) }
 
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
+        let timer = Timer::start();
         let mut total = 0.0_f64;
         let mut commons_area = 0.0_f64; // CLT + Coop + Commons + Public
         let mut unknown_area = 0.0_f64;
         let mut tagged_count = 0;
         let mut clt_count = 0;
+        let mut clt_area = 0.0_f64;
         let mut coop_count = 0;
+        let mut coop_area = 0.0_f64;
         let mut public_count = 0;
+        let mut public_area = 0.0_f64;
+        let mut private_count = 0;
+        let mut private_area = 0.0_f64;
         let mut eda_area = 0.0_f64;
+        let mut contributing: Vec<String> = Vec::new();
 
         for p in &n.parcels {
             let a = if p.area_acres > 0.0 {
@@ -51,39 +60,30 @@ impl Opinion for OwnershipPattern {
             total += a;
 
             // EDA parcels in the EC data are CLT/civic by intent — bucket them.
-            // The `spec` code distinguishes (CLT_* vs CIVIC_* vs MAIN_ST_*).
             if p.is_eda {
                 eda_area += a;
+                contributing.push(p.id.clone());
                 let spec = p.spec.as_deref().unwrap_or("");
                 if spec.starts_with("CLT_") {
-                    commons_area += a;
-                    clt_count += 1;
-                    tagged_count += 1;
+                    commons_area += a; clt_count += 1; clt_area += a; tagged_count += 1;
                 } else if spec.starts_with("CIVIC_") || spec.starts_with("MAIN_ST_") || spec.starts_with("HOUSING_") || spec.starts_with("SPONGE_") {
-                    commons_area += a;
-                    public_count += 1;
-                    tagged_count += 1;
+                    commons_area += a; public_count += 1; public_area += a; tagged_count += 1;
                 } else if spec.starts_with("MALL_") {
-                    // Mall core in the EC proposal is reused as civic/commercial — treat as commons.
-                    commons_area += a;
-                    public_count += 1;
-                    tagged_count += 1;
+                    commons_area += a; public_count += 1; public_area += a; tagged_count += 1;
                 } else {
-                    // Other EDA-tagged: count as commons-aspirational
-                    commons_area += a;
-                    tagged_count += 1;
+                    commons_area += a; tagged_count += 1;
                 }
                 continue;
             }
 
             match p.ownership {
-                Some(Ownership::Clt) => { commons_area += a; clt_count += 1; tagged_count += 1; }
-                Some(Ownership::Cooperative) => { commons_area += a; coop_count += 1; tagged_count += 1; }
+                Some(Ownership::Clt) => { commons_area += a; clt_count += 1; clt_area += a; tagged_count += 1; contributing.push(p.id.clone()); }
+                Some(Ownership::Cooperative) => { commons_area += a; coop_count += 1; coop_area += a; tagged_count += 1; contributing.push(p.id.clone()); }
                 Some(Ownership::Commons) | Some(Ownership::Public) => {
-                    commons_area += a; public_count += 1; tagged_count += 1;
+                    commons_area += a; public_count += 1; public_area += a; tagged_count += 1; contributing.push(p.id.clone());
                 }
                 Some(Ownership::Mixed) => { commons_area += a * 0.5; tagged_count += 1; }
-                Some(Ownership::Private) => { tagged_count += 1; }
+                Some(Ownership::Private) => { private_count += 1; private_area += a; tagged_count += 1; }
                 Some(Ownership::Unknown) | None => { unknown_area += a; }
             }
         }
@@ -91,7 +91,7 @@ impl Opinion for OwnershipPattern {
         if total <= 0.0 {
             return OpinionOutput::NoView {
                 reason: "No parcels with positive area in this neighborhood.".into(),
-                runtime_ms: 0,
+                runtime_ms: timer.elapsed_ms(),
             };
         }
 
@@ -99,17 +99,16 @@ impl Opinion for OwnershipPattern {
         if known <= 0.0 {
             return OpinionOutput::NoView {
                 reason: "All parcels have unknown ownership; this opinion needs at least some tagged data.".into(),
-                runtime_ms: 0,
+                runtime_ms: timer.elapsed_ms(),
             };
         }
 
         let commons_share = commons_area / known;
+        let clt_share = clt_area / known;
+        let coop_share = coop_area / known;
+        let public_share = public_area / known;
+        let private_share = private_area / known;
 
-        // Score on the share of land in commons / CLT / cooperative / public:
-        //   0.0    → 0.0 (fully private)
-        //   0.25   → 0.4
-        //   0.50   → 0.75
-        //   ≥0.75  → 1.0
         let value = if commons_share >= 0.75 {
             1.0
         } else if commons_share >= 0.5 {
@@ -134,6 +133,25 @@ impl Opinion for OwnershipPattern {
             unknown_pct,
         );
 
+        let mut sub_scores = BTreeMap::new();
+        sub_scores.insert("commons_share".into(), commons_share);
+        sub_scores.insert("clt_share".into(), clt_share);
+        sub_scores.insert("cooperative_share".into(), coop_share);
+        sub_scores.insert("civic_public_share".into(), public_share);
+        sub_scores.insert("private_share".into(), private_share);
+
+        let mut details = BTreeMap::new();
+        details.insert("commons_pct_of_known".into(), format!("{:.1}%", commons_share * 100.0));
+        details.insert("private_pct_of_known".into(), format!("{:.1}%", private_share * 100.0));
+        details.insert("unknown_pct_of_total".into(), format!("{:.1}%", unknown_pct));
+        details.insert("clt_parcels".into(), clt_count.to_string());
+        details.insert("cooperative_parcels".into(), coop_count.to_string());
+        details.insert("civic_public_parcels".into(), public_count.to_string());
+        details.insert("private_parcels".into(), private_count.to_string());
+        details.insert("clt_acres".into(), format!("{:.2}", clt_area / 4046.86));
+        details.insert("civic_public_acres".into(), format!("{:.2}", public_area / 4046.86));
+        details.insert("eda_proposal_acres".into(), format!("{:.2}", eda_area / 4046.86));
+
         let mut caveats = vec![
             "This opinion treats EDA-tagged parcels (`is_eda: true`) as commons-aspirational — \
              that's an interpretation of the Eastside Commons proposal's intent, not a fact of ownership today.".into(),
@@ -147,14 +165,18 @@ impl Opinion for OwnershipPattern {
                 unknown_pct
             ));
         }
-        let _ = eda_area; // Reserved for a future EDA-share output.
+
+        // Cap contributing features at ~10 to keep the UI readable.
+        contributing.truncate(10);
 
         OpinionOutput::Value {
             value,
             method_summary: summary,
+            sub_scores,
+            details,
             caveats,
-            contributing_features: vec![],
-            runtime_ms: 0,
+            contributing_features: contributing,
+            runtime_ms: timer.elapsed_ms(),
         }
     }
 }

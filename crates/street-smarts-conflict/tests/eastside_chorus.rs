@@ -26,11 +26,27 @@ fn eastside_commons_chorus() {
         eprintln!("\n-- Individual voices --");
         for ev in &report.opinions {
             match &ev.output {
-                street_smarts_core::opinion::OpinionOutput::Value { value, method_summary, .. } => {
-                    eprintln!("  [{:?}] {}: {:.3}  — {}", ev.opinion.family, ev.opinion.name, value, method_summary);
+                street_smarts_core::opinion::OpinionOutput::Value { value, method_summary, sub_scores, details, contributing_features, runtime_ms, .. } => {
+                    eprintln!("  [{:?}] {}: {:.3}  ({}ms)", ev.opinion.family, ev.opinion.name, value, runtime_ms);
+                    eprintln!("    — {}", method_summary);
+                    if !sub_scores.is_empty() {
+                        eprintln!("    sub-scores:");
+                        for (k, v) in sub_scores {
+                            eprintln!("      {} = {:.3}", k, v);
+                        }
+                    }
+                    if !details.is_empty() {
+                        eprintln!("    details:");
+                        for (k, v) in details {
+                            eprintln!("      {} = {}", k, v);
+                        }
+                    }
+                    if !contributing_features.is_empty() {
+                        eprintln!("    contributing: {}", contributing_features.join(", "));
+                    }
                 }
-                street_smarts_core::opinion::OpinionOutput::NoView { reason, .. } => {
-                    eprintln!("  [{:?}] {}: (abstained) {}", ev.opinion.family, ev.opinion.name, reason);
+                street_smarts_core::opinion::OpinionOutput::NoView { reason, runtime_ms } => {
+                    eprintln!("  [{:?}] {}: (abstained, {}ms) {}", ev.opinion.family, ev.opinion.name, runtime_ms, reason);
                 }
             }
         }

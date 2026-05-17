@@ -58,6 +58,15 @@ pub enum OpinionOutput {
         value: f64,
         /// One-line summary suitable for showing a human reader.
         method_summary: String,
+        /// Named sub-scores that combine into `value`. Lets the UI show the math
+        /// without committing every opinion to the same shape. Keys are
+        /// opinion-specific (e.g. "presence", "hierarchy", "distribution").
+        #[serde(default)]
+        sub_scores: std::collections::BTreeMap<String, f64>,
+        /// Free-form numeric details that aren't 0–1 scores: counts, ratios,
+        /// distances. UI shows these as a key/value table.
+        #[serde(default)]
+        details: std::collections::BTreeMap<String, String>,
         /// What this opinion explicitly *doesn't* see. Drives disagreement framing.
         #[serde(default)]
         caveats: Vec<String>,

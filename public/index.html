@@ -103,6 +103,98 @@
   details.caveats summary { cursor: pointer; }
   details.caveats ul { margin: .35rem 0 0; padding-left: 1.1rem; }
 
+  /* Sub-scores: small horizontal bars */
+  .subscores {
+    margin: .7rem 0 .5rem;
+    padding: 0;
+    list-style: none;
+  }
+  .subscores li {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.9fr) 1fr 3.5rem;
+    gap: .6rem;
+    align-items: center;
+    padding: .25rem 0;
+    border: none !important;
+    font-size: 0.9rem;
+  }
+  .subscores .label {
+    color: var(--ink);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .subscores .bar {
+    height: 6px;
+    background: var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .subscores .bar .fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: var(--geo);
+    border-radius: 3px;
+  }
+  .chorus-activist + section .subscores .bar .fill,
+  .voice-family-activist .subscores .bar .fill { background: var(--equity); }
+  .subscores .num {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84rem;
+    color: var(--ink);
+    text-align: right;
+  }
+
+  /* Details: key-value rows in monospace */
+  table.details {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: .35rem;
+    font-size: 0.85rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  table.details td {
+    padding: .15rem .5rem .15rem 0;
+    border-top: 1px dotted var(--line);
+    color: var(--muted);
+  }
+  table.details td:first-child { color: var(--ink); white-space: nowrap; }
+  table.details td:last-child { text-align: right; color: var(--ink); }
+  table.details tr:first-child td { border-top: none; }
+
+  /* Contributing-features list */
+  details.features ul {
+    margin: .35rem 0 0;
+    padding-left: 1.1rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  details.features li { margin: .15rem 0; }
+
+  /* Runtime chip */
+  .runtime-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-left: .35rem;
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    vertical-align: middle;
+  }
+
+  /* When the voice itself is an activist one, use the equity color for its bars */
+  li.voice-row[data-family="activist"] .subscores .bar .fill { background: var(--equity); }
+  li.voice-row[data-family="geometric"] .subscores .bar .fill { background: var(--geo); }
+
   .questions {
     background: var(--highlight);
     border: 1px solid #d3c89e;
@@ -258,9 +350,10 @@
       const op = ev.opinion;
       const out = ev.output;
       const isValue = out.kind === "value";
-      html.push(`<li>`);
+      const rt = (out.runtime_ms ?? 0) + " ms";
+      html.push(`<li class="voice-row" data-family="${escapeAttr(op.family)}">`);
       html.push(`<div class="voice-head">`);
-      html.push(`<span class="voice-name">${escapeHtml(op.name)}<small>${familyLabel(op.family)}</small></span>`);
+      html.push(`<span class="voice-name">${escapeHtml(op.name)}<small>${familyLabel(op.family)}</small><span class="runtime-chip" title="opinion runtime">${escapeHtml(rt)}</span></span>`);
       if (isValue) {
         html.push(`<span class="voice-value">${fmt(out.value)}</span>`);
       } else {
@@ -272,13 +365,51 @@
       } else {
         html.push(`<p class="voice-method"><em>${escapeHtml(out.reason)}</em></p>`);
       }
-      html.push(`<p class="voice-source">— ${escapeHtml(op.source.display)}${op.source.url ? ` · <a href="${escapeHtml(op.source.url)}" target="_blank" rel="noopener">source</a>` : ""}</p>`);
-      if (isValue && out.caveats?.length) {
-        html.push(`<details class="caveats"><summary>What this voice explicitly can't see</summary><ul>`);
-        for (const c of out.caveats) {
-          html.push(`<li>${escapeHtml(c)}</li>`);
+      html.push(`<p class="voice-source">— ${escapeHtml(op.source.display)}${op.source.url ? ` · <a href="${escapeAttr(op.source.url)}" target="_blank" rel="noopener">source</a>` : ""}</p>`);
+
+      if (isValue) {
+        // Sub-scores (bar list)
+        const subs = out.sub_scores || {};
+        const subKeys = Object.keys(subs);
+        if (subKeys.length) {
+          html.push(`<ul class="subscores">`);
+          for (const k of subKeys) {
+            const v = subs[k];
+            const pct = Math.max(0, Math.min(100, v * 100));
+            html.push(`<li><span class="label" title="${escapeAttr(k)}">${escapeHtml(k)}</span><span class="bar"><span class="fill" style="width:${pct.toFixed(1)}%"></span></span><span class="num">${fmt(v)}</span></li>`);
+          }
+          html.push(`</ul>`);
         }
-        html.push(`</ul></details>`);
+
+        // Details table (collapsible)
+        const det = out.details || {};
+        const detKeys = Object.keys(det);
+        if (detKeys.length) {
+          html.push(`<details><summary style="cursor:pointer;font-size:.88rem;color:var(--muted);">Raw details (${detKeys.length})</summary>`);
+          html.push(`<table class="details"><tbody>`);
+          for (const k of detKeys) {
+            html.push(`<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(det[k])}</td></tr>`);
+          }
+          html.push(`</tbody></table></details>`);
+        }
+
+        // Caveats
+        if (out.caveats?.length) {
+          html.push(`<details class="caveats"><summary>What this voice explicitly can't see</summary><ul>`);
+          for (const c of out.caveats) {
+            html.push(`<li>${escapeHtml(c)}</li>`);
+          }
+          html.push(`</ul></details>`);
+        }
+
+        // Contributing features
+        if (out.contributing_features?.length) {
+          html.push(`<details class="features"><summary style="cursor:pointer;font-size:.88rem;color:var(--muted);">Contributing features (${out.contributing_features.length})</summary><ul>`);
+          for (const f of out.contributing_features) {
+            html.push(`<li>${escapeHtml(f)}</li>`);
+          }
+          html.push(`</ul></details>`);
+        }
       }
       html.push(`</li>`);
     }
@@ -298,6 +429,7 @@
   function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
+  const escapeAttr = escapeHtml;
 
   async function loadFixture(name) {
     $report.innerHTML = `<div class="loading">Loading ${name}…</div>`;
