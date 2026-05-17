@@ -1,0 +1,22 @@
+[package]
+name = "street-smarts-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+web-sys = { workspace = true, features = ["console"] }
+console_error_panic_hook = { workspace = true }
+street-smarts-core = { workspace = true }
+street-smarts-opinions = { workspace = true }
+street-smarts-conflict = { workspace = true }

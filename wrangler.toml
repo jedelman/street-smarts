@@ -1,0 +1,11 @@
+name = "street-smarts"
+compatibility_date = "2026-05-17"
+account_id = "543fde7feabd0af945bfae926ceea7ad"
+
+# v0.1 is pure static assets: HTML/JS/CSS + WASM bundle + JSON fixtures.
+# Workers Assets serves them with no Worker script needed.
+[assets]
+directory = "public"
+
+# Cache: the WASM bundle and fixtures rarely change between releases;
+# default headers are fine for v0.1. Custom caching headers wait for v0.2.
