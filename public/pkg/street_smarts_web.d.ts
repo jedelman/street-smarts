@@ -20,9 +20,11 @@ export function list_operators(): string;
 
 /**
  * Apply a pattern operator to a parcel inside the given neighborhood JSON.
+ * `params_json` is a JSON string of either an object (named params) or
+ * an array (vector form). Pass `"null"` or an empty string for defaults.
  * Returns a JSON object: `{ "neighborhood": ..., "trace": ... }`.
  */
-export function subdivide_parcel(neighborhood_json: string, parcel_id: string, operator_name: string, seed: bigint): string;
+export function subdivide_parcel(neighborhood_json: string, parcel_id: string, operator_name: string, params_json: string, seed: bigint): string;
 
 /**
  * Library version string for the UI footer.
@@ -36,7 +38,7 @@ export interface InitOutput {
     readonly _start: () => void;
     readonly analyze_neighborhood: (a: number, b: number, c: number) => void;
     readonly list_operators: (a: number) => void;
-    readonly subdivide_parcel: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: bigint) => void;
+    readonly subdivide_parcel: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: bigint) => void;
     readonly version: (a: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

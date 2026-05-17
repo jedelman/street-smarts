@@ -33,17 +33,26 @@ pub fn list_operators() -> Result<String, JsValue> {
 }
 
 /// Apply a pattern operator to a parcel inside the given neighborhood JSON.
+/// `params_json` is a JSON string of either an object (named params) or
+/// an array (vector form). Pass `"null"` or an empty string for defaults.
 /// Returns a JSON object: `{ "neighborhood": ..., "trace": ... }`.
 #[wasm_bindgen]
 pub fn subdivide_parcel(
     neighborhood_json: &str,
     parcel_id: &str,
     operator_name: &str,
+    params_json: &str,
     seed: u64,
 ) -> Result<String, JsValue> {
     let nbhd: street_smarts_core::nir::Neighborhood = serde_json::from_str(neighborhood_json)
         .map_err(|e| JsValue::from_str(&format!("parse neighborhood: {e}")))?;
-    let sub = street_smarts_patterns::run_operator(&nbhd, operator_name, parcel_id, seed)
+    let params: serde_json::Value = if params_json.is_empty() || params_json == "null" {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_str(params_json)
+            .map_err(|e| JsValue::from_str(&format!("parse params: {e}")))?
+    };
+    let sub = street_smarts_patterns::run_operator(&nbhd, operator_name, parcel_id, &params, seed)
         .map_err(|e| JsValue::from_str(&format!("operator: {e}")))?;
     let modified = street_smarts_patterns::apply_subdivision(&nbhd, &sub);
     let response = serde_json::json!({

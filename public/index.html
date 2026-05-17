@@ -278,6 +278,49 @@
   }
   .generate-status.success { color: var(--geo); font-style: normal; }
   .generate-status.error { color: var(--warn); font-style: normal; }
+
+  .generate-params {
+    margin: .8rem 0 0;
+    padding: .6rem .8rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+  }
+  .generate-params:empty { display: none; }
+  .generate-params .param-row {
+    display: grid;
+    grid-template-columns: 12rem 1fr 5rem;
+    gap: .6rem;
+    align-items: center;
+    padding: .25rem 0;
+    font-size: 0.82rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    border-top: 1px dotted var(--line);
+  }
+  .generate-params .param-row:first-child { border-top: none; }
+  .generate-params .param-row .pname {
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .generate-params .param-row .pdesc {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-style: italic;
+    font-family: ui-serif, Georgia, serif;
+    grid-column: 1 / -1;
+    padding-bottom: .15rem;
+  }
+  .generate-params .param-row input[type="range"] {
+    width: 100%;
+    accent-color: var(--ink);
+  }
+  .generate-params .param-row .pval {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
   #gen-trace { margin-top: .6rem; font-size: 0.86rem; color: var(--muted); }
   #gen-trace ul { margin: .3rem 0 0; padding-left: 1.2rem; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.78rem; }
   #gen-trace li { margin: .15rem 0; }
@@ -521,7 +564,9 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P95 → BlockGrouping → PathNetwork → BuildingShape">Run full pipeline</button>
         </div>
+        <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
         <details id="gen-trace" hidden><summary>What the operator did (step trace)</summary><div id="gen-trace-body"></div></details>
       </div>
@@ -570,6 +615,8 @@
   const $genSeed = document.getElementById("gen-seed");
   const $genReseed = document.getElementById("gen-reseed");
   const $genRun = document.getElementById("gen-run");
+  const $genPipeline = document.getElementById("gen-pipeline");
+  const $genParams = document.getElementById("gen-params");
   const $genStatus = document.getElementById("gen-status");
   const $genTrace = document.getElementById("gen-trace");
   const $genTraceBody = document.getElementById("gen-trace-body");
@@ -688,26 +735,87 @@
     const ns = "http://www.w3.org/2000/svg";
     while ($mapSvg.firstChild) $mapSvg.removeChild($mapSvg.firstChild);
 
+    // SVG groups: parcels (under), streets, buildings (top).
+    // This z-ordering gives the layered pipeline a legible read on the map.
+    const gParcels = document.createElementNS(ns, "g");
+    gParcels.setAttribute("data-layer", "parcels");
+    const gStreets = document.createElementNS(ns, "g");
+    gStreets.setAttribute("data-layer", "streets");
+    const gBuildings = document.createElementNS(ns, "g");
+    gBuildings.setAttribute("data-layer", "buildings");
+    $mapSvg.appendChild(gParcels);
+    $mapSvg.appendChild(gStreets);
+    $mapSvg.appendChild(gBuildings);
+
     // Z-order: context first (under), then EDA — large EDA under small EDA so
     // the small civic/CLT plots sit visibly on top of MALL_CORE etc.
     const ordered = [...parcels].sort((a, b) => {
       if (a.is_eda !== b.is_eda) return Number(a.is_eda) - Number(b.is_eda);
-      // Both non-EDA: order doesn't matter much. Both EDA: large first.
       return (b.area_acres || 0) - (a.area_acres || 0);
     });
     for (const p of ordered) {
-      const ring = p.polygon.outer;
-      const pts = ring.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
-      const poly = document.createElementNS(ns, "polygon");
-      poly.setAttribute("points", pts);
-      poly.dataset.parcelId = p.id;
-      poly.dataset.spec = p.spec || "";
-      poly.dataset.isEda = String(!!p.is_eda);
-      poly.dataset.areaAcres = String(p.area_acres || 0);
-      poly.setAttribute("stroke-width", "0.5");
-      poly.setAttribute("stroke-opacity", "0.35");
-      $mapSvg.appendChild(poly);
-      parcelById.set(p.id, poly);
+      // Render ALL parts (multi-polygon support). parts[] is canonical;
+      // outer/holes mirror parts[0] for backward compat.
+      const parts = (p.polygon.parts && p.polygon.parts.length)
+        ? p.polygon.parts
+        : [{ outer: p.polygon.outer, holes: p.polygon.holes || [] }];
+      for (let pi = 0; pi < parts.length; pi++) {
+        const ring = parts[pi].outer;
+        const pts = ring.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+        const poly = document.createElementNS(ns, "polygon");
+        poly.setAttribute("points", pts);
+        poly.dataset.parcelId = p.id;
+        poly.dataset.partIdx = String(pi);
+        poly.dataset.spec = p.spec || "";
+        poly.dataset.isEda = String(!!p.is_eda);
+        poly.dataset.areaAcres = String(p.area_acres || 0);
+        poly.dataset.useCategory = p.use_category || "";
+        poly.setAttribute("stroke-width", "0.5");
+        poly.setAttribute("stroke-opacity", "0.35");
+        gParcels.appendChild(poly);
+        // Only register the primary part for voice-coloring lookups.
+        if (pi === 0) parcelById.set(p.id, poly);
+      }
+    }
+
+    // Streets (path network) — render as lines on the map.
+    for (const s of (neighborhood.streets || [])) {
+      if (!s.centerline || s.centerline.length < 2) continue;
+      const pts = s.centerline.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+      const line = document.createElementNS(ns, "polyline");
+      line.setAttribute("points", pts);
+      line.setAttribute("fill", "none");
+      line.setAttribute("stroke", "#5a514a");
+      const widthPx = Math.max(0.6, ((s.row_width_m || 4) * scale * 0.7));
+      line.setAttribute("stroke-width", String(widthPx));
+      line.setAttribute("stroke-opacity", "0.75");
+      line.setAttribute("stroke-linecap", "round");
+      line.dataset.streetId = s.id;
+      line.dataset.classification = s.classification || "";
+      gStreets.appendChild(line);
+    }
+
+    // Buildings — small dark polygons on top of their parent parcels.
+    for (const b of (neighborhood.buildings || [])) {
+      const parts = (b.polygon.parts && b.polygon.parts.length)
+        ? b.polygon.parts
+        : [{ outer: b.polygon.outer, holes: b.polygon.holes || [] }];
+      for (const part of parts) {
+        if (!part.outer || part.outer.length < 3) continue;
+        const pts = part.outer.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+        const poly = document.createElementNS(ns, "polygon");
+        poly.setAttribute("points", pts);
+        poly.setAttribute("fill", "#2b2620");
+        // Opacity by height — taller = more opaque, gives a hint of massing.
+        const opacity = b.height_m ? Math.min(0.92, 0.4 + b.height_m / 30) : 0.62;
+        poly.setAttribute("fill-opacity", String(opacity));
+        poly.setAttribute("stroke", "#0f0c08");
+        poly.setAttribute("stroke-width", "0.4");
+        poly.setAttribute("stroke-opacity", "0.6");
+        poly.dataset.buildingId = b.id;
+        poly.dataset.heightM = String(b.height_m || 0);
+        gBuildings.appendChild(poly);
+      }
     }
 
     return { parcelById, parcels };
@@ -1106,86 +1214,254 @@
     if (mall) $genParcel.value = mall.id;
   }
 
+  // Operators registry, cached after first WASM call.
+  let operatorsCache = [];
+
   async function populateOperators() {
     try {
-      const ops = JSON.parse(list_operators());
+      operatorsCache = JSON.parse(list_operators());
       $genOperator.innerHTML = "";
-      for (const op of ops) {
+      for (const op of operatorsCache) {
         const opt = document.createElement("option");
         opt.value = op.name;
         opt.textContent = `${op.name} — ${op.description}`;
         opt.title = op.source.display;
         $genOperator.appendChild(opt);
       }
+      renderParamsForSelectedOperator();
     } catch (e) {
       $genOperator.innerHTML = `<option value="">(no operators)</option>`;
     }
   }
 
+  function getOperatorInfo(name) {
+    return operatorsCache.find(op => op.name === name) || null;
+  }
+
+  // Live values for the currently-displayed operator's params. Object keyed by
+  // param name. Initialized from defaults when the operator selection changes.
+  let currentParams = {};
+
+  function renderParamsForSelectedOperator() {
+    const op = getOperatorInfo($genOperator.value);
+    if (!op || !op.parameter_schema || op.parameter_schema.length === 0) {
+      $genParams.innerHTML = "";
+      currentParams = {};
+      return;
+    }
+    // Initialize from defaults.
+    currentParams = { ...(op.default_params || {}) };
+    const rows = [];
+    for (const spec of op.parameter_schema) {
+      const v = currentParams[spec.name] ?? spec.default;
+      const step = spec.integer ? "1" : ((spec.max - spec.min) / 100).toPrecision(2);
+      const unit = spec.unit ? ` ${escapeHtml(spec.unit)}` : "";
+      const valDisplay = spec.integer ? String(Math.round(v)) : formatParamValue(v);
+      rows.push(`
+        <div class="param-row" data-param="${escapeAttr(spec.name)}">
+          <div class="pname" title="${escapeAttr(spec.description)}">${escapeHtml(spec.name)}</div>
+          <input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${v}"
+                 data-pname="${escapeAttr(spec.name)}"
+                 data-integer="${spec.integer ? "1" : "0"}">
+          <div class="pval">${valDisplay}${unit}</div>
+          <div class="pdesc">${escapeHtml(spec.description)}</div>
+        </div>
+      `);
+    }
+    $genParams.innerHTML = rows.join("");
+    $genParams.querySelectorAll('input[type="range"]').forEach(el => {
+      el.addEventListener("input", () => {
+        const name = el.dataset.pname;
+        const isInt = el.dataset.integer === "1";
+        const raw = parseFloat(el.value);
+        const v = isInt ? Math.round(raw) : raw;
+        currentParams[name] = v;
+        const valEl = el.parentElement.querySelector(".pval");
+        const opSpec = (getOperatorInfo($genOperator.value) || {}).parameter_schema || [];
+        const spec = opSpec.find(s => s.name === name);
+        const unit = spec?.unit ? ` ${spec.unit}` : "";
+        valEl.textContent = (isInt ? String(v) : formatParamValue(v)) + unit;
+      });
+    });
+  }
+
+  function formatParamValue(v) {
+    if (v === undefined || v === null || Number.isNaN(v)) return "—";
+    if (Math.abs(v) >= 100) return v.toFixed(0);
+    if (Math.abs(v) >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+  }
+
+  function paramsAsObject() {
+    // Project currentParams through the active operator's schema so we don't
+    // send keys for params that don't belong to this operator.
+    const op = getOperatorInfo($genOperator.value);
+    if (!op) return {};
+    const out = {};
+    for (const spec of (op.parameter_schema || [])) {
+      out[spec.name] = currentParams[spec.name] ?? spec.default;
+    }
+    return out;
+  }
+
   function wireGenerate() {
     $genReseed.addEventListener("click", () => {
-      // Range 0..999999 — keeps the input compact.
       $genSeed.value = String(Math.floor(Math.random() * 1_000_000));
     });
 
-    $genRun.addEventListener("click", async () => {
-      if (!activeRawNeighborhood) {
-        $genStatus.textContent = "Load a fixture first.";
-        $genStatus.className = "generate-status error";
-        return;
-      }
-      const parcelId = $genParcel.value;
-      const operator = $genOperator.value;
-      const seed = BigInt($genSeed.value || "0");
-      if (!parcelId || !operator) {
-        $genStatus.textContent = "Pick a parcel and an operator.";
-        $genStatus.className = "generate-status error";
-        return;
-      }
-      $genRun.disabled = true;
-      $genStatus.textContent = "Generating…";
-      $genStatus.className = "generate-status";
-      // Defer so the spinner-style message paints before WASM blocks.
-      await new Promise(r => setTimeout(r, 16));
-      try {
-        const t0 = performance.now();
-        const result = subdivide_parcel(activeRawNeighborhood, parcelId, operator, seed);
-        const parsed = JSON.parse(result);
-        const dt = (performance.now() - t0).toFixed(0);
-
-        generatedCounter += 1;
-        const key = `gen-${generatedCounter}`;
-        const label = `Generated: ${parcelId} × ${operator} × seed=${seed}`;
-        generated.set(key, {
-          neighborhood: parsed.neighborhood,
-          meta: { label, trace: parsed.trace, parcelId, operator, seed: String(seed) },
-        });
-
-        // Add a nav button for this generated proposal and activate it.
-        const btn = document.createElement("button");
-        btn.dataset.fixture = key;
-        btn.textContent = `Gen: ${parcelId.slice(-4)} P95 ${seed}`;
-        btn.title = label;
-        $fixtureNav.appendChild(btn);
-        $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
-        btn.classList.add("active");
-
-        $genStatus.textContent = `Built in ${dt} ms · ${parsed.trace.headline}`;
-        $genStatus.className = "generate-status success";
-
-        // Trace
-        $genTrace.hidden = false;
-        $genTraceBody.innerHTML = "<ul>" + parsed.trace.steps.map(s => `<li>${escapeHtml(s)}</li>`).join("") + "</ul>";
-
-        // Load the generated neighborhood.
-        loadFixture(key);
-      } catch (e) {
-        $genStatus.textContent = `Generation failed: ${String(e.message || e)}`;
-        $genStatus.className = "generate-status error";
-      } finally {
-        $genRun.disabled = false;
-      }
+    $genOperator.addEventListener("change", () => {
+      renderParamsForSelectedOperator();
     });
+
+    $genRun.addEventListener("click", async () => {
+      await runSingleOperator();
+    });
+
+    $genPipeline.addEventListener("click", async () => {
+      await runFullPipeline();
+    });
+  }
+
+  async function runSingleOperator() {
+    if (!activeRawNeighborhood) {
+      $genStatus.textContent = "Load a fixture first.";
+      $genStatus.className = "generate-status error";
+      return;
+    }
+    const parcelId = $genParcel.value;
+    const operator = $genOperator.value;
+    const seed = BigInt($genSeed.value || "0");
+    if (!parcelId || !operator) {
+      $genStatus.textContent = "Pick a parcel and an operator.";
+      $genStatus.className = "generate-status error";
+      return;
+    }
+    $genRun.disabled = true;
+    $genPipeline.disabled = true;
+    $genStatus.textContent = "Generating…";
+    $genStatus.className = "generate-status";
+    await new Promise(r => setTimeout(r, 16));
+    try {
+      const t0 = performance.now();
+      const paramsJson = JSON.stringify(paramsAsObject());
+      const result = subdivide_parcel(activeRawNeighborhood, parcelId, operator, paramsJson, seed);
+      const parsed = JSON.parse(result);
+      const dt = (performance.now() - t0).toFixed(0);
+
+      generatedCounter += 1;
+      const key = `gen-${generatedCounter}`;
+      const label = `Generated: ${parcelId} × ${operator} × seed=${seed}`;
+      generated.set(key, {
+        neighborhood: parsed.neighborhood,
+        meta: { label, trace: parsed.trace, parcelId, operator, seed: String(seed) },
+      });
+
+      const btn = document.createElement("button");
+      btn.dataset.fixture = key;
+      btn.textContent = `Gen: ${operator.slice(0, 3)} ${seed}`;
+      btn.title = label;
+      $fixtureNav.appendChild(btn);
+      $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+      btn.classList.add("active");
+
+      $genStatus.textContent = `Built in ${dt} ms · ${parsed.trace.headline}`;
+      $genStatus.className = "generate-status success";
+
+      $genTrace.hidden = false;
+      $genTraceBody.innerHTML = "<ul>" + parsed.trace.steps.map(s => `<li>${escapeHtml(s)}</li>`).join("") + "</ul>";
+
+      loadFixture(key);
+    } catch (e) {
+      $genStatus.textContent = `Generation failed: ${String(e.message || e)}`;
+      $genStatus.className = "generate-status error";
+    } finally {
+      $genRun.disabled = false;
+      $genPipeline.disabled = false;
+    }
+  }
+
+  async function runFullPipeline() {
+    if (!activeRawNeighborhood) {
+      $genStatus.textContent = "Load a fixture first.";
+      $genStatus.className = "generate-status error";
+      return;
+    }
+    const parcelId = $genParcel.value;
+    const seed = BigInt($genSeed.value || "0");
+    if (!parcelId) {
+      $genStatus.textContent = "Pick a parcel.";
+      $genStatus.className = "generate-status error";
+      return;
+    }
+    $genRun.disabled = true;
+    $genPipeline.disabled = true;
+    $genStatus.textContent = "Running pipeline…";
+    $genStatus.className = "generate-status";
+    await new Promise(r => setTimeout(r, 16));
+    try {
+      const t0 = performance.now();
+      // Pipeline: parcel → pads → blocks → paths → buildings.
+      // Each step runs with operator-specific defaults (the current params
+      // panel only applies to the user's selected single-step operator).
+      let currentJson = activeRawNeighborhood;
+      const allTraces = [];
+      const pipeline = [
+        { op: "p95_building_complex", target: parcelId },
+        { op: "block_grouping", target: "*" },
+        { op: "path_network", target: "*" },
+        { op: "building_shape", target: "*" },
+      ];
+      for (const step of pipeline) {
+        const result = subdivide_parcel(currentJson, step.target, step.op, "null", seed);
+        const parsed = JSON.parse(result);
+        currentJson = JSON.stringify(parsed.neighborhood);
+        allTraces.push(parsed.trace);
+      }
+      const finalNbhd = JSON.parse(currentJson);
+      const dt = (performance.now() - t0).toFixed(0);
+
+      generatedCounter += 1;
+      const key = `gen-${generatedCounter}`;
+      const label = `Pipeline: ${parcelId} × P95+Block+Path+Shape × seed=${seed}`;
+      generated.set(key, {
+        neighborhood: finalNbhd,
+        meta: {
+          label,
+          trace: {
+            headline: `Pipeline produced ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths.`,
+            steps: allTraces.flatMap(t => [`▸ ${t.operator_name}: ${t.headline}`, ...t.steps.map(s => `   · ${s}`)]),
+          },
+          parcelId,
+          operator: "pipeline",
+          seed: String(seed),
+        },
+      });
+
+      const btn = document.createElement("button");
+      btn.dataset.fixture = key;
+      btn.textContent = `Pipeline ${seed}`;
+      btn.title = label;
+      $fixtureNav.appendChild(btn);
+      $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+      btn.classList.add("active");
+
+      $genStatus.textContent = `Pipeline built in ${dt} ms · ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths`;
+      $genStatus.className = "generate-status success";
+
+      $genTrace.hidden = false;
+      $genTraceBody.innerHTML = "<ul>" + allTraces.flatMap(t => [
+        `<li><strong>${escapeHtml(t.operator_name)}</strong>: ${escapeHtml(t.headline)}</li>`,
+        ...t.steps.map(s => `<li style="padding-left:1.2rem">${escapeHtml(s)}</li>`),
+      ]).join("") + "</ul>";
+
+      loadFixture(key);
+    } catch (e) {
+      $genStatus.textContent = `Pipeline failed: ${String(e.message || e)}`;
+      $genStatus.className = "generate-status error";
+    } finally {
+      $genRun.disabled = false;
+      $genPipeline.disabled = false;
+    }
   }
 
   (async () => {

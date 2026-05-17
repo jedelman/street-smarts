@@ -72,16 +72,19 @@ export function list_operators() {
 
 /**
  * Apply a pattern operator to a parcel inside the given neighborhood JSON.
+ * `params_json` is a JSON string of either an object (named params) or
+ * an array (vector form). Pass `"null"` or an empty string for defaults.
  * Returns a JSON object: `{ "neighborhood": ..., "trace": ... }`.
  * @param {string} neighborhood_json
  * @param {string} parcel_id
  * @param {string} operator_name
+ * @param {string} params_json
  * @param {bigint} seed
  * @returns {string}
  */
-export function subdivide_parcel(neighborhood_json, parcel_id, operator_name, seed) {
-    let deferred5_0;
-    let deferred5_1;
+export function subdivide_parcel(neighborhood_json, parcel_id, operator_name, params_json, seed) {
+    let deferred6_0;
+    let deferred6_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passStringToWasm0(neighborhood_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
@@ -90,23 +93,25 @@ export function subdivide_parcel(neighborhood_json, parcel_id, operator_name, se
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(operator_name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len2 = WASM_VECTOR_LEN;
-        wasm.subdivide_parcel(retptr, ptr0, len0, ptr1, len1, ptr2, len2, seed);
+        const ptr3 = passStringToWasm0(params_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len3 = WASM_VECTOR_LEN;
+        wasm.subdivide_parcel(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, seed);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr4 = r0;
-        var len4 = r1;
+        var ptr5 = r0;
+        var len5 = r1;
         if (r3) {
-            ptr4 = 0; len4 = 0;
+            ptr5 = 0; len5 = 0;
             throw takeObject(r2);
         }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred5_0, deferred5_1, 1);
+        wasm.__wbindgen_export3(deferred6_0, deferred6_1, 1);
     }
 }
 

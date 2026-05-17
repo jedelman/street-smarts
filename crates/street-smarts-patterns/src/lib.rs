@@ -11,11 +11,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod block_grouping;
+pub mod building_shape;
+pub mod parameters;
+pub mod path_network;
 pub mod planar;
 pub mod prng;
 pub mod p95_building_complex;
 pub mod registry;
 pub mod subdivision;
 
+pub use parameters::{NoParams, ParamSpec, Parameters};
 pub use registry::{available_operators, run_operator, OperatorInfo};
-pub use subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
+pub use subdivision::{apply_subdivision, DynOperator, PatternOperator, Subdivision, SubdivisionTrace};

@@ -67,6 +67,19 @@ pub fn centroid(poly: &[Pt2]) -> Pt2 {
     Pt2::new(sx / n, sy / n)
 }
 
+/// Vertex-average centroid of a WGS84 ring, returned as lng/lat.
+pub fn average_centroid(ring: &[LngLat]) -> LngLat {
+    if ring.is_empty() { return LngLat::new(0.0, 0.0); }
+    let mut lng = 0.0;
+    let mut lat = 0.0;
+    for p in ring {
+        lng += p.lng;
+        lat += p.lat;
+    }
+    let n = ring.len() as f64;
+    LngLat::new(lng / n, lat / n)
+}
+
 /// Shoelace area (unsigned).
 pub fn area(poly: &[Pt2]) -> f64 {
     if poly.len() < 3 { return 0.0; }
@@ -271,36 +284,103 @@ pub fn convex_hull(points: &[Pt2]) -> Vec<Pt2> {
     hull
 }
 
-/// Clip a convex polygon (e.g. a Voronoi cell) against a non-convex polygon
-/// boundary using the Weiler-Atherton-style intersection.
+/// Ensure a polygon is in CCW orientation. Reverses if CW.
+pub fn ensure_ccw(poly: &[Pt2]) -> Vec<Pt2> {
+    let n = poly.len();
+    if n < 3 { return poly.to_vec(); }
+    let mut s = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        s += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+    }
+    if s > 0.0 { poly.to_vec() } else { poly.iter().rev().copied().collect() }
+}
+
+/// Triangulate a simple polygon (no self-intersections) using ear clipping.
+/// Returns triangles as triples of vertices.
 ///
-/// For our use case the Voronoi cell is convex and the parcel boundary is
-/// arbitrary. We approximate this by clipping the convex cell against each
-/// edge of the parcel boundary using half-plane clipping. This is correct
-/// when the parcel boundary is convex; for non-convex parcels the result
-/// is a CONVEX subset of the true intersection (we lose any concave
-/// "fingers" of the cell that reach into concavities of the parcel).
-///
-/// For neighborhood-scale parcel shapes this is acceptable for v0.1.
-/// Marked with a clear caveat.
-pub fn clip_convex_to_polygon(convex_cell: &[Pt2], polygon: &[Pt2]) -> Vec<Pt2> {
-    if convex_cell.is_empty() || polygon.len() < 3 { return vec![]; }
-    // Ensure polygon is CCW for the half-plane semantics to keep the interior.
-    let signed = {
-        let n = polygon.len();
-        let mut s = 0.0;
-        for i in 0..n {
-            let j = (i + 1) % n;
-            s += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
-        }
-        s
+/// Handles arbitrary non-convex polygons. O(N²) in vertex count; fine for
+/// neighborhood-scale parcels (~200 vertices).
+pub fn triangulate(polygon: &[Pt2]) -> Vec<[Pt2; 3]> {
+    if polygon.len() < 3 { return vec![]; }
+    let ccw = ensure_ccw(polygon);
+    let mut indices: Vec<usize> = (0..ccw.len()).collect();
+    let mut triangles: Vec<[Pt2; 3]> = Vec::with_capacity(ccw.len().saturating_sub(2));
+
+    // Cross product (B - A) × (C - A); > 0 if A→B→C is CCW.
+    let cross = |a: Pt2, b: Pt2, c: Pt2| -> f64 {
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
     };
-    let poly: Vec<Pt2> = if signed > 0.0 {
-        polygon.to_vec()
-    } else {
-        polygon.iter().rev().copied().collect()
+    // Point-in-triangle (strict; vertex points are treated as outside).
+    let in_tri = |p: Pt2, a: Pt2, b: Pt2, c: Pt2| -> bool {
+        let d1 = cross(p, a, b);
+        let d2 = cross(p, b, c);
+        let d3 = cross(p, c, a);
+        let has_neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+        let has_pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+        !(has_neg && has_pos)
     };
 
+    // Guard against infinite loops on degenerate input.
+    let max_iters = ccw.len() * ccw.len() + 16;
+    let mut iter = 0;
+
+    while indices.len() > 3 {
+        iter += 1;
+        if iter > max_iters {
+            // Degenerate polygon (self-intersection, collinear chain, ...).
+            // Emit what we have and stop, rather than spinning.
+            break;
+        }
+        let n = indices.len();
+        let mut ear_idx: Option<usize> = None;
+        for i in 0..n {
+            let prev = indices[(i + n - 1) % n];
+            let curr = indices[i];
+            let next = indices[(i + 1) % n];
+            let a = ccw[prev];
+            let b = ccw[curr];
+            let c = ccw[next];
+            // Convex test: in CCW polygon, an interior (ear) vertex has cross > 0.
+            if cross(a, b, c) <= 0.0 { continue; }
+            // No other vertex may lie inside the candidate triangle.
+            let mut clean = true;
+            for &k in &indices {
+                if k == prev || k == curr || k == next { continue; }
+                if in_tri(ccw[k], a, b, c) {
+                    clean = false;
+                    break;
+                }
+            }
+            if clean {
+                ear_idx = Some(i);
+                break;
+            }
+        }
+        match ear_idx {
+            Some(i) => {
+                let n = indices.len();
+                let prev = indices[(i + n - 1) % n];
+                let curr = indices[i];
+                let next = indices[(i + 1) % n];
+                triangles.push([ccw[prev], ccw[curr], ccw[next]]);
+                indices.remove(i);
+            }
+            None => break, // no ear found — defensive bail
+        }
+    }
+    if indices.len() == 3 {
+        triangles.push([ccw[indices[0]], ccw[indices[1]], ccw[indices[2]]]);
+    }
+    triangles
+}
+
+/// Clip a convex polygon against each edge of a (possibly non-convex)
+/// polygon. WRONG for non-convex polygons — produces the convex-hull
+/// intersection. Use `clip_to_polygon` instead.
+pub fn clip_convex_to_polygon(convex_cell: &[Pt2], polygon: &[Pt2]) -> Vec<Pt2> {
+    if convex_cell.is_empty() || polygon.len() < 3 { return vec![]; }
+    let poly = ensure_ccw(polygon);
     let mut working = convex_cell.to_vec();
     let n = poly.len();
     for i in 0..n {
@@ -310,6 +390,53 @@ pub fn clip_convex_to_polygon(convex_cell: &[Pt2], polygon: &[Pt2]) -> Vec<Pt2> 
         if working.is_empty() { return vec![]; }
     }
     working
+}
+
+/// Clip a convex polygon (e.g. a Voronoi cell) against an arbitrary
+/// (possibly non-convex) polygon. Returns ZERO OR MORE polygon pieces.
+///
+/// Algorithm: triangulate the clip polygon, intersect the convex subject
+/// with each triangle, return the non-empty pieces. The pieces are convex
+/// (intersections of convex polygons) and disjoint (since the triangulation
+/// is a disjoint partition). For most cases the convex subject only touches
+/// 1-3 triangles, so we usually get 1-3 small pieces.
+///
+/// For our use (Voronoi cells inside an arbitrary parcel boundary), the
+/// pieces are *not* generally unioned back into one polygon — keeping them
+/// separate is fine because each piece is a valid sub-pad.
+pub fn clip_to_polygon(convex_subject: &[Pt2], clip_polygon: &[Pt2]) -> Vec<Vec<Pt2>> {
+    if convex_subject.len() < 3 || clip_polygon.len() < 3 {
+        return vec![];
+    }
+    let triangles = triangulate(clip_polygon);
+    let mut pieces: Vec<Vec<Pt2>> = Vec::new();
+    for tri in triangles {
+        // Triangle as a 3-vertex CCW polygon.
+        let tri_poly = vec![tri[0], tri[1], tri[2]];
+        // Intersection of two convex polygons via half-plane clipping.
+        let mut working = convex_subject.to_vec();
+        for i in 0..3 {
+            let a = tri_poly[i];
+            let b = tri_poly[(i + 1) % 3];
+            working = clip_half_plane(&working, a, b);
+            if working.is_empty() { break; }
+        }
+        if working.len() >= 3 && area(&working) > 0.5 {
+            pieces.push(working);
+        }
+    }
+    pieces
+}
+
+/// Convenience: clip a convex subject against a clip polygon, return the
+/// single largest piece (or empty if nothing fits). Useful when an operator
+/// wants one canonical sub-region per cell.
+pub fn clip_to_polygon_largest(convex_subject: &[Pt2], clip_polygon: &[Pt2]) -> Vec<Pt2> {
+    let pieces = clip_to_polygon(convex_subject, clip_polygon);
+    pieces
+        .into_iter()
+        .max_by(|a, b| area(a).partial_cmp(&area(b)).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -384,5 +511,77 @@ mod tests {
         let a = area(&inset);
         // 10x10 inset by 1m = 8x8 = 64
         assert!((a - 64.0).abs() < 0.1, "inset area = {a}");
+    }
+
+    #[test]
+    fn triangulate_square() {
+        let sq = vec![
+            Pt2::new(0.0, 0.0),
+            Pt2::new(10.0, 0.0),
+            Pt2::new(10.0, 10.0),
+            Pt2::new(0.0, 10.0),
+        ];
+        let tris = triangulate(&sq);
+        assert_eq!(tris.len(), 2, "square → 2 triangles");
+        let total: f64 = tris.iter().map(|t| {
+            let p = vec![t[0], t[1], t[2]];
+            area(&p)
+        }).sum();
+        assert!((total - 100.0).abs() < 1e-6, "total tri area = {total}");
+    }
+
+    #[test]
+    fn triangulate_u_shape() {
+        // A non-convex U (10x10 with a notch in the top):
+        //    .____.   ._____.
+        //    |             |
+        //    |             |
+        //    |_____________|
+        //
+        // Points (CCW): (0,0)(10,0)(10,10)(7,10)(7,4)(3,4)(3,10)(0,10)
+        let u = vec![
+            Pt2::new(0.0, 0.0),
+            Pt2::new(10.0, 0.0),
+            Pt2::new(10.0, 10.0),
+            Pt2::new(7.0, 10.0),
+            Pt2::new(7.0, 4.0),
+            Pt2::new(3.0, 4.0),
+            Pt2::new(3.0, 10.0),
+            Pt2::new(0.0, 10.0),
+        ];
+        let original_area = area(&u);
+        let tris = triangulate(&u);
+        assert_eq!(tris.len(), 6, "U-shape with 8 vertices → 6 triangles");
+        let total: f64 = tris.iter().map(|t| {
+            let p = vec![t[0], t[1], t[2]];
+            area(&p)
+        }).sum();
+        assert!((total - original_area).abs() < 1e-6, "total tri area = {total}, expected {original_area}");
+    }
+
+    #[test]
+    fn clip_convex_against_u() {
+        // A 10x10 square clipped against the U from above should:
+        // - Lose the notch
+        // - Total clipped area = 100 - 24 (notch is 4 wide x 6 tall) = 76
+        let subject = vec![
+            Pt2::new(0.0, 0.0),
+            Pt2::new(10.0, 0.0),
+            Pt2::new(10.0, 10.0),
+            Pt2::new(0.0, 10.0),
+        ];
+        let u = vec![
+            Pt2::new(0.0, 0.0),
+            Pt2::new(10.0, 0.0),
+            Pt2::new(10.0, 10.0),
+            Pt2::new(7.0, 10.0),
+            Pt2::new(7.0, 4.0),
+            Pt2::new(3.0, 4.0),
+            Pt2::new(3.0, 10.0),
+            Pt2::new(0.0, 10.0),
+        ];
+        let pieces = clip_to_polygon(&subject, &u);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 76.0).abs() < 0.5, "clipped pieces total area = {total}, expected ~76");
     }
 }

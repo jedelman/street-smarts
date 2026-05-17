@@ -19,7 +19,7 @@ console.log("opinions on proposal:", report.opinions.map(o => `${o.opinion.name}
 // Subdivide MALL_CORE across a few seeds, re-run the chorus on each.
 console.log("\n=== P95 SUBDIVISION OF MALL_CORE ===");
 for (const seed of [1n, 7n, 42n]) {
-  const result = subdivide_parcel(raw, "13279568", "p95_building_complex", seed);
+  const result = subdivide_parcel(raw, "13279568", "p95_building_complex", "null", seed);
   const parsed = JSON.parse(result);
   console.log(`\nseed=${seed}: ${parsed.trace.headline}`);
   console.log(`  parcels: ${neighborhood.parcels.length} -> ${parsed.neighborhood.parcels.length}; open_space: ${parsed.neighborhood.open_space.length}`);
