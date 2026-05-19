@@ -14,7 +14,9 @@ ferrotorch-vision = { path = "../../vendor/ferrotorch/ferrotorch-vision" }
 ferrotorch-optim = { path = "../../vendor/ferrotorch/ferrotorch-optim" }
 ferrotorch-data = { path = "../../vendor/ferrotorch/ferrotorch-data" }
 ferrotorch-gpu = { path = "../../vendor/ferrotorch/ferrotorch-gpu", features = ["cuda"], optional = true }
+gdal = { version = "0.17", features = ["bindgen"], optional = true }
 
 [features]
 default = []
 cuda = ["dep:ferrotorch-gpu"]
+gdal = ["dep:gdal"]
