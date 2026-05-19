@@ -15,6 +15,7 @@ ferrotorch-optim = { path = "../../vendor/ferrotorch/ferrotorch-optim" }
 ferrotorch-data = { path = "../../vendor/ferrotorch/ferrotorch-data" }
 ferrotorch-gpu = { path = "../../vendor/ferrotorch/ferrotorch-gpu", features = ["cuda"], optional = true }
 gdal = { version = "0.17", features = ["bindgen"], optional = true }
+ureq = "2"
 
 [features]
 default = []
