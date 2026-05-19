@@ -37,6 +37,8 @@
         export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
         export CUDA_PATH="${cudaPackages.cuda_cudart}"
         export CUDARC_CUDA_VERSION=12060
+        export FERROTORCH_PTX_ARCH=sm_50
+        export FERROTORCH_NVRTC_ARCH=compute_50
         export LD_LIBRARY_PATH="/run/opengl-driver/lib:${cudaPackages.cuda_cudart}/lib:${cudaPackages.libcublas.lib}/lib:${cudaPackages.libcusolver.lib}/lib:${cudaPackages.libcufft.lib}/lib:${cudaPackages.libcusparse.lib}/lib:$LD_LIBRARY_PATH"
         echo "street-smarts dev shell — CUDA 12.6, Maxwell (sm_50)"
         echo "  CUDARC_CUDA_VERSION=$CUDARC_CUDA_VERSION"
