@@ -1,0 +1,20 @@
+[package]
+name = "street-smarts-encoder"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Shared ViT encoder + DINO pretraining for street-smarts pattern probes"
+
+[workspace]
+
+[dependencies]
+ferrotorch-core = { path = "../../vendor/ferrotorch/ferrotorch-core" }
+ferrotorch-nn = { path = "../../vendor/ferrotorch/ferrotorch-nn" }
+ferrotorch-vision = { path = "../../vendor/ferrotorch/ferrotorch-vision" }
+ferrotorch-optim = { path = "../../vendor/ferrotorch/ferrotorch-optim" }
+ferrotorch-data = { path = "../../vendor/ferrotorch/ferrotorch-data" }
+ferrotorch-gpu = { path = "../../vendor/ferrotorch/ferrotorch-gpu", features = ["cuda"], optional = true }
+
+[features]
+default = []
+cuda = ["dep:ferrotorch-gpu"]
