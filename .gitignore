@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 .wrangler/
 *.log
+data/tiles/
+data/raster/
