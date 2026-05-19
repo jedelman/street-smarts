@@ -1,0 +1,13 @@
+[package]
+name = "cuda-probe"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[workspace]
+
+[dependencies]
+ferrotorch-core = { path = "../../vendor/ferrotorch/ferrotorch-core" }
+ferrotorch-gpu = { path = "../../vendor/ferrotorch/ferrotorch-gpu", features = ["cuda"] }
+ferrotorch-nn = { path = "../../vendor/ferrotorch/ferrotorch-nn" }
+ferrotorch-vision = { path = "../../vendor/ferrotorch/ferrotorch-vision" }
