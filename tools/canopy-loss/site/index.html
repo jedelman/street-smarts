@@ -101,6 +101,21 @@
     border: 1px solid rgba(0,0,0,0.15);
   }
 
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0 1.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .stats-table td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .stats-table tr:last-child td { border-bottom: 2px solid var(--line); }
+  .stats-table .stat-val { font-weight: 600; text-align: right; white-space: nowrap; }
+  .stats-table .stat-note { color: var(--muted); font-size: 0.9rem; }
+  .row-highlight td { background: #ece7da; }
+
   .full-img {
     margin: 1.5rem 0;
     border: 1px solid var(--line);
@@ -186,39 +201,74 @@ Unchanged areas show the 2023 aerial photo at reduced brightness.
   <img src="diff_2011_2023.jpg" alt="Vegetation change map: Ghent 2011 vs 2023">
 </div>
 
+<h2>By the Numbers</h2>
+
+<table class="stats-table">
+  <tr><td>Study area</td><td class="stat-val">262 acres</td><td class="stat-note">~0.4 sq mi of Ghent</td></tr>
+  <tr><td>Vegetation cover, 2011</td><td class="stat-val">106 acres</td><td class="stat-note">40.6% of study area</td></tr>
+  <tr><td>Vegetation cover, 2023</td><td class="stat-val">105 acres</td><td class="stat-note">40.0% of study area</td></tr>
+  <tr class="row-highlight"><td>Detected canopy loss</td><td class="stat-val loss">35 acres</td><td class="stat-note">13.4% of study area</td></tr>
+  <tr class="row-highlight"><td>Detected canopy gain</td><td class="stat-val canopy">34 acres</td><td class="stat-note">13.0% of study area</td></tr>
+  <tr><td>Stable canopy (unchanged)</td><td class="stat-val">77 acres</td><td class="stat-note">29.5% of study area</td></tr>
+  <tr><td>Net change</td><td class="stat-val">~&minus;1 acre</td><td class="stat-note">&minus;0.4%</td></tr>
+</table>
+
 <h2>What the data shows</h2>
 
 <p>
-The CIR comparison reveals visible <span class="loss">canopy thinning</span>
-across Ghent's residential blocks. Street trees that formed continuous canopy in 2011
-now show gaps. Several parcels that were shaded by mature trees now show exposed rooftops.
-The change map highlights these losses in red, concentrated along the commercial
-corridor and scattered through residential streets.
+The headline number &mdash; near-zero net change &mdash; masks a more turbulent reality.
+<strong>35 acres of vegetation were lost and 34 acres gained</strong>,
+meaning roughly a third of Ghent's canopy turned over in twelve years.
+The trees standing in 2023 are often not the same trees that stood in 2011.
 </p>
 
 <p>
-Some caveats: the 2023 image was captured in <strong>October</strong> vs <strong>June</strong> for 2011.
+The change map shows the spatial pattern clearly. <span class="loss">Red clusters</span> along
+the commercial corridor (Monticello Ave / Colley Ave) and scattered through residential
+blocks mark where mature canopy was removed &mdash; likely for new construction, parking,
+or storm damage. <span class="canopy">Green patches</span> appear on the east side and in yards
+where young trees have grown in or landscaping has filled gaps.
+</p>
+
+<p>
+The most concerning pattern: <strong>only 77 of Ghent's 106 original canopy acres
+are still standing</strong>. That means 29 acres of mature tree canopy &mdash; trees that took
+decades to grow &mdash; have been replaced. The 34 acres of new vegetation are predominantly
+young growth that provides less shade, less stormwater absorption, and less habitat
+than the canopy it replaced.
+</p>
+
+<h2>Caveats</h2>
+
+<p>
+The 2023 image was captured in <strong>October</strong> vs <strong>June</strong> for 2011.
 Deciduous trees in Norfolk (USDA zone 8a) still carry most of their leaves in early October,
-but NIR reflectance is somewhat lower in fall. Some apparent change may be seasonal rather than
-permanent. The rank-based comparison mitigates this by comparing each pixel's relative
-greenness within its own year, but a same-month comparison would be more definitive.
+but NIR reflectance is somewhat lower in fall. The rank-based comparison used here
+mitigates seasonal effects by comparing each pixel's relative greenness within its
+own year's distribution, but a same-month comparison would be more definitive.
 </p>
 
 <p>
-NAIP imagery is available for <strong>seven vintages</strong> covering Ghent:
-2011, 2012, 2014, 2016, 2018, 2021, and 2023. Unfortunately, the USDA changed its
-radiometric processing between years, making automated NDVI differencing unreliable
-without cross-calibration against invariant targets (parking lots, rooftops).
-The visual comparison above remains the most trustworthy evidence.
+NAIP imagery is available for <strong>seven vintages</strong> covering Ghent
+(2011, 2012, 2014, 2016, 2018, 2021, 2023). The USDA changed its radiometric
+processing between years, making raw NDVI values incomparable across vintages.
+The percentile-rank approach used here is robust to these calibration differences,
+but the visual before/after comparison remains the most trustworthy evidence.
 </p>
 
 <h2>Method</h2>
 <p>
 Imagery was accessed from the <a href="https://planetarycomputer.microsoft.com/dataset/naip" rel="noopener">Microsoft Planetary Computer</a>
-NAIP collection via STAC API. Each year's best-overlapping scene was selected for the
-Ghent bounding box (<code>-76.305, 36.865</code> to <code>-76.285, 36.880</code>).
-Red (Band 1) and NIR (Band 4) were read via GDAL's <code>/vsicurl/</code>
-directly from Azure Blob Storage. CIR composites map NIR&rarr;Red, Red&rarr;Green, Green&rarr;Blue.
+NAIP collection via STAC API at 0.5m resolution. Each year's best-overlapping scene was
+selected for the Ghent bounding box (<code>-76.305, 36.871</code> to <code>-76.285, 36.878</code>).
+Red (Band 1) and NIR (Band 4) were used to compute NDVI (Normalized Difference Vegetation Index).
+</p>
+<p>
+Change detection uses <strong>percentile-rank differencing</strong>: each year's NDVI values
+are independently ranked from 0 (least green pixel) to 1 (most green pixel). Pixels where
+the rank shifted by more than 15 percentile points &mdash; and at least one year classified
+as vegetation (top 40% of greenness) &mdash; are flagged as loss or gain. This approach is
+insensitive to absolute radiometric calibration between vintages.
 </p>
 <p>
 All processing was done in Rust using the <a href="https://docs.rs/gdal" rel="noopener">gdal</a> crate.

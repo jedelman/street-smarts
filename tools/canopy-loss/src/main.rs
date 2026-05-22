@@ -290,6 +290,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         write_diff_overlay(rgb, ndvi_first, ndvi_last, nx, ny, first_year, last_year)?;
     }
 
+    // Rank-based summary stats (same method as diff overlay)
+    let rank_first = percentile_rank(ndvi_first);
+    let rank_last = percentile_rank(ndvi_last);
+    let canopy_rank_thresh = 0.60;
+    let change_thresh = 0.15;
+
+    let mut valid = 0usize;
+    let mut veg_2011 = 0usize;
+    let mut veg_2023 = 0usize;
+    let mut loss_px = 0usize;
+    let mut gain_px = 0usize;
+    let mut stable_veg = 0usize;
+
+    for i in 0..total_pixels {
+        if ndvi_first[i] == NODATA || ndvi_last[i] == NODATA { continue; }
+        valid += 1;
+        let was_veg = rank_first[i] > canopy_rank_thresh;
+        let is_veg = rank_last[i] > canopy_rank_thresh;
+        if was_veg { veg_2011 += 1; }
+        if is_veg { veg_2023 += 1; }
+        if was_veg && is_veg { stable_veg += 1; }
+        let rank_change = rank_last[i] - rank_first[i];
+        if (was_veg || is_veg) && rank_change < -change_thresh { loss_px += 1; }
+        if (was_veg || is_veg) && rank_change > change_thresh { gain_px += 1; }
+    }
+
+    let sq_m_to_acres = |m2: f64| m2 / 4046.86;
+    let study_area_m2 = valid as f64 * pixel_area_m2;
+
+    eprintln!("\n--- Rank-Based Canopy Stats (same method as diff map) ---\n");
+    eprintln!("  Study area:      {:.1} acres ({:.0}m²)", sq_m_to_acres(study_area_m2), study_area_m2);
+    eprintln!("  Vegetation 2011: {:.1} acres ({:.1}%)", sq_m_to_acres(veg_2011 as f64 * pixel_area_m2), veg_2011 as f64 / valid as f64 * 100.0);
+    eprintln!("  Vegetation 2023: {:.1} acres ({:.1}%)", sq_m_to_acres(veg_2023 as f64 * pixel_area_m2), veg_2023 as f64 / valid as f64 * 100.0);
+    eprintln!("  Stable canopy:   {:.1} acres ({:.1}%)", sq_m_to_acres(stable_veg as f64 * pixel_area_m2), stable_veg as f64 / valid as f64 * 100.0);
+    eprintln!("  Detected loss:   {:.1} acres ({} pixels)", sq_m_to_acres(loss_px as f64 * pixel_area_m2), loss_px);
+    eprintln!("  Detected gain:   {:.1} acres ({} pixels)", sq_m_to_acres(gain_px as f64 * pixel_area_m2), gain_px);
+    let net = gain_px as i64 - loss_px as i64;
+    eprintln!("  Net change:      {:+.1} acres", sq_m_to_acres(net as f64 * pixel_area_m2));
+
     eprintln!("\nDone.");
     Ok(())
 }
