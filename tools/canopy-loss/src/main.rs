@@ -671,6 +671,9 @@ fn write_diff_overlay(
     let rank_first = percentile_rank(ndvi_first);
     let rank_last = percentile_rank(ndvi_last);
 
+    // Per-year canopy thresholds: top ~35% of NDVI = vegetation
+    let canopy_rank_thresh = 0.60;
+
     for i in 0..nx * ny {
         let v0 = ndvi_first[i];
         let v1 = ndvi_last[i];
@@ -680,24 +683,27 @@ fn write_diff_overlay(
             continue;
         }
 
-        // Rank-based change: positive = greener relative to peers, negative = less green
+        // Only highlight change where at least one year had vegetation
+        let was_veg = rank_first[i] > canopy_rank_thresh;
+        let is_veg = rank_last[i] > canopy_rank_thresh;
+
         let rank_change = rank_last[i] - rank_first[i];
         let threshold = 0.15;
 
-        let (r, g, b) = if rank_change < -threshold {
-            // Loss: blend red over dimmed base
-            let strength = ((-rank_change - threshold) / 0.4).min(1.0);
-            let alpha = 0.4 + 0.5 * strength;
+        let (r, g, b) = if (was_veg || is_veg) && rank_change < -threshold {
+            // Canopy loss: was green, now less green
+            let strength = ((-rank_change - threshold) / 0.35).min(1.0);
+            let alpha = 0.45 + 0.45 * strength;
             let base = 0.4;
             (
                 (rgb[0][i] as f32 * base * (1.0 - alpha) + 230.0 * alpha) as u8,
                 (rgb[1][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
                 (rgb[2][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
             )
-        } else if rank_change > threshold {
-            // Gain: blend green over dimmed base
-            let strength = ((rank_change - threshold) / 0.4).min(1.0);
-            let alpha = 0.4 + 0.5 * strength;
+        } else if (was_veg || is_veg) && rank_change > threshold {
+            // Canopy gain: wasn't green (or greener now)
+            let strength = ((rank_change - threshold) / 0.35).min(1.0);
+            let alpha = 0.45 + 0.45 * strength;
             let base = 0.4;
             (
                 (rgb[0][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
