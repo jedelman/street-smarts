@@ -75,6 +75,8 @@ jobs:
 
       - name: Deploy Ghent canopy microsite to Cloudflare Pages
         run: |
+          npx -y wrangler@4 pages project create ghent-canopy \
+            --production-branch=main 2>/dev/null || true
           npx -y wrangler@4 pages deploy tools/canopy-loss/site \
             --project-name=ghent-canopy \
             --branch=main \
