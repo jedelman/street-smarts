@@ -1,0 +1,10 @@
+[package]
+name = "canopy-loss"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+gdal = { version = "0.17", features = ["bindgen"] }
+ureq = "2"
