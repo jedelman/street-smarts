@@ -16,7 +16,8 @@ use gdal::Dataset;
 use std::collections::BTreeMap;
 
 // Ghent neighborhood bounding box (EPSG:4326)
-const GHENT_BBOX: [f64; 4] = [-76.305, 36.865, -76.285, 36.880];
+// Trimmed to area covered by NAIP _ne tile (south edge ~36.871)
+const GHENT_BBOX: [f64; 4] = [-76.305, 36.871, -76.285, 36.878];
 
 const PIXEL_SIZE_M: f64 = 1.0;
 const NODATA: f32 = -9999.0;
@@ -345,13 +346,32 @@ fn extract_bbox(feature: &str) -> Option<[f64; 4]> {
     if nums.len() >= 4 { Some([nums[0], nums[1], nums[2], nums[3]]) } else { None }
 }
 
-/// Fetch all 4 NAIP bands (RGBNIR). Returns [4][ny*nx] u8 arrays.
-fn fetch_rgba(
-    url: &str, scene_bbox: &[f64; 4], target_bbox: &[f64; 4], nx: usize, ny: usize,
-) -> Result<[Vec<u8>; 4], Box<dyn std::error::Error>> {
+/// Compute the raster read window and output placement for a target bbox.
+///
+/// Transforms the full target bbox to raster pixel coordinates, clamps to valid
+/// raster extent, and computes where the clamped region maps in the output grid.
+/// This guarantees pixel-perfect alignment across scenes regardless of their extent.
+struct ReadWindow {
+    /// Raster pixel offset (x, y) to start reading from
+    x_off: isize,
+    y_off: isize,
+    /// Raster pixels to read (width, height)
+    x_size: usize,
+    y_size: usize,
+    /// Output grid offset and size for the read region
+    out_x0: usize,
+    out_y0: usize,
+    out_nx: usize,
+    out_ny: usize,
+}
+
+fn compute_read_window(
+    ds: &Dataset,
+    target_bbox: &[f64; 4],
+    nx: usize,
+    ny: usize,
+) -> Result<ReadWindow, Box<dyn std::error::Error>> {
     let [west, south, east, north] = *target_bbox;
-    let vsicurl = format!("/vsicurl/{}", url);
-    let ds = Dataset::open(&vsicurl)?;
     let gt = ds.geo_transform()?;
 
     let raster_srs = ds.spatial_ref()?;
@@ -359,42 +379,57 @@ fn fetch_rgba(
     wgs84.set_axis_mapping_strategy(AxisMappingStrategy::TraditionalGisOrder);
     let transform = CoordTransform::new(&wgs84, &raster_srs)?;
 
-    let inter_west = west.max(scene_bbox[0]);
-    let inter_south = south.max(scene_bbox[1]);
-    let inter_east = east.min(scene_bbox[2]);
-    let inter_north = north.min(scene_bbox[3]);
-
-    if inter_west >= inter_east || inter_south >= inter_north {
-        return Err("no intersection".into());
-    }
-
-    let mut xs = [inter_west, inter_east];
-    let mut ys = [inter_south, inter_north];
+    // Transform FULL target bbox to raster CRS
+    let mut xs = [west, east];
+    let mut ys = [south, north];
     let mut zs = [0.0, 0.0];
     transform.transform_coords(&mut xs, &mut ys, &mut zs)?;
 
-    let px_left = ((xs[0] - gt[0]) / gt[1]).round() as isize;
-    let px_top = ((ys[1] - gt[3]) / gt[5]).round() as isize;
-    let px_right = ((xs[1] - gt[0]) / gt[1]).round() as isize;
-    let px_bottom = ((ys[0] - gt[3]) / gt[5]).round() as isize;
+    // Target bbox in raster pixel space (may extend outside raster)
+    let tgt_px_left = ((xs[0] - gt[0]) / gt[1]).round() as isize;
+    let tgt_px_top = ((ys[1] - gt[3]) / gt[5]).round() as isize;
+    let tgt_px_right = ((xs[1] - gt[0]) / gt[1]).round() as isize;
+    let tgt_px_bottom = ((ys[0] - gt[3]) / gt[5]).round() as isize;
 
-    let x_off = px_left.max(0) as isize;
-    let y_off = px_top.max(0) as isize;
-    let x_size = (px_right - px_left).unsigned_abs().max(1);
-    let y_size = (px_bottom - px_top).unsigned_abs().max(1);
+    let tgt_px_w = (tgt_px_right - tgt_px_left).max(1) as usize;
+    let tgt_px_h = (tgt_px_bottom - tgt_px_top).max(1) as usize;
 
+    // Clamp to actual raster extent
     let (raster_w, raster_h) = ds.raster_size();
-    let x_size = x_size.min(raster_w.saturating_sub(x_off as usize));
-    let y_size = y_size.min(raster_h.saturating_sub(y_off as usize));
+    let x_off = tgt_px_left.max(0).min(raster_w as isize - 1);
+    let y_off = tgt_px_top.max(0).min(raster_h as isize - 1);
+    let x_end = tgt_px_right.max(0).min(raster_w as isize);
+    let y_end = tgt_px_bottom.max(0).min(raster_h as isize);
 
-    let target_width = east - west;
-    let target_height = north - south;
-    let out_x0 = ((inter_west - west) / target_width * nx as f64).round() as usize;
-    let out_y0 = ((north - inter_north) / target_height * ny as f64).round() as usize;
-    let out_x1 = ((inter_east - west) / target_width * nx as f64).round() as usize;
-    let out_y1 = ((north - inter_south) / target_height * ny as f64).round() as usize;
-    let out_nx = (out_x1 - out_x0).max(1);
-    let out_ny = (out_y1 - out_y0).max(1);
+    let x_size = (x_end - x_off).max(1) as usize;
+    let y_size = (y_end - y_off).max(1) as usize;
+
+    // Where in the output grid does the clamped region land?
+    // Map raster pixel coords back to output grid coords via the target bbox span.
+    let out_x0 = ((x_off - tgt_px_left).max(0) as f64 / tgt_px_w as f64 * nx as f64).round() as usize;
+    let out_y0 = ((y_off - tgt_px_top).max(0) as f64 / tgt_px_h as f64 * ny as f64).round() as usize;
+    let out_x1 = ((x_end - tgt_px_left) as f64 / tgt_px_w as f64 * nx as f64).round() as usize;
+    let out_y1 = ((y_end - tgt_px_top) as f64 / tgt_px_h as f64 * ny as f64).round() as usize;
+
+    Ok(ReadWindow {
+        x_off,
+        y_off,
+        x_size,
+        y_size,
+        out_x0: out_x0.min(nx),
+        out_y0: out_y0.min(ny),
+        out_nx: (out_x1.saturating_sub(out_x0)).max(1).min(nx - out_x0.min(nx)),
+        out_ny: (out_y1.saturating_sub(out_y0)).max(1).min(ny - out_y0.min(ny)),
+    })
+}
+
+/// Fetch all 4 NAIP bands (RGBNIR). Returns [4][ny*nx] u8 arrays.
+fn fetch_rgba(
+    url: &str, _scene_bbox: &[f64; 4], target_bbox: &[f64; 4], nx: usize, ny: usize,
+) -> Result<[Vec<u8>; 4], Box<dyn std::error::Error>> {
+    let vsicurl = format!("/vsicurl/{}", url);
+    let ds = Dataset::open(&vsicurl)?;
+    let w = compute_read_window(&ds, target_bbox, nx, ny)?;
 
     let mut bands = [
         vec![0u8; nx * ny], vec![0u8; nx * ny],
@@ -404,15 +439,16 @@ fn fetch_rgba(
     for b in 0..4 {
         let band = ds.rasterband(b + 1)?;
         let buf = band.read_as::<u8>(
-            (x_off, y_off), (x_size, y_size), (out_nx, out_ny), Some(ResampleAlg::Bilinear),
+            (w.x_off, w.y_off), (w.x_size, w.y_size), (w.out_nx, w.out_ny),
+            Some(ResampleAlg::Bilinear),
         )?;
         let data = buf.data();
-        for oy in 0..out_ny {
-            for ox in 0..out_nx {
-                let dx = out_x0 + ox;
-                let dy = out_y0 + oy;
+        for oy in 0..w.out_ny {
+            for ox in 0..w.out_nx {
+                let dx = w.out_x0 + ox;
+                let dy = w.out_y0 + oy;
                 if dx < nx && dy < ny {
-                    bands[b][dy * nx + dx] = data[oy * out_nx + ox];
+                    bands[b][dy * nx + dx] = data[oy * w.out_nx + ox];
                 }
             }
         }
@@ -422,74 +458,33 @@ fn fetch_rgba(
 }
 
 fn fetch_ndvi(
-    url: &str, scene_bbox: &[f64; 4], target_bbox: &[f64; 4], nx: usize, ny: usize,
+    url: &str, _scene_bbox: &[f64; 4], target_bbox: &[f64; 4], nx: usize, ny: usize,
 ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
-    let [west, south, east, north] = *target_bbox;
     let vsicurl = format!("/vsicurl/{}", url);
     let ds = Dataset::open(&vsicurl)?;
-    let gt = ds.geo_transform()?;
-
-    let raster_srs = ds.spatial_ref()?;
-    let mut wgs84 = SpatialRef::from_epsg(4326)?;
-    wgs84.set_axis_mapping_strategy(AxisMappingStrategy::TraditionalGisOrder);
-    let transform = CoordTransform::new(&wgs84, &raster_srs)?;
-
-    let inter_west = west.max(scene_bbox[0]);
-    let inter_south = south.max(scene_bbox[1]);
-    let inter_east = east.min(scene_bbox[2]);
-    let inter_north = north.min(scene_bbox[3]);
-
-    if inter_west >= inter_east || inter_south >= inter_north {
-        return Err("no intersection".into());
-    }
-
-    let mut xs = [inter_west, inter_east];
-    let mut ys = [inter_south, inter_north];
-    let mut zs = [0.0, 0.0];
-    transform.transform_coords(&mut xs, &mut ys, &mut zs)?;
-
-    let px_left = ((xs[0] - gt[0]) / gt[1]).round() as isize;
-    let px_top = ((ys[1] - gt[3]) / gt[5]).round() as isize;
-    let px_right = ((xs[1] - gt[0]) / gt[1]).round() as isize;
-    let px_bottom = ((ys[0] - gt[3]) / gt[5]).round() as isize;
-
-    let x_off = px_left.max(0) as isize;
-    let y_off = px_top.max(0) as isize;
-    let x_size = (px_right - px_left).unsigned_abs().max(1);
-    let y_size = (px_bottom - px_top).unsigned_abs().max(1);
-
-    let (raster_w, raster_h) = ds.raster_size();
-    let x_size = x_size.min(raster_w.saturating_sub(x_off as usize));
-    let y_size = y_size.min(raster_h.saturating_sub(y_off as usize));
-
-    let target_width = east - west;
-    let target_height = north - south;
-    let out_x0 = ((inter_west - west) / target_width * nx as f64).round() as usize;
-    let out_y0 = ((north - inter_north) / target_height * ny as f64).round() as usize;
-    let out_x1 = ((inter_east - west) / target_width * nx as f64).round() as usize;
-    let out_y1 = ((north - inter_south) / target_height * ny as f64).round() as usize;
-    let out_nx = (out_x1 - out_x0).max(1);
-    let out_ny = (out_y1 - out_y0).max(1);
+    let w = compute_read_window(&ds, target_bbox, nx, ny)?;
 
     let red_band = ds.rasterband(1)?;
     let nir_band = ds.rasterband(4)?;
 
     let red_buf = red_band.read_as::<u8>(
-        (x_off, y_off), (x_size, y_size), (out_nx, out_ny), Some(ResampleAlg::Bilinear),
+        (w.x_off, w.y_off), (w.x_size, w.y_size), (w.out_nx, w.out_ny),
+        Some(ResampleAlg::Bilinear),
     )?;
     let nir_buf = nir_band.read_as::<u8>(
-        (x_off, y_off), (x_size, y_size), (out_nx, out_ny), Some(ResampleAlg::Bilinear),
+        (w.x_off, w.y_off), (w.x_size, w.y_size), (w.out_nx, w.out_ny),
+        Some(ResampleAlg::Bilinear),
     )?;
 
     let red = red_buf.data();
     let nir = nir_buf.data();
 
     let mut ndvi = vec![NODATA; nx * ny];
-    for oy in 0..out_ny {
-        for ox in 0..out_nx {
-            let si = oy * out_nx + ox;
-            let dx = out_x0 + ox;
-            let dy = out_y0 + oy;
+    for oy in 0..w.out_ny {
+        for ox in 0..w.out_nx {
+            let si = oy * w.out_nx + ox;
+            let dx = w.out_x0 + ox;
+            let dy = w.out_y0 + oy;
             if dx >= nx || dy >= ny { continue; }
             let r = red[si] as f32;
             let n = nir[si] as f32;
