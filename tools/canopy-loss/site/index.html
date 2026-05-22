@@ -170,20 +170,38 @@ Roads and buildings are gray or blue. This makes it easy to spot where trees hav
   <span class="label label-right">Oct 2023</span>
 </div>
 
+<h2>Change Map</h2>
+<p>
+Vegetation change detected by comparing each pixel's NDVI rank between 2011 and 2023.
+<span class="loss">Red</span> = relative greenness loss.
+<span class="canopy">Green</span> = relative greenness gain.
+Unchanged areas show the 2023 aerial photo at reduced brightness.
+</p>
+<div class="legend">
+  <span><span class="swatch" style="background:#d83030"></span> Vegetation loss</span>
+  <span><span class="swatch" style="background:#30c830"></span> Vegetation gain</span>
+  <span><span class="swatch" style="background:#707060"></span> No significant change</span>
+</div>
+<div class="full-img">
+  <img src="diff_2011_2023.jpg" alt="Vegetation change map: Ghent 2011 vs 2023">
+</div>
+
 <h2>What the data shows</h2>
 
 <p>
-The CIR comparison reveals a clear pattern of <span class="loss">canopy thinning</span>
+The CIR comparison reveals visible <span class="loss">canopy thinning</span>
 across Ghent's residential blocks. Street trees that formed continuous canopy in 2011
 now show gaps. Several parcels that were shaded by mature trees now show exposed rooftops.
+The change map highlights these losses in red, concentrated along the commercial
+corridor and scattered through residential streets.
 </p>
 
 <p>
 Some caveats: the 2023 image was captured in <strong>October</strong> vs <strong>June</strong> for 2011.
 Deciduous trees in Norfolk (USDA zone 8a) still carry most of their leaves in early October,
-but NIR reflectance is somewhat lower in fall. Some apparent loss may be seasonal rather than
-permanent. A fair automated comparison would require same-month imagery and radiometric
-cross-calibration.
+but NIR reflectance is somewhat lower in fall. Some apparent change may be seasonal rather than
+permanent. The rank-based comparison mitigates this by comparing each pixel's relative
+greenness within its own year, but a same-month comparison would be more definitive.
 </p>
 
 <p>

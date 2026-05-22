@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 // Trimmed to area covered by NAIP _ne tile (south edge ~36.871)
 const GHENT_BBOX: [f64; 4] = [-76.305, 36.871, -76.285, 36.878];
 
-const PIXEL_SIZE_M: f64 = 1.0;
+const PIXEL_SIZE_M: f64 = 0.5;
 const NODATA: f32 = -9999.0;
 
 struct NaipScene {
@@ -269,6 +269,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate true-color aerial imagery for key years
     eprintln!();
+    let mut rgb_last: Option<[Vec<u8>; 4]> = None;
     for &year in &[first_year, last_year] {
         if let Some(scene) = by_year.get(&year) {
             eprint!("Fetching RGB {} ... ", year);
@@ -277,10 +278,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     write_rgb_image(&bands, nx, ny, year)?;
                     write_cir_image(&bands, nx, ny, year)?;
                     eprintln!("OK");
+                    if year == last_year { rgb_last = Some(bands); }
                 }
                 Err(e) => eprintln!("FAILED: {}", e),
             }
         }
+    }
+
+    // Difference overlay: NDVI change on top of latest RGB
+    if let Some(ref rgb) = rgb_last {
+        write_diff_overlay(rgb, ndvi_first, ndvi_last, nx, ny, first_year, last_year)?;
     }
 
     eprintln!("\nDone.");
@@ -637,4 +644,95 @@ fn write_cir_image(bands: &[Vec<u8>; 4], nx: usize, ny: usize, year: u16) -> Res
     }
     eprintln!("  Wrote: {}", path);
     Ok(())
+}
+
+/// Write NDVI difference overlay on top of latest RGB imagery.
+/// Red = canopy loss (NDVI rank decreased), Green = canopy gain (NDVI rank increased).
+/// Uses percentile-rank differencing to handle cross-year radiometric inconsistency.
+fn write_diff_overlay(
+    rgb: &[Vec<u8>; 4],
+    ndvi_first: &[f32],
+    ndvi_last: &[f32],
+    nx: usize,
+    ny: usize,
+    year_first: u16,
+    year_last: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+
+    let path = format!("diff_{}_{}.ppm", year_first, year_last);
+    let mut f = std::fs::File::create(&path)?;
+    writeln!(f, "P6")?;
+    writeln!(f, "{} {}", nx, ny)?;
+    writeln!(f, "255")?;
+
+    // Normalize each year's NDVI to percentile rank (0-1) to handle
+    // different radiometric processing between vintages.
+    let rank_first = percentile_rank(ndvi_first);
+    let rank_last = percentile_rank(ndvi_last);
+
+    for i in 0..nx * ny {
+        let v0 = ndvi_first[i];
+        let v1 = ndvi_last[i];
+
+        if v0 == NODATA || v1 == NODATA || (rgb[0][i] == 0 && rgb[1][i] == 0 && rgb[2][i] == 0) {
+            f.write_all(&[30, 30, 30])?;
+            continue;
+        }
+
+        // Rank-based change: positive = greener relative to peers, negative = less green
+        let rank_change = rank_last[i] - rank_first[i];
+        let threshold = 0.15;
+
+        let (r, g, b) = if rank_change < -threshold {
+            // Loss: blend red over dimmed base
+            let strength = ((-rank_change - threshold) / 0.4).min(1.0);
+            let alpha = 0.4 + 0.5 * strength;
+            let base = 0.4;
+            (
+                (rgb[0][i] as f32 * base * (1.0 - alpha) + 230.0 * alpha) as u8,
+                (rgb[1][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
+                (rgb[2][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
+            )
+        } else if rank_change > threshold {
+            // Gain: blend green over dimmed base
+            let strength = ((rank_change - threshold) / 0.4).min(1.0);
+            let alpha = 0.4 + 0.5 * strength;
+            let base = 0.4;
+            (
+                (rgb[0][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
+                (rgb[1][i] as f32 * base * (1.0 - alpha) + 210.0 * alpha) as u8,
+                (rgb[2][i] as f32 * base * (1.0 - alpha) + 30.0 * alpha) as u8,
+            )
+        } else {
+            // No significant change — dimmed base
+            let br = 0.55;
+            (
+                (rgb[0][i] as f32 * br) as u8,
+                (rgb[1][i] as f32 * br) as u8,
+                (rgb[2][i] as f32 * br) as u8,
+            )
+        };
+
+        f.write_all(&[r, g, b])?;
+    }
+
+    eprintln!("Wrote: {}", path);
+    Ok(())
+}
+
+/// Convert NDVI values to percentile ranks (0.0 to 1.0).
+fn percentile_rank(ndvi: &[f32]) -> Vec<f32> {
+    let mut valid: Vec<(usize, f32)> = ndvi.iter().enumerate()
+        .filter(|(_, &v)| v != NODATA)
+        .map(|(i, &v)| (i, v))
+        .collect();
+    valid.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+    let n = valid.len() as f32;
+    let mut ranks = vec![0.0f32; ndvi.len()];
+    for (rank, &(idx, _)) in valid.iter().enumerate() {
+        ranks[idx] = rank as f32 / n;
+    }
+    ranks
 }
