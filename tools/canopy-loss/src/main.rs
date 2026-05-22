@@ -1,12 +1,11 @@
-//! Canopy loss detection for Ghent, Norfolk VA.
+//! Canopy loss detection from NAIP aerial imagery.
 //!
 //! Fetches multi-year NAIP imagery from Planetary Computer, computes
-//! per-pixel NDVI, and diffs between years to identify tree removal.
+//! per-pixel NDVI, and diffs between years to identify vegetation change.
 //!
-//! Uses per-year adaptive thresholds to handle NAIP radiometric
-//! inconsistencies between vintages (different processing chains).
-//!
-//! Usage: cargo run --release
+//! Usage:
+//!   cargo run --release                              # Ghent (default)
+//!   cargo run --release -- -76.335 36.820 -76.175 36.975  # Norfolk city-wide
 //!   (from within `nix develop` shell for GDAL)
 
 use gdal::raster::ResampleAlg;
@@ -15,11 +14,13 @@ use gdal::Dataset;
 
 use std::collections::BTreeMap;
 
-// Ghent neighborhood bounding box (EPSG:4326)
-// Trimmed to area covered by NAIP _ne tile (south edge ~36.871)
-const GHENT_BBOX: [f64; 4] = [-76.305, 36.871, -76.285, 36.878];
-
-const PIXEL_SIZE_M: f64 = 0.5;
+// Default: Ghent neighborhood (EPSG:4326)
+const DEFAULT_BBOX: [f64; 4] = [-76.305, 36.871, -76.285, 36.878];
+const DEFAULT_PIXEL_SIZE: f64 = 0.5;
+// City-wide uses 1m to keep file sizes manageable
+const CITYWIDE_PIXEL_SIZE: f64 = 1.0;
+// Max dimension before switching to city-wide mode
+const CITYWIDE_THRESHOLD_M: f64 = 2000.0;
 const NODATA: f32 = -9999.0;
 
 struct NaipScene {
@@ -90,65 +91,111 @@ fn otsu_threshold(values: &[f32]) -> f32 {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("Canopy loss analysis: Ghent, Norfolk VA");
-    eprintln!("Bbox: {:.4}, {:.4} → {:.4}, {:.4}\n",
-        GHENT_BBOX[0], GHENT_BBOX[1], GHENT_BBOX[2], GHENT_BBOX[3]);
+    // Parse optional bbox from CLI args
+    let args: Vec<String> = std::env::args().collect();
+    let bbox = if args.len() >= 5 {
+        [
+            args[1].parse::<f64>().expect("bad west"),
+            args[2].parse::<f64>().expect("bad south"),
+            args[3].parse::<f64>().expect("bad east"),
+            args[4].parse::<f64>().expect("bad north"),
+        ]
+    } else {
+        DEFAULT_BBOX
+    };
 
-    let scenes = search_naip_scenes(&GHENT_BBOX)?;
-    eprintln!("Found {} NAIP scenes\n", scenes.len());
-
-    // Pick best-overlapping scene per year
-    let mut by_year: BTreeMap<u16, &NaipScene> = BTreeMap::new();
-    for s in &scenes {
-        let existing = by_year.get(&s.year);
-        if existing.map_or(true, |prev| s.overlap_fraction(&GHENT_BBOX) > prev.overlap_fraction(&GHENT_BBOX)) {
-            by_year.insert(s.year, s);
-        }
-    }
-
-    // Compute grid size
-    let [west, south, east, north] = GHENT_BBOX;
+    let [west, south, east, north] = bbox;
     let lat_mid = (south + north) / 2.0;
     let m_per_deg_lon = 111_320.0 * lat_mid.to_radians().cos();
     let m_per_deg_lat = 111_320.0;
     let width_m = (east - west) * m_per_deg_lon;
     let height_m = (north - south) * m_per_deg_lat;
-    let nx = (width_m / PIXEL_SIZE_M).ceil() as usize;
-    let ny = (height_m / PIXEL_SIZE_M).ceil() as usize;
+
+    let pixel_size = if width_m > CITYWIDE_THRESHOLD_M || height_m > CITYWIDE_THRESHOLD_M {
+        eprintln!("City-wide mode: using {:.1}m pixels", CITYWIDE_PIXEL_SIZE);
+        CITYWIDE_PIXEL_SIZE
+    } else {
+        DEFAULT_PIXEL_SIZE
+    };
+
+    let nx = (width_m / pixel_size).ceil() as usize;
+    let ny = (height_m / pixel_size).ceil() as usize;
     let total_pixels = nx * ny;
-    let pixel_area_m2 = PIXEL_SIZE_M * PIXEL_SIZE_M;
+    let pixel_area_m2 = pixel_size * pixel_size;
 
-    eprintln!("Output grid: {}×{} pixels ({:.0}×{:.0}m)\n", nx, ny, width_m, height_m);
+    eprintln!("Canopy loss analysis");
+    eprintln!("Bbox: {:.4}, {:.4} → {:.4}, {:.4}", west, south, east, north);
+    eprintln!("Output grid: {}×{} pixels ({:.0}×{:.0}m at {:.1}m/px)\n", nx, ny, width_m, height_m, pixel_size);
 
-    // Fetch NDVI for each year and compute adaptive thresholds
+    let scenes = search_naip_scenes(&bbox)?;
+    eprintln!("Found {} NAIP scenes\n", scenes.len());
+
+    // Group ALL scenes by year (not just best-overlapping)
+    let mut scenes_by_year: BTreeMap<u16, Vec<&NaipScene>> = BTreeMap::new();
+    for s in &scenes {
+        scenes_by_year.entry(s.year).or_default().push(s);
+    }
+
+    // For the interactive map / diff overlay, track which scene per year is "best"
+    let mut by_year: BTreeMap<u16, &NaipScene> = BTreeMap::new();
+    for s in &scenes {
+        if by_year.get(&s.year).map_or(true, |prev| s.overlap_fraction(&bbox) > prev.overlap_fraction(&bbox)) {
+            by_year.insert(s.year, s);
+        }
+    }
+
+    let years: Vec<u16> = scenes_by_year.keys().copied().collect();
+    eprintln!("Vintages: {:?}\n", years);
+
+    // Fetch NDVI for each year — composite all scenes per year
     let mut ndvi_maps: BTreeMap<u16, Vec<f32>> = BTreeMap::new();
     let mut thresholds: BTreeMap<u16, f32> = BTreeMap::new();
 
-    for (&year, scene) in &by_year {
-        eprint!("  {} ({:.0}% overlap) ... ", scene.date, scene.overlap_fraction(&GHENT_BBOX) * 100.0);
-        match fetch_ndvi(&scene.asset_url, &scene.bbox, &GHENT_BBOX, nx, ny) {
-            Ok(ndvi) => {
-                let mut valid: Vec<f32> = ndvi.iter().copied().filter(|&v| v != NODATA).collect();
-                if valid.is_empty() {
-                    eprintln!("SKIPPED — no valid pixels");
-                    continue;
+    for (&year, year_scenes) in &scenes_by_year {
+        eprint!("  {} ({} scenes) ... ", year, year_scenes.len());
+        let mut ndvi = vec![NODATA; total_pixels];
+        let mut any_ok = false;
+
+        for scene in year_scenes {
+            match fetch_ndvi(&scene.asset_url, &scene.bbox, &bbox, nx, ny) {
+                Ok(scene_ndvi) => {
+                    // Composite: overwrite NODATA pixels with scene data
+                    for i in 0..total_pixels {
+                        if scene_ndvi[i] != NODATA {
+                            ndvi[i] = scene_ndvi[i];
+                        }
+                    }
+                    any_ok = true;
                 }
-                valid.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-                let valid_frac = valid.len() as f64 / total_pixels as f64 * 100.0;
-                let mean: f32 = valid.iter().sum::<f32>() / valid.len() as f32;
-                let thresh = otsu_threshold(&valid);
-                let canopy_px = valid.iter().filter(|&&v| v > thresh).count();
-                let canopy_pct = canopy_px as f64 / valid.len() as f64 * 100.0;
-
-                eprintln!("OK — {:.0}% valid, mean NDVI {:.3}, Otsu threshold {:.3}, canopy: {:.1}% ({} px)",
-                    valid_frac, mean, thresh, canopy_pct, canopy_px);
-
-                thresholds.insert(year, thresh);
-                ndvi_maps.insert(year, ndvi);
+                Err(e) => {
+                    eprintln!("\n    scene {}: {}", scene.date, e);
+                }
             }
-            Err(e) => eprintln!("FAILED: {}", e),
         }
+
+        if !any_ok {
+            eprintln!("SKIPPED — all scenes failed");
+            continue;
+        }
+
+        let mut valid: Vec<f32> = ndvi.iter().copied().filter(|&v| v != NODATA).collect();
+        if valid.is_empty() {
+            eprintln!("SKIPPED — no valid pixels");
+            continue;
+        }
+        valid.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let valid_frac = valid.len() as f64 / total_pixels as f64 * 100.0;
+        let mean: f32 = valid.iter().sum::<f32>() / valid.len() as f32;
+        let thresh = otsu_threshold(&valid);
+        let canopy_px = valid.iter().filter(|&&v| v > thresh).count();
+        let canopy_pct = canopy_px as f64 / valid.len() as f64 * 100.0;
+
+        eprintln!("OK — {:.0}% valid, mean NDVI {:.3}, Otsu {:.3}, canopy: {:.1}%",
+            valid_frac, mean, thresh, canopy_pct);
+
+        thresholds.insert(year, thresh);
+        ndvi_maps.insert(year, ndvi);
     }
 
     if ndvi_maps.len() < 2 {
@@ -267,20 +314,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     write_canopy_comparison(&canopy_masks, &ndvi_maps, nx, ny)?;
 
-    // Generate true-color aerial imagery for key years
+    // Generate true-color aerial imagery for key years (composite all scenes)
     eprintln!();
     let mut rgb_last: Option<[Vec<u8>; 4]> = None;
     for &year in &[first_year, last_year] {
-        if let Some(scene) = by_year.get(&year) {
-            eprint!("Fetching RGB {} ... ", year);
-            match fetch_rgba(&scene.asset_url, &scene.bbox, &GHENT_BBOX, nx, ny) {
-                Ok(bands) => {
-                    write_rgb_image(&bands, nx, ny, year)?;
-                    write_cir_image(&bands, nx, ny, year)?;
-                    eprintln!("OK");
-                    if year == last_year { rgb_last = Some(bands); }
+        if let Some(year_scenes) = scenes_by_year.get(&year) {
+            eprint!("Fetching RGB {} ({} scenes) ... ", year, year_scenes.len());
+            let mut bands = [
+                vec![0u8; nx * ny], vec![0u8; nx * ny],
+                vec![0u8; nx * ny], vec![0u8; nx * ny],
+            ];
+            let mut any_ok = false;
+            for scene in year_scenes {
+                match fetch_rgba(&scene.asset_url, &scene.bbox, &bbox, nx, ny) {
+                    Ok(scene_bands) => {
+                        for b in 0..4 {
+                            for i in 0..nx * ny {
+                                if scene_bands[b][i] != 0 || scene_bands[(b+1)%4][i] != 0 {
+                                    bands[b][i] = scene_bands[b][i];
+                                }
+                            }
+                        }
+                        any_ok = true;
+                    }
+                    Err(_) => {}
                 }
-                Err(e) => eprintln!("FAILED: {}", e),
+            }
+            if any_ok {
+                write_rgb_image(&bands, nx, ny, year)?;
+                write_cir_image(&bands, nx, ny, year)?;
+                eprintln!("OK");
+                if year == last_year { rgb_last = Some(bands); }
+            } else {
+                eprintln!("FAILED");
             }
         }
     }
@@ -370,7 +436,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn search_naip_scenes(bbox: &[f64; 4]) -> Result<Vec<NaipScene>, Box<dyn std::error::Error>> {
     let [west, south, east, north] = *bbox;
     let body = format!(
-        r#"{{"collections":["naip"],"bbox":[{},{},{},{}],"limit":50}}"#,
+        r#"{{"collections":["naip"],"bbox":[{},{},{},{}],"limit":200}}"#,
         west, south, east, north
     );
 
