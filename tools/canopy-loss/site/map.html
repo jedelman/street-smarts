@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghent Canopy Map — Norfolk, VA</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: #1a1a1a;
+  }
+  #map { width: 100%; height: 100vh; }
+
+  .info-panel {
+    position: absolute;
+    top: 12px; left: 60px;
+    background: rgba(246,243,237,0.95);
+    padding: 12px 16px;
+    border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    max-width: 320px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1a1814;
+  }
+  .info-panel h1 {
+    font-size: 16px;
+    font-family: ui-serif, Georgia, serif;
+    margin-bottom: 4px;
+  }
+  .info-panel .sub {
+    font-size: 12px;
+    color: #6b6457;
+    margin-bottom: 8px;
+  }
+  .info-panel .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #d6cfbe;
+  }
+  .info-panel .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .info-panel .swatch {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(0,0,0,0.15);
+    flex-shrink: 0;
+  }
+  .info-panel a {
+    color: #6b6457;
+    font-size: 12px;
+  }
+
+  /* Override Leaflet layer control styling */
+  .leaflet-control-layers {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .leaflet-control-layers-expanded {
+    padding: 8px 12px;
+    background: rgba(246,243,237,0.95);
+  }
+
+  .opacity-control {
+    position: absolute;
+    bottom: 30px; left: 12px;
+    background: rgba(246,243,237,0.95);
+    padding: 8px 12px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 1000;
+    font-size: 12px;
+    color: #1a1814;
+  }
+  .opacity-control label { display: block; margin-bottom: 4px; font-weight: 600; }
+  .opacity-control input[type=range] { width: 140px; }
+
+  @media (max-width: 600px) {
+    .info-panel { left: 10px; right: 10px; max-width: none; top: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="info-panel" id="info">
+  <h1>Ghent Canopy Map</h1>
+  <div class="sub">Norfolk, VA &mdash; 2011&ndash;2023 &mdash; 0.5m resolution</div>
+  <div>Use the layer control (top right) to toggle between views.
+  Adjust overlay opacity with the slider below.</div>
+  <div class="legend" id="legend" style="display:none">
+    <div class="legend-item"><span class="swatch" style="background:#d83030"></span> Vegetation loss</div>
+    <div class="legend-item"><span class="swatch" style="background:#30c830"></span> Vegetation gain</div>
+    <div class="legend-item"><span class="swatch" style="background:#707060"></span> No significant change</div>
+  </div>
+  <div style="margin-top:8px"><a href="./">Full analysis &rarr;</a></div>
+</div>
+
+<div class="opacity-control">
+  <label>Overlay opacity</label>
+  <input type="range" id="opacity" min="0" max="100" value="85">
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const bounds = [[36.871, -76.305], [36.878, -76.285]];
+const center = [36.8745, -76.295];
+
+const map = L.map('map', {
+  center: center,
+  zoom: 16,
+  maxZoom: 20,
+  minZoom: 14,
+});
+
+// Basemaps
+const osmBase = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 20,
+});
+
+const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  maxZoom: 20,
+});
+
+const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  maxZoom: 20,
+});
+
+// Start with light basemap
+cartoLight.addTo(map);
+
+// Image overlays
+const rgb2011 = L.imageOverlay('rgb_2011.jpg', bounds, { opacity: 0.85 });
+const rgb2023 = L.imageOverlay('rgb_2023.jpg', bounds, { opacity: 0.85 });
+const cir2011 = L.imageOverlay('cir_2011.jpg', bounds, { opacity: 0.85 });
+const cir2023 = L.imageOverlay('cir_2023.jpg', bounds, { opacity: 0.85 });
+const diffMap = L.imageOverlay('diff_2011_2023.jpg', bounds, { opacity: 0.85 });
+
+// Start with diff map visible
+diffMap.addTo(map);
+
+// Layer control
+const baseMaps = {
+  'CARTO Light': cartoLight,
+  'CARTO Dark': cartoDark,
+  'OpenStreetMap': osmBase,
+};
+
+const overlays = {
+  'Change map (2011→2023)': diffMap,
+  'True color — Jun 2011': rgb2011,
+  'True color — Oct 2023': rgb2023,
+  'Color infrared — Jun 2011': cir2011,
+  'Color infrared — Oct 2023': cir2023,
+};
+
+L.control.layers(baseMaps, overlays, { collapsed: false }).addTo(map);
+
+// Show/hide legend based on diff layer
+const legend = document.getElementById('legend');
+map.on('overlayadd', e => {
+  if (e.name.startsWith('Change')) legend.style.display = 'flex';
+});
+map.on('overlayremove', e => {
+  if (e.name.startsWith('Change')) legend.style.display = 'none';
+});
+legend.style.display = 'flex'; // visible by default since diff is on
+
+// Opacity slider
+const opacitySlider = document.getElementById('opacity');
+const allOverlays = [rgb2011, rgb2023, cir2011, cir2023, diffMap];
+
+opacitySlider.addEventListener('input', () => {
+  const val = opacitySlider.value / 100;
+  allOverlays.forEach(layer => {
+    if (map.hasLayer(layer)) layer.setOpacity(val);
+  });
+});
+
+// Also set opacity when layers are added
+map.on('overlayadd', () => {
+  const val = opacitySlider.value / 100;
+  allOverlays.forEach(layer => {
+    if (map.hasLayer(layer)) layer.setOpacity(val);
+  });
+});
+
+// Fit to bounds
+map.fitBounds(bounds);
+
+// Study area rectangle
+L.rectangle(bounds, {
+  color: '#6b6457', weight: 1, fill: false, dashArray: '4 4'
+}).addTo(map);
+</script>
+</body>
+</html>
