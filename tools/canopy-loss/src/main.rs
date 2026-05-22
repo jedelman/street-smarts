@@ -321,13 +321,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("\n--- Rank-Based Canopy Stats (same method as diff map) ---\n");
     eprintln!("  Study area:      {:.1} acres ({:.0}m²)", sq_m_to_acres(study_area_m2), study_area_m2);
-    eprintln!("  Vegetation 2011: {:.1} acres ({:.1}%)", sq_m_to_acres(veg_2011 as f64 * pixel_area_m2), veg_2011 as f64 / valid as f64 * 100.0);
-    eprintln!("  Vegetation 2023: {:.1} acres ({:.1}%)", sq_m_to_acres(veg_2023 as f64 * pixel_area_m2), veg_2023 as f64 / valid as f64 * 100.0);
+    eprintln!("  Vegetation {}: {:.1} acres ({:.1}%)", first_year, sq_m_to_acres(veg_2011 as f64 * pixel_area_m2), veg_2011 as f64 / valid as f64 * 100.0);
+    eprintln!("  Vegetation {}: {:.1} acres ({:.1}%)", last_year, sq_m_to_acres(veg_2023 as f64 * pixel_area_m2), veg_2023 as f64 / valid as f64 * 100.0);
     eprintln!("  Stable canopy:   {:.1} acres ({:.1}%)", sq_m_to_acres(stable_veg as f64 * pixel_area_m2), stable_veg as f64 / valid as f64 * 100.0);
     eprintln!("  Detected loss:   {:.1} acres ({} pixels)", sq_m_to_acres(loss_px as f64 * pixel_area_m2), loss_px);
     eprintln!("  Detected gain:   {:.1} acres ({} pixels)", sq_m_to_acres(gain_px as f64 * pixel_area_m2), gain_px);
     let net = gain_px as i64 - loss_px as i64;
     eprintln!("  Net change:      {:+.1} acres", sq_m_to_acres(net as f64 * pixel_area_m2));
+
+    // Same-season sanity checks: compare 2011 (Jun) vs each other summer vintage
+    for &check_year in &[2012, 2014, 2016] {
+        if let Some(check_ndvi) = ndvi_maps.get(&check_year) {
+            let rank_check = percentile_rank(check_ndvi);
+            let mut v = 0usize;
+            let mut veg_a = 0usize;
+            let mut veg_b = 0usize;
+            let mut loss = 0usize;
+            let mut gain = 0usize;
+            let mut stable = 0usize;
+            for i in 0..total_pixels {
+                if ndvi_first[i] == NODATA || check_ndvi[i] == NODATA { continue; }
+                v += 1;
+                let wa = rank_first[i] > canopy_rank_thresh;
+                let wb = rank_check[i] > canopy_rank_thresh;
+                if wa { veg_a += 1; }
+                if wb { veg_b += 1; }
+                if wa && wb { stable += 1; }
+                let rc = rank_check[i] - rank_first[i];
+                if (wa || wb) && rc < -change_thresh { loss += 1; }
+                if (wa || wb) && rc > change_thresh { gain += 1; }
+            }
+            let area = v as f64 * pixel_area_m2;
+            eprintln!("\n  --- Sanity check: {} → {} (same-season) ---", first_year, check_year);
+            eprintln!("    Valid pixels:  {} ({:.1} acres)", v, sq_m_to_acres(area));
+            eprintln!("    Veg {}:    {:.1}%", first_year, veg_a as f64 / v as f64 * 100.0);
+            eprintln!("    Veg {}:    {:.1}%", check_year, veg_b as f64 / v as f64 * 100.0);
+            eprintln!("    Stable:        {:.1} acres ({:.1}%)", sq_m_to_acres(stable as f64 * pixel_area_m2), stable as f64 / v as f64 * 100.0);
+            eprintln!("    Loss:          {:.1} acres", sq_m_to_acres(loss as f64 * pixel_area_m2));
+            eprintln!("    Gain:          {:.1} acres", sq_m_to_acres(gain as f64 * pixel_area_m2));
+            eprintln!("    Net:           {:+.1} acres", sq_m_to_acres((gain as i64 - loss as i64) as f64 * pixel_area_m2));
+        }
+    }
 
     eprintln!("\nDone.");
     Ok(())
