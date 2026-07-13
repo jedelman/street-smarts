@@ -26,7 +26,7 @@
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
     area, bbox, centroid, clip_to_polygon, inset_convex, local_to_ring,
-    point_in_polygon, ring_to_local, voronoi_cell, Pt2,
+    point_in_polygon, ring_to_local, union_pieces, voronoi_cell, Pt2,
 };
 use crate::prng::Prng;
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
@@ -261,7 +261,15 @@ impl PatternOperator for P95BuildingComplex {
             for &site in &seeds {
                 let raw = voronoi_cell(site, &seeds, &bound_rect);
                 if raw.is_empty() { continue; }
-                let pieces = clip_to_polygon(&raw, &local_poly);
+                let fragments = clip_to_polygon(&raw, &local_poly);
+                // `clip_to_polygon` triangulates the clip boundary and intersects
+                // against each triangle separately -- adjacent fragments from the
+                // SAME site need to be merged back into one pad, or a non-convex
+                // parcel boundary (real building sites usually aren't convex)
+                // shatters one seed into dozens of artificial "pads". Genuinely
+                // disjoint fragments (a seed's cell split by a real concavity)
+                // correctly stay separate.
+                let pieces = union_pieces(&fragments);
                 for piece in pieces {
                     if piece.len() >= 3 && area(&piece) >= params.min_fragment_area_m2 {
                         cells.push((site, piece));

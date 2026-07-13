@@ -439,9 +439,122 @@ pub fn clip_to_polygon_largest(convex_subject: &[Pt2], clip_polygon: &[Pt2]) -> 
         .unwrap_or_default()
 }
 
+/// Union a set of polygon pieces that jointly tile a region without gaps or
+/// overlaps (e.g. the pieces `clip_to_polygon` returns for ONE convex
+/// subject, which are convex intersections against different triangles of
+/// the same clip-polygon triangulation).
+///
+/// Algorithm: every edge shared between two adjacent pieces appears twice —
+/// once forward in one piece's boundary, once backward in the other's,
+/// since both pieces were cut from the same underlying triangulation edge.
+/// Cancel those pairs; whatever's left traces the real outer boundary (or
+/// boundaries, if the input pieces are genuinely disjoint — e.g. a Voronoi
+/// cell split by a real concavity in the clip polygon. That's correct, not
+/// a bug: two truly separate pieces of land shouldn't merge into one pad.)
+///
+/// Points are matched by rounding to 0.1mm — comfortably above f64 roundoff
+/// at parcel-scale (metre) coordinates, comfortably below anything that
+/// matters geometrically for a building pad.
+pub fn union_pieces(pieces: &[Vec<Pt2>]) -> Vec<Vec<Pt2>> {
+    use std::collections::HashMap;
+
+    fn key(p: Pt2) -> (i64, i64) {
+        ((p.x * 10_000.0).round() as i64, (p.y * 10_000.0).round() as i64)
+    }
+
+    let mut point_by_key: HashMap<(i64, i64), Pt2> = HashMap::new();
+    let mut edge_count: HashMap<((i64, i64), (i64, i64)), i32> = HashMap::new();
+
+    for piece in pieces {
+        let n = piece.len();
+        if n < 3 { continue; }
+        for i in 0..n {
+            let a = piece[i];
+            let b = piece[(i + 1) % n];
+            let (ka, kb) = (key(a), key(b));
+            point_by_key.entry(ka).or_insert(a);
+            point_by_key.entry(kb).or_insert(b);
+            *edge_count.entry((ka, kb)).or_insert(0) += 1;
+        }
+    }
+
+    // Keep only edges whose reverse doesn't also occur — the real boundary.
+    let mut next: HashMap<(i64, i64), (i64, i64)> = HashMap::new();
+    for (&(a, b), _) in edge_count.iter() {
+        if !edge_count.contains_key(&(b, a)) {
+            next.insert(a, b);
+        }
+    }
+
+    let mut visited: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+    let mut loops: Vec<Vec<Pt2>> = Vec::new();
+
+    for (&start, _) in next.iter() {
+        if visited.contains(&start) { continue; }
+        let mut loop_pts: Vec<Pt2> = Vec::new();
+        let mut cur = start;
+        loop {
+            if visited.contains(&cur) { break; }
+            visited.insert(cur);
+            loop_pts.push(*point_by_key.get(&cur).expect("key was inserted alongside edge"));
+            match next.get(&cur) {
+                Some(&n2) => {
+                    cur = n2;
+                    if cur == start { break; }
+                }
+                None => break, // malformed boundary (shouldn't happen for a valid tiling); bail this loop
+            }
+        }
+        if loop_pts.len() >= 3 {
+            loops.push(simplify_collinear(&loop_pts));
+        }
+    }
+    loops
+}
+
+/// Drop vertices that sit (near-)collinear between their neighbors. Cosmetic
+/// only — area/point-in-polygon are unaffected either way — but keeps
+/// unioned pad boundaries from carrying redundant vertices along merged
+/// straight edges.
+fn simplify_collinear(poly: &[Pt2]) -> Vec<Pt2> {
+    let n = poly.len();
+    if n < 4 { return poly.to_vec(); }
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let prev = poly[(i + n - 1) % n];
+        let curr = poly[i];
+        let next = poly[(i + 1) % n];
+        let cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
+        // Keep unless essentially collinear (cross ~ 0 relative to edge lengths).
+        let scale = prev.dist(curr).max(curr.dist(next)).max(1e-9);
+        if cross.abs() / (scale * scale) > 1e-7 {
+            out.push(curr);
+        }
+    }
+    if out.len() >= 3 { out } else { poly.to_vec() }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn union_two_adjacent_squares_merges_to_one_loop() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        // Shares the edge (1,0)-(1,1) with `left`, traversed in reverse per CCW winding.
+        let right = vec![Pt2::new(1.0, 0.0), Pt2::new(2.0, 0.0), Pt2::new(2.0, 1.0), Pt2::new(1.0, 1.0)];
+        let merged = union_pieces(&[left, right]);
+        assert_eq!(merged.len(), 1, "two adjacent squares should merge into one loop");
+        assert!((area(&merged[0]) - 2.0).abs() < 1e-6, "merged area should be 2.0, got {}", area(&merged[0]));
+    }
+
+    #[test]
+    fn union_two_disjoint_squares_stays_two_loops() {
+        let a = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let b = vec![Pt2::new(5.0, 0.0), Pt2::new(6.0, 0.0), Pt2::new(6.0, 1.0), Pt2::new(5.0, 1.0)];
+        let merged = union_pieces(&[a, b]);
+        assert_eq!(merged.len(), 2, "genuinely disjoint pieces should NOT merge");
+    }
+
 
     #[test]
     fn area_of_unit_square() {
