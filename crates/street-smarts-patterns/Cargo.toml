@@ -8,3 +8,7 @@ license.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 street-smarts-core = { workspace = true }
+
+[dev-dependencies]
+street-smarts-opinions = { path = "../street-smarts-opinions" }
+street-smarts-conflict = { path = "../street-smarts-conflict" }
