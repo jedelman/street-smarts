@@ -3,6 +3,7 @@
 use crate::block_grouping::BlockGrouping;
 use crate::building_shape::BuildingShape;
 use crate::p95_building_complex::P95BuildingComplex;
+use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::path_network::PathNetwork;
 use crate::parameters::ParamSpec;
 use crate::subdivision::{DynOperator, Subdivision};
@@ -39,15 +40,18 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// **Order matters**: the typical pipeline runs P95 first (parcel → pads),
 /// then BlockGrouping (pads → blocks), then PathNetwork (blocks → streets),
-/// then BuildingShape (pads → buildings). The order here matches that
-/// pipeline so UIs that present operators in registry order present them
-/// in pipeline order.
+/// then a building-shape pass (pads → buildings) -- either the older
+/// BuildingShape stub or P107WingsOfLight, which does real daylight-depth
+/// reasoning instead of a plain inscribed rectangle. Both are kept for now
+/// so existing pipelines/tests referencing "building_shape" by name keep
+/// working; P107 is the one worth reaching for going forward.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
         // Pipeline order: parcel → pads → blocks → paths → buildings
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
         Box::new(PathNetwork),
+        Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
     ]
 }
