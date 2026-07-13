@@ -85,7 +85,7 @@ impl Parameters for P95Params {
             ParamSpec::integer(
                 "max_buildings",
                 "Maximum pad count regardless of area.",
-                3.0, 40.0, 14.0,
+                1.0, 40.0, 14.0,
             ).with_unit("buildings"),
             ParamSpec::float(
                 "pad_inset_m",
@@ -230,9 +230,9 @@ impl PatternOperator for P95BuildingComplex {
             // Stratified-random seeding inside the actual parcel polygon.
             let target_seeds = n_buildings + 1;
             let seeds = stratified_seeds(&local_poly, target_seeds, params.seed_jitter, &mut prng);
-            if seeds.len() < 3 {
+            if seeds.len() < 2 {
                 steps.push(format!(
-                    "part[{}]: only {} valid seeds (need 3+) — too concave or too small. Skipping.",
+                    "part[{}]: only {} valid seeds (need 2+: 1 building + 1 courtyard) — too concave or too small. Skipping.",
                     part_idx, seeds.len()
                 ));
                 continue;

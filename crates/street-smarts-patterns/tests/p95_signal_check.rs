@@ -46,17 +46,11 @@ fn p95_signal_check_good_vs_monolithic() {
     // "Good": P95's own defaults. Moderate density, real inset, largest-cell courtyard.
     let good_params = P95Params::defaults();
 
-    // "Bad": as few buildings as the operator can actually produce.
-    //
-    // NOTE: min=max=1 was tried first and always fails — target_seeds =
-    // n_buildings + 1, and stratified_seeds hard-requires >= 3 seeds, so
-    // n_buildings must be >= 2. The operator's parameter space has a floor
-    // at 2 buildings; it cannot currently express the single-monolithic-
-    // building case that P95's own doc comment names as the thing to avoid.
-    // min=max=2 is the closest reachable approximation.
+    // "Bad": true monolithic — one building, one courtyard. Now reachable:
+    // the schema floor and the seed-count guard were both fixed to allow it.
     let monolithic_params = P95Params {
-        min_buildings: 2.0,
-        max_buildings: 2.0,
+        min_buildings: 1.0,
+        max_buildings: 1.0,
         ..P95Params::defaults()
     };
 
@@ -88,19 +82,29 @@ fn p95_signal_check_good_vs_monolithic() {
 
     // Round-trip sanity: as_vector/from_vector should reproduce params (this
     // is exactly the projection CMA-ES will rely on).
-    // BUG FOUND: max_buildings' schema bounds are (3.0, 40.0, 14.0) while
-    // min_buildings' are (1.0, 20.0, 3.0) — asymmetric floors. from_vector's
-    // clamp silently pushes any max_buildings < 3 back up to 3, so the
-    // vector-projection path (what CMA-ES would actually search over) can
-    // never express max_buildings in [1,2], even though direct struct
-    // construction can. Documenting via a passing assertion on the ACTUAL
-    // (buggy) behavior, not the behavior we want:
+    // Both bugs fixed: min_buildings and max_buildings can now both express
+    // 1, and the vector-projection roundtrip should be exact.
     let vec = monolithic_params.as_vector();
     let roundtrip = P95Params::from_vector(&vec);
-    assert_eq!(roundtrip.min_buildings, 2.0, "min_buildings clamp ok");
-    assert_eq!(
-        roundtrip.max_buildings, 3.0,
-        "max_buildings schema floor (3.0) silently overrides the requested 2.0 — \
-         asymmetric with min_buildings' floor of 1.0. Fix schema bounds before CMA-ES."
-    );
+    assert_eq!(roundtrip.min_buildings, 1.0, "min_buildings roundtrip");
+    assert_eq!(roundtrip.max_buildings, 1.0, "max_buildings floor bug fixed");
+}
+
+#[test]
+fn p95_debug_parts_and_grouping() {
+    let raw = std::fs::read_to_string("../../data/eastside-baseline.json").expect("fixture present");
+    let baseline: Neighborhood = serde_json::from_str(&raw).expect("parseable");
+    let monolithic_params = P95Params { min_buildings: 1.0, max_buildings: 1.0, ..P95Params::defaults() };
+    let op = P95BuildingComplex;
+    let sub = op.apply(&baseline, MALL_PARCEL_ID, &monolithic_params, 42).unwrap();
+    eprintln!("new_parcels: {}", sub.new_parcels.len());
+    eprintln!("new_open_space: {}", sub.new_open_space.len());
+    eprintln!("--- steps ---");
+    for s in &sub.trace.steps {
+        eprintln!("{}", s);
+    }
+    eprintln!("--- first 5 parcel ids ---");
+    for p in sub.new_parcels.iter().take(5) {
+        eprintln!("{}", p.id);
+    }
 }
