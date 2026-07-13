@@ -533,6 +533,17 @@ fn simplify_collinear(poly: &[Pt2]) -> Vec<Pt2> {
     }
     if out.len() >= 3 { out } else { poly.to_vec() }
 }
+/// Scale a polygon toward its centroid by a LINEAR factor (not area ratio --
+/// building_shape.rs's `shrink_toward_centroid` takes an area ratio; this
+/// takes a direct linear factor, which is what you want when the target is
+/// "this bounding dimension should become X metres," as in P61).
+/// factor=1 is a no-op; factor<1 shrinks.
+pub fn scale_toward_centroid(poly: &[Pt2], factor: f64) -> Vec<Pt2> {
+    if poly.is_empty() { return vec![]; }
+    let c = centroid(poly);
+    poly.iter().map(|p| Pt2 { x: c.x + (p.x - c.x) * factor, y: c.y + (p.y - c.y) * factor }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

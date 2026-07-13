@@ -304,6 +304,7 @@ impl PatternOperator for P107WingsOfLight {
             new_buildings: buildings,
             new_streets: vec![],
             replaced_parcel_ids: replaced,
+            replaced_open_space_ids: vec![],
             trace,
         })
     }

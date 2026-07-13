@@ -4,6 +4,7 @@ use crate::block_grouping::BlockGrouping;
 use crate::building_shape::BuildingShape;
 use crate::p95_building_complex::P95BuildingComplex;
 use crate::p107_wings_of_light::P107WingsOfLight;
+use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
 use crate::parameters::ParamSpec;
 use crate::subdivision::{DynOperator, Subdivision};
@@ -47,12 +48,13 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// working; P107 is the one worth reaching for going forward.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
-        // Pipeline order: parcel → pads → blocks → paths → buildings
+        // Pipeline order: parcel → pads → blocks → paths → buildings → squares
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
         Box::new(PathNetwork),
         Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
+        Box::new(P61SmallPublicSquares),
     ]
 }
 

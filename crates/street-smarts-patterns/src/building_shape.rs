@@ -252,6 +252,7 @@ impl PatternOperator for BuildingShape {
             new_buildings: buildings,
             new_streets: vec![],
             replaced_parcel_ids: replaced,
+            replaced_open_space_ids: vec![],
             trace,
         })
     }

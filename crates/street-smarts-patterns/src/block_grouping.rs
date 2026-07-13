@@ -277,6 +277,7 @@ impl PatternOperator for BlockGrouping {
             new_buildings: vec![],
             new_streets: vec![],
             replaced_parcel_ids: replaced,
+            replaced_open_space_ids: vec![],
             trace,
         })
     }

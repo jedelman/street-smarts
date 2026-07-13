@@ -393,6 +393,7 @@ impl PatternOperator for P95BuildingComplex {
             new_buildings: vec![],
             new_streets: vec![],
             replaced_parcel_ids: vec![parcel_id.to_string()],
+            replaced_open_space_ids: vec![],
             trace,
         })
     }

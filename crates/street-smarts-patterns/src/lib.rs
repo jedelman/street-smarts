@@ -19,6 +19,7 @@ pub mod planar;
 pub mod prng;
 pub mod p95_building_complex;
 pub mod p107_wings_of_light;
+pub mod p61_small_public_squares;
 pub mod registry;
 pub mod subdivision;
 
