@@ -84,7 +84,11 @@ pub struct P108Params {
     /// Cap on how many pads can merge into one building. Alexander's own
     /// text doesn't name a number, but an unbounded merge would eventually
     /// fuse an entire block into one mega-structure -- a real block face
-    /// is a RUN of connected buildings, not one building.
+    /// is a RUN of connected buildings, not one building. Default raised
+    /// to 24 -- real European block perimeters (the source of this
+    /// project's own "barrio" reference) commonly run 20+ party-wall units
+    /// deep along one face; 6 was tuned for nothing in particular and cut
+    /// real runs short.
     pub max_cluster_pads: f64,
 }
 
@@ -99,12 +103,12 @@ impl Parameters for P108Params {
             ParamSpec::integer(
                 "max_cluster_pads",
                 "Cap on pads merged into one connected building.",
-                2.0, 12.0, 6.0,
+                2.0, 40.0, 24.0,
             ).with_unit("pads"),
         ]
     }
     fn defaults() -> Self {
-        Self { connect_gap_threshold_m: 1.5, max_cluster_pads: 6.0 }
+        Self { connect_gap_threshold_m: 1.5, max_cluster_pads: 24.0 }
     }
     fn as_vector(&self) -> Vec<f64> {
         vec![self.connect_gap_threshold_m, self.max_cluster_pads]

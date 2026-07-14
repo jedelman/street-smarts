@@ -17,6 +17,7 @@ import math
 import sys
 
 import cadquery as cq
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
@@ -163,16 +164,29 @@ def build_scene(nbhd):
     }
 
 
+# Lightened from the original near-black palette -- a flat #2b2620 fill
+# with no shading reads as a solid silhouette with no readable form at
+# real building-mass scale. Real per-face lighting (below) needs a base
+# color with room to shade brighter/darker; near-black has nowhere to go.
 COLORS = {
-    "building_shaped": "#2b2620",
-    "building_unshaped": "#7a6a52",
+    "building_shaped": "#8a5a44",
+    "building_unshaped": "#a3846a",
     "plaza": "#d9a441",
     "common": "#a3b18a",
     "undecided": "#b8602a",
-    "local": "#5a514a",
-    "pedestrian": "#8a7f6b",
-    "street": "#5a514a",
+    "local": "#6b6259",
+    "pedestrian": "#9b8f7a",
+    "street": "#6b6259",
 }
+
+# Directional light, roughly matching the isometric camera (elev=35,
+# azim=-60) so faces facing the viewer catch real highlight -- upper-left-
+# front, slightly favoring +z so roofs read brightest, same as a real sun
+# angle in an architectural massing render.
+LIGHT_DIR = np.array([-0.45, -0.35, 0.82])
+LIGHT_DIR = LIGHT_DIR / np.linalg.norm(LIGHT_DIR)
+AMBIENT = 0.40   # floor brightness even for faces facing away from the light
+DIFFUSE = 0.65   # additional brightness for faces facing the light head-on
 
 
 def solid_to_triangles(solid):
@@ -185,11 +199,32 @@ def solid_to_triangles(solid):
     return verts, tris
 
 
+def shade_faces(face_verts, base_hex, alpha):
+    """Per-triangle Lambertian shading + translucency: one RGBA color per
+    face, computed from that face's own normal against LIGHT_DIR. This is
+    what actually reveals building form (which walls face the light, which
+    don't) instead of every face reading as the same flat silhouette
+    color."""
+    base_rgb = np.array(mcolors.to_rgb(base_hex))
+    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
+    normals = np.cross(v1 - v0, v2 - v0)
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    norms[norms < 1e-9] = 1.0
+    normals = normals / norms
+    intensity = AMBIENT + DIFFUSE * np.clip(normals @ LIGHT_DIR, 0.0, None)
+    intensity = np.clip(intensity, 0.0, 1.15)  # small overshoot allowed for a real specular-ish highlight
+    rgb = np.clip(base_rgb[None, :] * intensity[:, None], 0.0, 1.0)
+    rgba = np.concatenate([rgb, np.full((len(rgb), 1), alpha)], axis=1)
+    return rgba
+
+
 def render_isometric(scene, out_path, title):
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection="3d")
+    fig.patch.set_facecolor("#2a2a2e")
+    ax.set_facecolor("#2a2a2e")
 
-    def add_group(items, alpha=1.0):
+    def add_group(items, alpha):
         for solid, kind in items:
             try:
                 verts, tris = solid_to_triangles(solid)
@@ -197,13 +232,18 @@ def render_isometric(scene, out_path, title):
                 print(f"  ! tessellate failed: {e}", file=sys.stderr)
                 continue
             face_verts = verts[tris]
-            color = COLORS.get(kind, "#999999")
-            poly = Poly3DCollection(face_verts, facecolor=color, edgecolor="#00000030", linewidth=0.15, alpha=alpha)
+            base_hex = COLORS.get(kind, "#999999")
+            rgba = shade_faces(face_verts, base_hex, alpha)
+            poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
             ax.add_collection3d(poly)
 
-    add_group(scene["streets"], alpha=0.9)
-    add_group(scene["plazas"], alpha=0.9)
-    add_group(scene["buildings"], alpha=0.95)
+    # Translucent enough to read overlapping massing/depth, not so
+    # translucent the scene turns to fog -- streets/plazas thinnest (they're
+    # ground-plane slabs, least important to see "through"), buildings the
+    # most opaque single layer but still see-through against neighbors.
+    add_group(scene["streets"], alpha=0.55)
+    add_group(scene["plazas"], alpha=0.6)
+    add_group(scene["buildings"], alpha=0.82)
 
     all_solids = scene["streets"] + scene["plazas"] + scene["buildings"]
     all_verts = np.concatenate([solid_to_triangles(s)[0] for s, _ in all_solids if True], axis=0)
@@ -217,9 +257,9 @@ def render_isometric(scene, out_path, title):
     ax.set_box_aspect((1, 1, 0.25))
     ax.view_init(elev=35, azim=-60)
     ax.set_axis_off()
-    ax.set_title(title, fontsize=13)
+    ax.set_title(title, fontsize=13, color="#f6f3ed")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=140, facecolor="#f6f3ed")
+    fig.savefig(out_path, dpi=140, facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"wrote {out_path}")
 
