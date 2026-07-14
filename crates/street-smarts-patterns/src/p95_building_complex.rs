@@ -176,9 +176,12 @@ impl Parameters for P95Params {
 pub struct P95BuildingComplex;
 
 /// Collect convex "reserved" holes already committed on this part of the
-/// parcel by earlier pipeline steps -- existing open space (P52/P61's
-/// pre-placed squares) and street rights-of-way -- so P95 seeds pads AROUND
-/// them instead of through them.
+/// parcel by earlier pipeline steps -- existing open space (P37's common
+/// land, P61's pre-placed squares) and street rights-of-way -- so P95 seeds
+/// pads AROUND them instead of through them. `pub(crate)` so
+/// `p61_small_public_squares` can reuse it too, for the same reason: a
+/// square shouldn't land on top of common land P37 already reserved on that
+/// block.
 ///
 /// Real subtraction (`planar::subtract_convex`) is mathematically exact for
 /// a hole that doesn't overlap the subject at all -- it's a no-op -- so this
@@ -192,7 +195,7 @@ pub struct P95BuildingComplex;
 /// assumption and its tradeoff). A non-convex existing open-space polygon
 /// would subtract its convex hull instead of its real shape -- not guarded
 /// against here.
-fn reserved_holes_for_part(nbhd: &Neighborhood, local_part: &[Pt2], origin: &LngLat) -> Vec<Vec<Pt2>> {
+pub(crate) fn reserved_holes_for_part(nbhd: &Neighborhood, local_part: &[Pt2], origin: &LngLat) -> Vec<Vec<Pt2>> {
     let mut holes: Vec<Vec<Pt2>> = Vec::new();
 
     for o in &nbhd.open_space {

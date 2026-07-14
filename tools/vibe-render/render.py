@@ -119,7 +119,7 @@ def build_scene(nbhd):
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), PLAZA_THICKNESS_M, origin_lng, origin_lat)
             if solid is not None:
-                kind = "undecided" if o.get("kind") == "undecided" else "plaza"
+                kind = o.get("kind") if o.get("kind") in ("undecided", "common") else "plaza"
                 plaza_solids.append((solid, kind))
 
     # Streets -- thin ribbons along the centerline, buffered by row_width_m.
@@ -160,6 +160,7 @@ COLORS = {
     "building_shaped": "#2b2620",
     "building_unshaped": "#7a6a52",
     "plaza": "#d9a441",
+    "common": "#a3b18a",
     "undecided": "#b8602a",
     "local": "#5a514a",
     "pedestrian": "#8a7f6b",

@@ -3,7 +3,9 @@
 //! pipeline's P95 -> BlockGrouping -> PathNetwork -> P107 -> P61.
 //!
 //! Sequence:
-//!   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks.
+//!   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks,
+//!      each with an informal `OpenSpaceKind::Common` patch reserved for
+//!      that cluster's own shared land (see p37's module doc).
 //!   2. PathNetwork/P52 (once, site-scale): connect the blocks -- unchanged
 //!      code, already filters by `spec.starts_with("BLOCK_")`, which P37
 //!      produces directly.
@@ -13,9 +15,12 @@
 //!      "v0.6" section, for why that was the biggest single contributor to
 //!      block-level fragmentation. `allocate_squares_by_area` splits the
 //!      site's `max_squares` budget across blocks proportional to block
-//!      area (largest-remainder rounding); most blocks get zero.
-//!   4. Per block: P95 (reworked) builds pads around whatever P61 placed on
-//!      that block, if anything, plus street corridors from step 2.
+//!      area (largest-remainder rounding); most blocks get zero. Squares
+//!      are seeded on whatever land P37's common land didn't already claim
+//!      on that block (`place_new_squares_n` subtracts existing reserved
+//!      open space before seeding).
+//!   4. Per block: P95 (reworked) builds pads around whatever P37/P61
+//!      placed on that block, plus street corridors from step 2.
 //!   5. P107 (once, site-scale): shape every P95 pad for daylight depth --
 //!      unchanged code, already filters by `use_category == "p95_building_pad"`
 //!      across the whole neighborhood regardless of which block a pad came
@@ -97,7 +102,7 @@ pub fn run_corrected_pipeline(baseline: &Neighborhood, parcel_id: &str, seed: u6
         if n_squares > 0 {
             if let Some(block_parcel) = nbhd.parcels.iter().find(|p| &p.id == block_id).cloned() {
                 if let Ok(sub61) = place_new_squares_n(
-                    &block_parcel, n_squares, &P61Params::defaults(), block_seed, P61SmallPublicSquares.source(),
+                    &nbhd, &block_parcel, n_squares, &P61Params::defaults(), block_seed, P61SmallPublicSquares.source(),
                 ) {
                     nbhd = apply_subdivision(&nbhd, &sub61);
                 }

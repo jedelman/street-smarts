@@ -122,6 +122,13 @@ pub enum OpenSpaceKind {
     /// (Positive Outdoor Space) check should scan for exactly this kind
     /// rather than trusting operators to have resolved everything.
     Undecided,
+    /// Informal shared land within ONE house cluster (P37) -- what the
+    /// cluster's households actually face onto and identify with. Distinct
+    /// from `Plaza` (P61's intentionally placed, publicly-scaled small
+    /// square, or P95's designed interconnecting courtyard): this is
+    /// smaller, informal, and belongs to a single cluster rather than the
+    /// neighborhood at large.
+    Common,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -280,7 +280,7 @@ impl PatternOperator for P61SmallPublicSquares {
 
         if plazas.is_empty() {
             if let Some(tp) = target_parcel {
-                return place_new_squares(tp, params, seed, self.source());
+                return place_new_squares(nbhd, tp, params, seed, self.source());
             }
             return Err("p61_small_public_squares: no Plaza-kind open space found. Run P95/P107 first, or pass a specific raw parcel_id to place new squares directly.".into());
         }
@@ -548,13 +548,14 @@ fn parcel_origin(p: &Parcel) -> LngLat {
 /// allocated across the whole site, not `max_squares` repeated on every
 /// block -- see that module's doc comment for why.
 fn place_new_squares(
+    nbhd: &Neighborhood,
     target_parcel: &Parcel,
     params: &P61Params,
     seed: u64,
     source: SourceCitation,
 ) -> Result<Subdivision, String> {
     let n_target = params.max_squares.round().max(1.0) as usize;
-    place_new_squares_n(target_parcel, n_target, params, seed, source)
+    place_new_squares_n(nbhd, target_parcel, n_target, params, seed, source)
 }
 
 /// Same as `place_new_squares`, but with the target square count passed in
@@ -562,7 +563,17 @@ fn place_new_squares(
 /// so `crate::pipeline` can allocate a total "a few squares" budget across
 /// an entire site's blocks (by area) instead of stamping `max_squares` full
 /// squares onto every individual block.
+///
+/// Avoids land `nbhd.open_space` already reserves on this parcel (P37's
+/// common land, chiefly) via `p95_building_complex::reserved_holes_for_part`
+/// -- the same subtraction P95 does before seeding pads -- so a square
+/// doesn't land directly on top of a cluster's common land. Seeds within
+/// the single largest remaining piece after subtraction, not scattered
+/// across every leftover fragment; with only one or two squares to place
+/// per block that's a reasonable simplification, not an attempt to use
+/// every last buildable scrap the way P95's per-piece loop does.
 pub fn place_new_squares_n(
+    nbhd: &Neighborhood,
     target_parcel: &Parcel,
     n_target: usize,
     params: &P61Params,
@@ -578,11 +589,27 @@ pub fn place_new_squares_n(
         ));
     }
 
+    let holes = crate::p95_building_complex::reserved_holes_for_part(nbhd, &local_parcel, &origin);
+    let mut free_pieces = vec![local_parcel.clone()];
+    for hole in &holes {
+        free_pieces = free_pieces.into_iter().flat_map(|p| crate::planar::subtract_convex(&p, hole)).collect();
+    }
+    let placement_zone = free_pieces
+        .into_iter()
+        .max_by(|a, b| area(a).partial_cmp(&area(b)).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or_else(|| local_parcel.clone());
+    if placement_zone.len() < 3 {
+        return Err(format!(
+            "p61_small_public_squares: parcel {} has no free land left after subtracting already-reserved land (e.g. P37 common land).",
+            target_parcel.id
+        ));
+    }
+
     let mut prng = Prng::new(seed);
     // Jitter isn't exposed as its own P61 param (would be a knob nobody has
     // asked to tune yet) -- 0.5 matches the default other operators
     // (P37, P95) use for their own stratified seeding.
-    let nodes = stratified_seeds(&local_parcel, n_target, 0.5, &mut prng);
+    let nodes = stratified_seeds(&placement_zone, n_target, 0.5, &mut prng);
     if nodes.is_empty() {
         return Err(format!(
             "p61_small_public_squares: parcel {} too small or too concave to place any squares on.",
@@ -601,7 +628,7 @@ pub fn place_new_squares_n(
             Pt2::new(node.x + half_side, node.y + half_side),
             Pt2::new(node.x - half_side, node.y + half_side),
         ];
-        let clipped = clip_to_polygon_largest(&square_local, &local_parcel);
+        let clipped = clip_to_polygon_largest(&square_local, &placement_zone);
         if clipped.len() < 3 || area(&clipped) < params.min_meaningful_area_m2 {
             n_skipped_tiny += 1;
             continue;
@@ -659,6 +686,11 @@ pub fn place_new_squares_n(
             "Connector segments are straight geometry-only centerlines between square centroids, \
              same abstraction PathNetwork and the resize path already use -- not routed, not \
              materialized with real edge treatment.".into(),
+            "Seeds within the single largest piece of free land after subtracting whatever \
+             nbhd.open_space already reserves on this parcel (P37's common land, chiefly) -- \
+             assumes reserved holes are convex (same assumption reserved_holes_for_part already \
+             makes for P95), and doesn't spread squares across every leftover fragment if the \
+             subtraction splits the parcel into several.".into(),
         ],
         seed,
         params: params.as_map(),

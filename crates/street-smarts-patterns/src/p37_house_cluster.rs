@@ -28,25 +28,52 @@
 //! fact) but isn't removed; it's still a real operator for pipelines that
 //! don't use this one.
 //!
-//! No courtyard is selected here -- P37's "common land" at block scale is a
-//! DIFFERENT thing (informal shared land between clustered buildings) from
-//! P95's courtyard (a designed interconnecting space within one building
-//! complex) or P61's small square (an intentionally placed public space).
-//! Deciding block-level common land is deferred; this operator's only job
-//! is giving the rest of the sequence a human-scaled piece of land to work
-//! within, instead of the whole site at once.
+//! # v0.2: common land, closing the gap above
+//!
+//! v0.1 deferred block-level common land entirely. This version reserves
+//! one: after carving each block, a `common_land_fraction` (default 12%)
+//! slice of that block's own area is scaled inward from the block's
+//! footprint toward its centroid (`planar::scale_toward_centroid`) and
+//! emitted as `OpenSpaceKind::Common` -- a real, distinct kind from
+//! `Plaza` (P61's intentional, publicly-scaled square) or a P95 courtyard
+//! (a designed space within one building complex). This is the SAME
+//! architecture P61's raw-land placement already uses: the block `Parcel`
+//! itself is emitted unchanged (still the full carved footprint), and
+//! downstream P95 picks the common land up via its existing reserved-land
+//! subtraction (`reserved_holes_for_part` scans ALL of `nbhd.open_space`,
+//! not just `Plaza`-kind) -- no P95 changes were needed for this.
+//!
+//! Skipped when the target area falls below `min_common_land_area_m2`
+//! (mirrors P61's own `min_meaningful_area_m2` reasoning) -- a tiny
+//! detached-annex block that only barely survives its own inset shouldn't
+//! also lose more of itself to a common-land patch nobody could use.
+//!
+//! `p61_small_public_squares::place_new_squares_n` was updated at the same
+//! time to subtract whatever common land P37 already placed on a block
+//! before scattering its own squares there, so the two don't overlap when
+//! a block happens to get both.
+//!
+//! # What this still does NOT do
+//! - Placement is a centered, scaled-down copy of the block's own shape --
+//!   an honest first approximation (same category of simplification as
+//!   P61's grid partition), not Alexander's real intent that common land
+//!   be what the cluster's houses actually face onto, shaped by real
+//!   entrances and sightlines this operator has no model of.
+//! - The common-land fraction is uniform across all blocks. Real house
+//!   clusters vary in how much shared land they set aside; this doesn't
+//!   respond to block shape, adjacency, or anything but its own area.
 
 use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
-    area, bbox, clip_to_polygon, inset_convex, local_to_ring, ring_to_local, union_pieces,
-    voronoi_cell, Pt2,
+    area, bbox, clip_to_polygon, inset_convex, local_to_ring, ring_to_local, scale_toward_centroid,
+    union_pieces, voronoi_cell, Pt2,
 };
 use crate::prng::Prng;
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::geometry::{LngLat, Polygon};
-use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +98,15 @@ pub struct P37Params {
     /// Minimum block area in m² after inset. Blocks smaller than this are
     /// discarded as slivers.
     pub min_block_area_m2: f64,
+    /// Fraction of each block's own area reserved as informal common land
+    /// (Alexander's "common land" that identifies the cluster) -- scaled
+    /// inward from the block's footprint toward its centroid. 0 disables
+    /// common-land generation entirely.
+    pub common_land_fraction: f64,
+    /// Skip common-land generation for a block if the resulting patch
+    /// would be smaller than this -- not worth reserving land nobody could
+    /// use as shared space.
+    pub min_common_land_area_m2: f64,
 }
 
 impl Parameters for P37Params {
@@ -106,6 +142,16 @@ impl Parameters for P37Params {
                 "Drop blocks smaller than this after inset.",
                 500.0, 5000.0, 1500.0,
             ).with_unit("m²"),
+            ParamSpec::float(
+                "common_land_fraction",
+                "Fraction of each block reserved as informal common land (0 disables it).",
+                0.0, 0.4, 0.12,
+            ),
+            ParamSpec::float(
+                "min_common_land_area_m2",
+                "Skip common-land generation for a block if the patch would be smaller than this.",
+                50.0, 1000.0, 150.0,
+            ).with_unit("m²"),
         ]
     }
     fn defaults() -> Self {
@@ -116,6 +162,8 @@ impl Parameters for P37Params {
             block_inset_m: 10.0,
             seed_jitter: 0.5,
             min_block_area_m2: 1500.0,
+            common_land_fraction: 0.12,
+            min_common_land_area_m2: 150.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
@@ -126,6 +174,8 @@ impl Parameters for P37Params {
             self.block_inset_m,
             self.seed_jitter,
             self.min_block_area_m2,
+            self.common_land_fraction,
+            self.min_common_land_area_m2,
         ]
     }
     fn from_vector(v: &[f64]) -> Self {
@@ -137,6 +187,8 @@ impl Parameters for P37Params {
         if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.block_inset_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.seed_jitter = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(5), v.get(5)) { p.min_block_area_m2 = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(6), v.get(6)) { p.common_land_fraction = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(7), v.get(7)) { p.min_common_land_area_m2 = s.clamp(*x); }
         p
     }
 }
@@ -182,9 +234,12 @@ impl PatternOperator for P37HouseCluster {
         );
 
         let mut all_new_parcels: Vec<Parcel> = Vec::new();
+        let mut all_new_open: Vec<OpenSpace> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut prng = Prng::new(seed);
         let mut global_block_idx = 0;
+        let mut n_common_land_emitted = 0;
+        let mut n_common_land_skipped_small = 0;
 
         for (part_idx, part) in parts.iter().enumerate() {
             let local_poly = ring_to_local(&part.outer, &origin);
@@ -260,8 +315,9 @@ impl PatternOperator for P37HouseCluster {
                     let block_ring = local_to_ring(&inset, &origin);
                     let block_area_m2 = area(&inset);
                     global_block_idx += 1;
+                    let block_id = format!("{}_BLOCK_{}", parcel_id, global_block_idx);
                     all_new_parcels.push(Parcel {
-                        id: format!("{}_BLOCK_{}", parcel_id, global_block_idx),
+                        id: block_id.clone(),
                         polygon: Polygon::from_ring(block_ring),
                         area_acres: block_area_m2 / 4046.86,
                         use_category: Some("house_cluster_block".into()),
@@ -270,6 +326,31 @@ impl PatternOperator for P37HouseCluster {
                         spec: Some(format!("BLOCK_{}", global_block_idx)),
                     });
                     n_emitted += 1;
+
+                    // Common land: Alexander's "distinct, identifiable
+                    // place" a cluster's households share. Scaled inward
+                    // from the block's own footprint toward its centroid --
+                    // does NOT touch the block Parcel just emitted above,
+                    // same architecture P61's raw-land squares use. P95
+                    // picks this up later via its existing reserved-land
+                    // subtraction (scans ALL open_space, not just Plaza).
+                    if params.common_land_fraction > 0.0 {
+                        let target_area = block_area_m2 * params.common_land_fraction;
+                        if target_area >= params.min_common_land_area_m2 {
+                            let factor = params.common_land_fraction.sqrt();
+                            let common_local = scale_toward_centroid(&inset, factor);
+                            if common_local.len() >= 3 {
+                                all_new_open.push(OpenSpace {
+                                    id: format!("{block_id}_common"),
+                                    polygon: Polygon::from_ring(local_to_ring(&common_local, &origin)),
+                                    kind: OpenSpaceKind::Common,
+                                });
+                                n_common_land_emitted += 1;
+                            }
+                        } else {
+                            n_common_land_skipped_small += 1;
+                        }
+                    }
                 }
             }
             steps.push(format!(
@@ -285,18 +366,24 @@ impl PatternOperator for P37HouseCluster {
             ));
         }
 
+        steps.push(format!(
+            "common land: {} block(s) got a {:.0}%-of-area common-land patch, {} skipped (below {:.0} m²).",
+            n_common_land_emitted, params.common_land_fraction * 100.0, n_common_land_skipped_small, params.min_common_land_area_m2
+        ));
+
         let trace = SubdivisionTrace {
             operator_name: "p37_house_cluster".into(),
             operator_source: self.source(),
             headline: format!(
-                "Carved {} into {} house-cluster block(s), replacing the single raw parcel.",
-                parcel_id, all_new_parcels.len()
+                "Carved {} into {} house-cluster block(s) ({} with common land), replacing the single raw parcel.",
+                parcel_id, all_new_parcels.len(), n_common_land_emitted
             ),
             steps,
             caveats: vec![
-                "This is land subdivision only -- it does not place a shared common space within \
-                 each block. That's a real, undecided design question this operator doesn't \
-                 resolve (see the module doc comment).".into(),
+                "Common land is a centered, scaled-down copy of each block's own shape -- an \
+                 honest first approximation, not Alexander's real intent that it be shaped by \
+                 where the cluster's houses actually face and enter. See the module doc comment's \
+                 v0.2 section.".into(),
                 "Random seeding means each reseed produces a different block layout. Block \
                  boundaries from Voronoi cells are geometric, not social -- they don't know about \
                  existing paths of use, sightlines, or where people would actually want the edge \
@@ -311,7 +398,7 @@ impl PatternOperator for P37HouseCluster {
 
         Ok(Subdivision {
             new_parcels: all_new_parcels,
-            new_open_space: vec![],
+            new_open_space: all_new_open,
             new_buildings: vec![],
             new_streets: vec![],
             replaced_parcel_ids: vec![parcel_id.to_string()],

@@ -75,13 +75,19 @@ fn apply_subdivision_replaces_raw_parcel_with_blocks() {
 
     assert!(result.parcels.iter().all(|p| p.id != "MEGA_1"), "raw parcel should be replaced, not left alongside its blocks");
     assert_eq!(result.parcels.len(), sub.new_parcels.len());
-    assert!(result.open_space.is_empty(), "P37 doesn't place open space -- that's P61/P95's job within each block");
-    let _ = OpenSpaceKind::Plaza; // referenced only to keep the import honest if this file grows more assertions
+    // P37 v0.2 reserves common land per block (see module doc) -- one
+    // OpenSpace per block, all OpenSpaceKind::Common, none of them a Plaza
+    // (that's P61's kind, placed later, not P37's job).
+    assert_eq!(result.open_space.len(), sub.new_parcels.len(), "every block should get a common-land patch by default");
+    assert!(result.open_space.iter().all(|o| o.kind == OpenSpaceKind::Common));
 }
 
 #[test]
 fn params_roundtrip() {
-    let p = P37Params { target_block_area_m2: 5000.0, min_blocks: 3.0, max_blocks: 8.0, block_inset_m: 8.0, seed_jitter: 0.3, min_block_area_m2: 1000.0 };
+    let p = P37Params {
+        target_block_area_m2: 5000.0, min_blocks: 3.0, max_blocks: 8.0, block_inset_m: 8.0,
+        seed_jitter: 0.3, min_block_area_m2: 1000.0, common_land_fraction: 0.2, min_common_land_area_m2: 200.0,
+    };
     let v = p.as_vector();
     let back = P37Params::from_vector(&v);
     assert_eq!(back.target_block_area_m2, 5000.0);
@@ -90,6 +96,8 @@ fn params_roundtrip() {
     assert_eq!(back.block_inset_m, 8.0);
     assert_eq!(back.seed_jitter, 0.3);
     assert_eq!(back.min_block_area_m2, 1000.0);
+    assert_eq!(back.common_land_fraction, 0.2);
+    assert_eq!(back.min_common_land_area_m2, 200.0);
 }
 
 #[test]

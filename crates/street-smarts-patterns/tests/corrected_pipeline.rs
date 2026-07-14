@@ -83,7 +83,7 @@ fn corrected_pipeline_runs_end_to_end_on_the_real_mall_parcel() {
         let n_squares = square_counts[i];
         if n_squares > 0 {
             let block_parcel = nbhd.parcels.iter().find(|p| &p.id == block_id).unwrap().clone();
-            if let Ok(sub61) = place_new_squares_n(&block_parcel, n_squares, &P61Params::defaults(), seed, P61SmallPublicSquares.source()) {
+            if let Ok(sub61) = place_new_squares_n(&nbhd, &block_parcel, n_squares, &P61Params::defaults(), seed, P61SmallPublicSquares.source()) {
                 if !sub61.new_open_space.is_empty() {
                     n_blocks_with_squares += 1;
                 }
