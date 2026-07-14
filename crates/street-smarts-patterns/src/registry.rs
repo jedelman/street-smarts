@@ -42,15 +42,22 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// **Order matters, and it's Alexander's own pattern numbering**: larger,
 /// more-fixed patterns first, smaller ones nested inside what came before.
-/// The corrected pipeline (see `crate::pipeline::run_corrected_pipeline`)
-/// is:
+/// The corrected pipeline (see `tests/corrected_pipeline.rs` for the real,
+/// tested sequence, and the web UI's "Run full pipeline" button for the
+/// same orchestration client-side) is:
 ///   1. P37 House Cluster (#37) -- carve the raw parcel into human-scaled
 ///      BLOCK_n sub-parcels. Runs ONCE, site-scale.
 ///   2. PathNetwork / P52 (#52) -- connect the blocks to each other. Runs
 ///      ONCE, site-scale, on the BLOCK_n parcels P37 produced.
 ///   3. Within EACH block: P61 (#61, places a few small squares directly on
 ///      the block's raw land) -> P95 (#95, reworked to build pads around
-///      whatever P61 placed) -> P107 (#107, daylight-depth building shape).
+///      whatever P61 placed).
+///   4. P107 (#107) -- daylight-depth building shape. Runs ONCE, site-scale,
+///      after every block has its pads, since it already filters by
+///      `use_category == "p95_building_pad"` across the whole neighborhood.
+/// There's no single Rust function that runs all four steps -- steps 1, 2,
+/// and 4 are single `run_operator` calls; step 3 is a caller-side loop over
+/// the BLOCK_n parcels P37 produced, calling P61 then P95 once per block.
 /// BlockGrouping and the older BuildingShape stub are kept for backward
 /// compatibility with pipelines/tests that ran the OLD order (P95 first,
 /// grouping its pads into blocks afterward) -- not used by the corrected

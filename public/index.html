@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P95 → BlockGrouping → PathNetwork → P107 Wings of Light → P61 Small Public Squares">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → [per block: P61 Small Public Squares → P95 Building Complex] → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1442,32 +1442,71 @@
     await new Promise(r => setTimeout(r, 16));
     try {
       const t0 = performance.now();
-      // Pipeline: parcel → pads → blocks → paths → buildings (P107 wings of
-      // light, with real courtyards) → P61 small public squares (breaks any
-      // oversized courtyard into several smaller connected squares).
-      // Each step runs with operator-specific defaults (the current params
-      // panel only applies to the user's selected single-step operator).
+      // Corrected pipeline: Alexander's own pattern numbering (37 < 52 < 61
+      // < 95 < 107) run in that order, not the old flat P95-first sequence.
+      // See registry.rs's all_operators_v01 doc comment and
+      // tests/corrected_pipeline.rs for the same orchestration, tested.
+      //   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks.
+      //   2. PathNetwork/P52 (once, site-scale): connect the blocks.
+      //   3. Per block: P61 places a few squares on the block's raw land,
+      //      then P95 (reworked) builds pads around them.
+      //   4. P107 (once, site-scale): shape every pad for daylight depth.
       let currentJson = activeRawNeighborhood;
       const allTraces = [];
-      const pipeline = [
-        { op: "p95_building_complex", target: parcelId },
-        { op: "block_grouping", target: "*" },
-        { op: "path_network", target: "*" },
-        { op: "p107_wings_of_light", target: "*" },
-        { op: "p61_small_public_squares", target: "*" },
-      ];
-      for (const step of pipeline) {
-        const result = subdivide_parcel(currentJson, step.target, step.op, "null", seed);
+      const runStep = (json, target, op, stepSeed) => {
+        const result = subdivide_parcel(json, target, op, "null", stepSeed);
         const parsed = JSON.parse(result);
-        currentJson = JSON.stringify(parsed.neighborhood);
         allTraces.push(parsed.trace);
+        return JSON.stringify(parsed.neighborhood);
+      };
+
+      // 1. P37, once, on the target parcel.
+      currentJson = runStep(currentJson, parcelId, "p37_house_cluster", seed);
+
+      // 2. PathNetwork/P52, once -- connects the BLOCK_n parcels P37 just made.
+      currentJson = runStep(currentJson, "*", "path_network", seed);
+
+      // 3. Per block: P61 (raw-land placement) then P95 (builds around it).
+      const afterPaths = JSON.parse(currentJson);
+      const blockIds = afterPaths.parcels
+        .filter(p => (p.spec || "").startsWith("BLOCK_"))
+        .map(p => p.id);
+      let blocksWithSquares = 0;
+      blockIds.forEach((blockId, i) => {
+        const blockSeed = seed + BigInt(i) + 1n;
+        try {
+          currentJson = runStep(currentJson, blockId, "p61_small_public_squares", blockSeed);
+          blocksWithSquares += 1;
+        } catch (e) {
+          // A block too small/concave for P61 to place a square on is not
+          // fatal -- P95 still runs on it below, just without a pre-placed
+          // square to build around.
+          allTraces.push({ operator_name: "p61_small_public_squares", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+        }
+        try {
+          currentJson = runStep(currentJson, blockId, "p95_building_complex", blockSeed);
+        } catch (e) {
+          allTraces.push({ operator_name: "p95_building_complex", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+        }
+      });
+
+      // 4. P107, once -- shapes every pad regardless of which block it came
+      // from. Errors hard if literally every pad site-wide is below its own
+      // size filter (a real edge case at block scale, where pads are
+      // smaller than the old whole-site pipeline produced) -- not fatal to
+      // the rest of the pipeline, so it's caught like the per-block steps.
+      try {
+        currentJson = runStep(currentJson, "*", "p107_wings_of_light", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p107_wings_of_light", headline: `Skipped (${e.message || e})`, steps: [] });
       }
+
       const finalNbhd = JSON.parse(currentJson);
       const dt = (performance.now() - t0).toFixed(0);
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P95+Block+Path+P107+P61 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+[P61+P95]×${blockIds.length} blocks+P107 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {
