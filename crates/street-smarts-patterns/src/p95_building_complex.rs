@@ -11,22 +11,42 @@
 //! This implementation's interpretation:
 //!
 //! 1. Take a parcel that reads as monolithic (e.g. a dead asphalt mall site).
-//! 2. Seed N building centers inside the parcel using stratified random
-//!    sampling — N proportional to parcel area, capped to a sensible range.
-//! 3. Compute the Voronoi tessellation of those seeds, clipped to the parcel.
-//! 4. Designate the largest cell as the COURTYARD (open space — the
+//! 2. Subtract any land earlier pipeline steps already reserved -- P52 path
+//!    corridors, P61 squares -- so seeding happens on what's actually left
+//!    to build on, not the raw parcel as if nothing had been decided yet.
+//! 3. Seed N building centers inside each remaining buildable piece using
+//!    stratified random sampling — N proportional to piece area, capped to
+//!    a sensible range.
+//! 4. Compute the Voronoi tessellation of those seeds, clipped to the piece.
+//! 5. Designate the largest cell as the COURTYARD (open space — the
 //!    "interconnecting space" the pattern requires).
-//! 5. Inset the remaining cells by ~3m so the buildings don't share walls,
+//! 6. Inset the remaining cells by ~3m so the buildings don't share walls,
 //!    leaving room for the negative-space backbone (paths, alleys).
-//! 6. Emit each remaining cell as a new EDA parcel (one proposed building pad).
+//! 7. Emit each remaining cell as a new EDA parcel (one proposed building pad).
 //!
-//! Output: ~10 new building-pad parcels + 1 courtyard open-space, replacing
-//! the monolithic source parcel.
+//! Output: ~10 new building-pad parcels + 1 courtyard open-space per
+//! buildable piece, replacing the monolithic source parcel.
+//!
+//! # v0.2: builds around pre-placed land, doesn't just claim the whole parcel
+//!
+//! v0.1 always seeded across the full source parcel, regardless of whatever
+//! else was already on it. That was fine as long as P95 ran first in the
+//! pipeline -- but Alexander's own pattern numbering (52 < 61 < 95) says it
+//! shouldn't: P52 (paths) and P61 (small squares) are supposed to be laid
+//! down as fixed context BEFORE a building complex reacts to them, not
+//! retrofitted into whatever courtyard P95 happened to leave over (see the
+//! `pattern_order_prototype.rs` experiment this responds to). This version
+//! reads `nbhd.open_space` and `nbhd.streets` for anything already
+//! overlapping the target parcel, subtracts it (`planar::subtract_convex`,
+//! real polygon subtraction, not a heuristic), and seeds only the buildable
+//! remainder. A parcel with nothing pre-placed on it behaves exactly like
+//! v0.1 -- this is additive, not a behavior change for the old pipeline order.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
-    area, bbox, centroid, clip_to_polygon, inset_convex, local_to_ring,
-    point_in_polygon, ring_to_local, union_pieces, voronoi_cell, Pt2,
+    area, bbox, centroid, clip_to_polygon, inset_convex, lnglat_to_local, local_to_ring,
+    point_in_polygon, rect_corridor, ring_to_local, subtract_convex, union_pieces, voronoi_cell,
+    Pt2,
 };
 use crate::prng::Prng;
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
@@ -155,6 +175,56 @@ impl Parameters for P95Params {
 
 pub struct P95BuildingComplex;
 
+/// Collect convex "reserved" holes already committed on this part of the
+/// parcel by earlier pipeline steps -- existing open space (P52/P61's
+/// pre-placed squares) and street rights-of-way -- so P95 seeds pads AROUND
+/// them instead of through them.
+///
+/// Real subtraction (`planar::subtract_convex`) is mathematically exact for
+/// a hole that doesn't overlap the subject at all -- it's a no-op -- so this
+/// doesn't need to be a precise "is this relevant" filter, just a coarse
+/// containment check (hole centroid inside the part) to skip obviously
+/// irrelevant entities instead of scanning the whole neighborhood's streets
+/// and open space against every part.
+///
+/// Assumes hole polygons are convex (real squares from P61/a corrected P52
+/// stage are; see `subtract_convex`'s own doc comment for the same
+/// assumption and its tradeoff). A non-convex existing open-space polygon
+/// would subtract its convex hull instead of its real shape -- not guarded
+/// against here.
+fn reserved_holes_for_part(nbhd: &Neighborhood, local_part: &[Pt2], origin: &LngLat) -> Vec<Vec<Pt2>> {
+    let mut holes: Vec<Vec<Pt2>> = Vec::new();
+
+    for o in &nbhd.open_space {
+        let local_ring = ring_to_local(&o.polygon.outer, origin);
+        if local_ring.len() < 3 {
+            continue;
+        }
+        if point_in_polygon(centroid(&local_ring), local_part) {
+            holes.push(local_ring);
+        }
+    }
+
+    for s in &nbhd.streets {
+        if s.centerline.len() < 2 {
+            continue;
+        }
+        let half_width = s.row_width_m.unwrap_or(4.0) / 2.0;
+        let local_line: Vec<Pt2> = s.centerline.iter().map(|p| lnglat_to_local(p, origin)).collect();
+        for w in local_line.windows(2) {
+            let mid = Pt2::new((w[0].x + w[1].x) / 2.0, (w[0].y + w[1].y) / 2.0);
+            if point_in_polygon(mid, local_part) {
+                let corridor = rect_corridor(w[0], w[1], half_width);
+                if corridor.len() >= 3 {
+                    holes.push(corridor);
+                }
+            }
+        }
+    }
+
+    holes
+}
+
 impl PatternOperator for P95BuildingComplex {
     type Params = P95Params;
 
@@ -167,7 +237,7 @@ impl PatternOperator for P95BuildingComplex {
         }
     }
     fn description(&self) -> &'static str {
-        "Break a monolithic parcel into N building-pad parcels arranged around a courtyard."
+        "Break a monolithic parcel into N building-pad parcels arranged around a courtyard, building around any land earlier pipeline steps already reserved."
     }
 
     fn apply(
@@ -202,158 +272,225 @@ impl PatternOperator for P95BuildingComplex {
         let mut global_cell_idx = 0;
 
         for (part_idx, part) in parts.iter().enumerate() {
-            let local_poly = ring_to_local(&part.outer, &origin);
-            if local_poly.len() < 3 {
+            let raw_local_poly = ring_to_local(&part.outer, &origin);
+            if raw_local_poly.len() < 3 {
                 steps.push(format!(
                     "part[{}]: skipped (degenerate, only {} pts)",
-                    part_idx, local_poly.len()
-                ));
-                continue;
-            }
-            let part_area_m2 = area(&local_poly);
-            let part_area_ac = part_area_m2 / 4046.86;
-
-            // Target building count from params.
-            let raw_target = (part_area_m2 / 1_000.0) * params.buildings_per_kilo_m2;
-            let n_buildings = (raw_target.round() as usize)
-                .clamp(params.min_buildings as usize, params.max_buildings as usize);
-            steps.push(format!(
-                "part[{}] ({:.2} ac, {:.0} m²): targeting {} buildings + 1 courtyard",
-                part_idx, part_area_ac, part_area_m2, n_buildings
-            ));
-
-            // Bounding box of the part.
-            let (min_pt, max_pt) = bbox(&local_poly);
-            let w = max_pt.x - min_pt.x;
-            let h = max_pt.y - min_pt.y;
-
-            // Stratified-random seeding inside the actual parcel polygon.
-            let target_seeds = n_buildings + 1;
-            let seeds = stratified_seeds(&local_poly, target_seeds, params.seed_jitter, &mut prng);
-            if seeds.len() < 2 {
-                steps.push(format!(
-                    "part[{}]: only {} valid seeds (need 2+: 1 building + 1 courtyard) — too concave or too small. Skipping.",
-                    part_idx, seeds.len()
-                ));
-                continue;
-            }
-            steps.push(format!(
-                "part[{}]: placed {} seeds (target {})",
-                part_idx, seeds.len(), target_seeds
-            ));
-
-            // Voronoi bound = a generous rectangle around the part bbox.
-            let pad = (w + h) * 0.5;
-            let bound_rect = vec![
-                Pt2::new(min_pt.x - pad, min_pt.y - pad),
-                Pt2::new(max_pt.x + pad, min_pt.y - pad),
-                Pt2::new(max_pt.x + pad, max_pt.y + pad),
-                Pt2::new(min_pt.x - pad, max_pt.y + pad),
-            ];
-
-            // Compute each cell; clip to the part polygon (lossy for non-convex
-            // parcels — see clip_convex_to_polygon docs).
-            // Each Voronoi cell may produce multiple disjoint pieces when
-            // clipped to a non-convex parcel boundary. We keep them all
-            // (fragmentation is geometric truth, not noise to suppress) but
-            // drop pieces too small to plausibly hold a building (< 80 m²).
-            let mut cells: Vec<(Pt2, Vec<Pt2>)> = Vec::with_capacity(seeds.len() * 2);
-            for &site in &seeds {
-                let raw = voronoi_cell(site, &seeds, &bound_rect);
-                if raw.is_empty() { continue; }
-                let fragments = clip_to_polygon(&raw, &local_poly);
-                // `clip_to_polygon` triangulates the clip boundary and intersects
-                // against each triangle separately -- adjacent fragments from the
-                // SAME site need to be merged back into one pad, or a non-convex
-                // parcel boundary (real building sites usually aren't convex)
-                // shatters one seed into dozens of artificial "pads". Genuinely
-                // disjoint fragments (a seed's cell split by a real concavity)
-                // correctly stay separate.
-                let pieces = union_pieces(&fragments);
-                for piece in pieces {
-                    if piece.len() >= 3 && area(&piece) >= params.min_fragment_area_m2 {
-                        cells.push((site, piece));
-                    }
-                }
-            }
-            if cells.is_empty() {
-                steps.push(format!(
-                    "part[{}]: 0 viable cells after clipping — parcel too non-convex for this seed.",
-                    part_idx
+                    part_idx, raw_local_poly.len()
                 ));
                 continue;
             }
 
-            // Pick courtyard. Two modes selected via params.courtyard_mode:
-            //   < 0.5  → largest cell
-            //   ≥ 0.5  → most-central (closest to part centroid)
-            let part_centroid = centroid(&local_poly);
-            let courtyard;
-            let cells_sorted: Vec<(Pt2, Vec<Pt2>)>;
-            if params.courtyard_mode >= 0.5 {
-                let mut sorted = cells.clone();
-                sorted.sort_by(|a, b| {
-                    let da = centroid(&a.1).dist(part_centroid);
-                    let db = centroid(&b.1).dist(part_centroid);
-                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                courtyard = sorted.remove(0);
-                cells_sorted = sorted;
+            // Subtract land earlier pipeline steps already reserved (P52
+            // path corridors, P61 squares) before seeding -- build pads
+            // around them, not through them. A part with nothing pre-placed
+            // on it (the old pipeline order, or a fresh parcel) yields
+            // `holes.is_empty()` and behaves exactly like v0.1.
+            let holes = reserved_holes_for_part(nbhd, &raw_local_poly, &origin);
+            let mut buildable_pieces = vec![raw_local_poly.clone()];
+            for hole in &holes {
+                // subtract_convex's own output is exact (verified: pieces
+                // sum to the correct area, zero hole overlap) -- but do NOT
+                // run its pieces through union_pieces expecting it to
+                // re-merge them. union_pieces' edge-cancellation assumes
+                // triangulation-style splits, where a shared internal edge
+                // is the SAME segment in both neighbors. subtract_convex's
+                // pieces instead share boundary along the HOLE's cut lines,
+                // which real parcel vertices can subdivide differently
+                // across neighboring pieces -- cancelling the wrong edges
+                // and silently reintroducing part of the hole. Caught this
+                // for real: it cost ~300 m² of the "subtracted" square
+                // reappearing in a downstream pad. Left un-merged instead;
+                // see the piece-count mitigation below.
+                buildable_pieces = buildable_pieces
+                    .into_iter()
+                    .flat_map(|p| subtract_convex(&p, hole))
+                    .collect();
+            }
+            if !holes.is_empty() {
+                let reserved_area: f64 = holes.iter().map(|h| area(h)).sum();
+                let buildable_area: f64 = buildable_pieces.iter().map(|p| area(p)).sum();
                 steps.push(format!(
-                    "part[{}]: courtyard = most-central cell ({:.0} m²); {} cells become building pads",
-                    part_idx, area(&courtyard.1), cells_sorted.len()
-                ));
-            } else {
-                let mut sorted = cells.clone();
-                sorted.sort_by(|a, b| {
-                    area(&b.1).partial_cmp(&area(&a.1)).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                courtyard = sorted.remove(0);
-                cells_sorted = sorted;
-                steps.push(format!(
-                    "part[{}]: courtyard = largest cell ({:.0} m²); {} cells become building pads",
-                    part_idx, area(&courtyard.1), cells_sorted.len()
+                    "part[{}]: {} reserved hole(s) from earlier pipeline steps ({:.0} m² claimed) subtracted -- {:.0} m² buildable remains across {} piece(s).",
+                    part_idx, holes.len(), reserved_area, buildable_area, buildable_pieces.len()
                 ));
             }
 
-            // Emit courtyard as open space (no inset — courtyards fill their cell).
-            let courtyard_ring = local_to_ring(&courtyard.1, &origin);
-            all_new_open.push(OpenSpace {
-                id: format!("{}_P95_courtyard_p{}", parcel_id, part_idx),
-                polygon: Polygon::from_ring(courtyard_ring),
-                kind: OpenSpaceKind::Plaza,
-            });
-
-            // Emit each building-pad cell as a new EDA parcel. Inset by
-            // params.pad_inset_m to make room for "interconnecting spaces".
-            for (_, raw_cell) in cells_sorted {
-                let inset_cell = if params.pad_inset_m > 0.0 {
-                    inset_convex(&raw_cell, params.pad_inset_m)
-                } else {
-                    raw_cell
-                };
-                if inset_cell.len() < 3 || area(&inset_cell) < params.min_pad_area_m2 {
+            // Leaving subtract_convex's pieces un-merged (see above) means a
+            // handful of holes can leave many small buildable fragments, not
+            // just the real disjoint regions. `min_fragment_area_m2` (tuned
+            // for Voronoi-cell fragments, a much smaller-scale concept) is
+            // too low a bar for "does this deserve its own building
+            // complex" -- a fragment has to plausibly fit at least
+            // min_buildings pads at min_pad_area_m2 each, or it's not a
+            // building complex, it's a strip of land next to one.
+            let min_worthwhile_area_m2 = params.min_buildings * params.min_pad_area_m2;
+            let multi_piece = buildable_pieces.len() > 1;
+            let mut n_skipped_small_fragments = 0;
+            for (piece_idx, local_poly) in buildable_pieces.into_iter().enumerate() {
+                let label = if multi_piece { format!("{part_idx}.{piece_idx}") } else { part_idx.to_string() };
+                if local_poly.len() < 3 {
                     continue;
                 }
-                let pad_ring = local_to_ring(&inset_cell, &origin);
-                let pad_area_m2 = area(&inset_cell);
-                let pad_area_ac = pad_area_m2 / 4046.86;
-                global_cell_idx += 1;
-                all_new_parcels.push(Parcel {
-                    id: format!("{}_P95_cell_{}", parcel_id, global_cell_idx),
-                    polygon: Polygon::from_ring(pad_ring),
-                    area_acres: pad_area_ac,
-                    use_category: Some("p95_building_pad".into()),
-                    ownership: None,
-                    is_eda: true,
-                    spec: Some(format!("P95_CELL_{}", global_cell_idx)),
+                let part_area_m2 = area(&local_poly);
+                if part_area_m2 < min_worthwhile_area_m2 {
+                    // Too small to be its own building complex -- not an
+                    // error, just a strip of buildable land left over from
+                    // subtraction that isn't worth a full seed-and-courtyard
+                    // treatment. Counted, not silently dropped.
+                    n_skipped_small_fragments += 1;
+                    continue;
+                }
+                let part_area_ac = part_area_m2 / 4046.86;
+
+                // Target building count from params.
+                let raw_target = (part_area_m2 / 1_000.0) * params.buildings_per_kilo_m2;
+                let n_buildings = (raw_target.round() as usize)
+                    .clamp(params.min_buildings as usize, params.max_buildings as usize);
+                steps.push(format!(
+                    "part[{}] ({:.2} ac, {:.0} m²): targeting {} buildings + 1 courtyard",
+                    label, part_area_ac, part_area_m2, n_buildings
+                ));
+
+                // Bounding box of the piece.
+                let (min_pt, max_pt) = bbox(&local_poly);
+                let w = max_pt.x - min_pt.x;
+                let h = max_pt.y - min_pt.y;
+
+                // Stratified-random seeding inside the actual buildable polygon.
+                let target_seeds = n_buildings + 1;
+                let seeds = stratified_seeds(&local_poly, target_seeds, params.seed_jitter, &mut prng);
+                if seeds.len() < 2 {
+                    steps.push(format!(
+                        "part[{}]: only {} valid seeds (need 2+: 1 building + 1 courtyard) — too concave or too small. Skipping.",
+                        label, seeds.len()
+                    ));
+                    continue;
+                }
+                steps.push(format!(
+                    "part[{}]: placed {} seeds (target {})",
+                    label, seeds.len(), target_seeds
+                ));
+
+                // Voronoi bound = a generous rectangle around the piece bbox.
+                let pad = (w + h) * 0.5;
+                let bound_rect = vec![
+                    Pt2::new(min_pt.x - pad, min_pt.y - pad),
+                    Pt2::new(max_pt.x + pad, min_pt.y - pad),
+                    Pt2::new(max_pt.x + pad, max_pt.y + pad),
+                    Pt2::new(min_pt.x - pad, max_pt.y + pad),
+                ];
+
+                // Compute each cell; clip to the piece polygon (lossy for
+                // non-convex boundaries — see clip_convex_to_polygon docs).
+                // Each Voronoi cell may produce multiple disjoint pieces when
+                // clipped to a non-convex boundary. We keep them all
+                // (fragmentation is geometric truth, not noise to suppress) but
+                // drop pieces too small to plausibly hold a building (< 80 m²).
+                let mut cells: Vec<(Pt2, Vec<Pt2>)> = Vec::with_capacity(seeds.len() * 2);
+                for &site in &seeds {
+                    let raw = voronoi_cell(site, &seeds, &bound_rect);
+                    if raw.is_empty() { continue; }
+                    let fragments = clip_to_polygon(&raw, &local_poly);
+                    // `clip_to_polygon` triangulates the clip boundary and intersects
+                    // against each triangle separately -- adjacent fragments from the
+                    // SAME site need to be merged back into one pad, or a non-convex
+                    // boundary (real building sites usually aren't convex)
+                    // shatters one seed into dozens of artificial "pads". Genuinely
+                    // disjoint fragments (a seed's cell split by a real concavity)
+                    // correctly stay separate.
+                    let pieces = union_pieces(&fragments);
+                    for piece in pieces {
+                        if piece.len() >= 3 && area(&piece) >= params.min_fragment_area_m2 {
+                            cells.push((site, piece));
+                        }
+                    }
+                }
+                if cells.is_empty() {
+                    steps.push(format!(
+                        "part[{}]: 0 viable cells after clipping — parcel too non-convex for this seed.",
+                        label
+                    ));
+                    continue;
+                }
+
+                // Pick courtyard. Two modes selected via params.courtyard_mode:
+                //   < 0.5  → largest cell
+                //   ≥ 0.5  → most-central (closest to piece centroid)
+                let piece_centroid = centroid(&local_poly);
+                let courtyard;
+                let cells_sorted: Vec<(Pt2, Vec<Pt2>)>;
+                if params.courtyard_mode >= 0.5 {
+                    let mut sorted = cells.clone();
+                    sorted.sort_by(|a, b| {
+                        let da = centroid(&a.1).dist(piece_centroid);
+                        let db = centroid(&b.1).dist(piece_centroid);
+                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    courtyard = sorted.remove(0);
+                    cells_sorted = sorted;
+                    steps.push(format!(
+                        "part[{}]: courtyard = most-central cell ({:.0} m²); {} cells become building pads",
+                        label, area(&courtyard.1), cells_sorted.len()
+                    ));
+                } else {
+                    let mut sorted = cells.clone();
+                    sorted.sort_by(|a, b| {
+                        area(&b.1).partial_cmp(&area(&a.1)).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    courtyard = sorted.remove(0);
+                    cells_sorted = sorted;
+                    steps.push(format!(
+                        "part[{}]: courtyard = largest cell ({:.0} m²); {} cells become building pads",
+                        label, area(&courtyard.1), cells_sorted.len()
+                    ));
+                }
+
+                // Emit courtyard as open space (no inset — courtyards fill their cell).
+                let courtyard_ring = local_to_ring(&courtyard.1, &origin);
+                all_new_open.push(OpenSpace {
+                    id: format!("{}_P95_courtyard_p{}", parcel_id, label),
+                    polygon: Polygon::from_ring(courtyard_ring),
+                    kind: OpenSpaceKind::Plaza,
                 });
+
+                // Emit each building-pad cell as a new EDA parcel. Inset by
+                // params.pad_inset_m to make room for "interconnecting spaces".
+                for (_, raw_cell) in cells_sorted {
+                    let inset_cell = if params.pad_inset_m > 0.0 {
+                        inset_convex(&raw_cell, params.pad_inset_m)
+                    } else {
+                        raw_cell
+                    };
+                    if inset_cell.len() < 3 || area(&inset_cell) < params.min_pad_area_m2 {
+                        continue;
+                    }
+                    let pad_ring = local_to_ring(&inset_cell, &origin);
+                    let pad_area_m2 = area(&inset_cell);
+                    let pad_area_ac = pad_area_m2 / 4046.86;
+                    global_cell_idx += 1;
+                    all_new_parcels.push(Parcel {
+                        id: format!("{}_P95_cell_{}", parcel_id, global_cell_idx),
+                        polygon: Polygon::from_ring(pad_ring),
+                        area_acres: pad_area_ac,
+                        use_category: Some("p95_building_pad".into()),
+                        ownership: None,
+                        is_eda: true,
+                        spec: Some(format!("P95_CELL_{}", global_cell_idx)),
+                    });
+                }
+            }
+            if n_skipped_small_fragments > 0 {
+                steps.push(format!(
+                    "part[{}]: {} buildable fragment(s) from subtraction were smaller than min_buildings×min_pad_area_m2 ({:.0} m²) -- not worth a full building complex, left as unclaimed land rather than forced into one.",
+                    part_idx, n_skipped_small_fragments, min_worthwhile_area_m2
+                ));
             }
         }
 
         if all_new_parcels.is_empty() && all_new_open.is_empty() {
             return Err(format!(
-                "P95 produced no output for parcel {} (all parts too non-convex or too small)",
+                "P95 produced no output for parcel {} (all parts too non-convex, too small, or fully reserved by earlier steps)",
                 parcel_id
             ));
         }
@@ -382,6 +519,9 @@ impl PatternOperator for P95BuildingComplex {
                 "v0.1 uses Voronoi cells as a coarse first-pass at building positions. Real building \
                  design at this stage would also account for solar orientation, prevailing wind, \
                  view-sheds, existing trees, and the felt edges of the parcel. None of those are inputs here.".into(),
+                "Reserved-land subtraction (existing open space / streets) assumes those holes are \
+                 convex -- true for the squares and path corridors this codebase's own operators \
+                 produce, not guaranteed for hand-authored or third-party fixtures.".into(),
             ],
             seed,
             params: params.as_map(),

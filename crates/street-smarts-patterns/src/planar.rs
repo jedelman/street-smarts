@@ -455,15 +455,24 @@ pub fn clip_to_polygon_largest(convex_subject: &[Pt2], clip_polygon: &[Pt2]) -> 
 /// Points are matched by rounding to 0.1mm — comfortably above f64 roundoff
 /// at parcel-scale (metre) coordinates, comfortably below anything that
 /// matters geometrically for a building pad.
+///
+/// Uses `BTreeMap`/`BTreeSet`, not `HashMap`/`HashSet`: an earlier version
+/// used hash maps, whose iteration order isn't seeded, so which vertex
+/// started a boundary trace could vary run-to-run on identical input (noted
+/// as a known gap when it only shifted floating-point noise in a score).
+/// Reworking P95 to build around subtracted reserved land leans on this
+/// function to re-merge subtraction seams (see `subtract_convex`'s
+/// callers), where that same nondeterminism showed up as real, measurable
+/// overlap slivers along a seam, not just score noise -- worth the fix now.
 pub fn union_pieces(pieces: &[Vec<Pt2>]) -> Vec<Vec<Pt2>> {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     fn key(p: Pt2) -> (i64, i64) {
         ((p.x * 10_000.0).round() as i64, (p.y * 10_000.0).round() as i64)
     }
 
-    let mut point_by_key: HashMap<(i64, i64), Pt2> = HashMap::new();
-    let mut edge_count: HashMap<((i64, i64), (i64, i64)), i32> = HashMap::new();
+    let mut point_by_key: BTreeMap<(i64, i64), Pt2> = BTreeMap::new();
+    let mut edge_count: BTreeMap<((i64, i64), (i64, i64)), i32> = BTreeMap::new();
 
     for piece in pieces {
         let n = piece.len();
@@ -479,14 +488,14 @@ pub fn union_pieces(pieces: &[Vec<Pt2>]) -> Vec<Vec<Pt2>> {
     }
 
     // Keep only edges whose reverse doesn't also occur — the real boundary.
-    let mut next: HashMap<(i64, i64), (i64, i64)> = HashMap::new();
+    let mut next: BTreeMap<(i64, i64), (i64, i64)> = BTreeMap::new();
     for (&(a, b), _) in edge_count.iter() {
         if !edge_count.contains_key(&(b, a)) {
             next.insert(a, b);
         }
     }
 
-    let mut visited: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+    let mut visited: std::collections::BTreeSet<(i64, i64)> = std::collections::BTreeSet::new();
     let mut loops: Vec<Vec<Pt2>> = Vec::new();
 
     for (&start, _) in next.iter() {
@@ -606,6 +615,96 @@ pub fn kruskal_mst(points: &[Pt2]) -> MstResult {
         }
     }
     MstResult { mst_edges, remaining_edges }
+}
+
+/// Subtract a convex `hole` from a (possibly non-convex) `subject` polygon,
+/// returning the remaining land as zero or more simple polygon pieces.
+///
+/// The one general boolean-subtraction primitive this codebase didn't have:
+/// `clip_to_polygon` only computes intersection (A ∩ B). Reworking P95 to
+/// build around P52/P61's pre-placed paths and squares (rather than
+/// carving its own single leftover courtyard) needs real subtraction --
+/// "this parcel, MINUS the land already reserved."
+///
+/// Algorithm: for a convex hole with CCW edges e_1..e_n, `subject \ hole`
+/// decomposes exactly into the union of:
+///   Piece_1 = subject ∩ outside(e_1)
+///   Piece_2 = subject ∩ inside(e_1) ∩ outside(e_2)
+///   Piece_i = subject ∩ inside(e_1..e_{i-1}) ∩ outside(e_i)
+/// These are mutually exclusive by construction (each requires every prior
+/// edge to be "inside" and the current one "outside"), and their union is
+/// exactly "outside at least one edge" = outside the hole. Each piece is
+/// produced by `clip_half_plane`, which is exact against a single infinite
+/// line even when `subject` itself is non-convex -- only intersecting
+/// against MULTIPLE edges of a non-convex clip polygon at once is unsafe
+/// (that's what `clip_to_polygon`'s triangulation trick works around);
+/// sequential single-line clips have no such problem.
+///
+/// `hole` must be convex (callers in this codebase only ever subtract
+/// squares and path corridors, both convex by construction). A non-convex
+/// hole would silently subtract its convex hull instead of its real shape
+/// -- not guarded against here, same tradeoff `clip_convex_to_polygon`
+/// documents for its own convexity assumption.
+///
+/// Do NOT feed this function's output through `union_pieces` expecting it
+/// to re-merge the pieces into fewer, cleaner shapes. `union_pieces`
+/// assumes triangulation-style splits, where a shared internal edge is the
+/// exact same segment in both neighboring pieces. These pieces instead
+/// share boundary along the HOLE's cut lines -- and a real subject vertex
+/// landing near one of those lines can subdivide it differently across
+/// neighboring pieces, so union_pieces cancels the wrong edges and
+/// silently reintroduces part of the hole. Caught this for real in P95's
+/// rework: it cost ~300 m² of a "subtracted" square reappearing in a
+/// downstream building pad. If fragment count matters to a caller, filter
+/// or accept the un-merged pieces; don't union them.
+pub fn subtract_convex(subject: &[Pt2], hole: &[Pt2]) -> Vec<Vec<Pt2>> {
+    if subject.len() < 3 {
+        return vec![];
+    }
+    if hole.len() < 3 {
+        return vec![subject.to_vec()];
+    }
+    let hole_ccw = ensure_ccw(hole);
+    let n = hole_ccw.len();
+    let mut pieces: Vec<Vec<Pt2>> = Vec::new();
+    let mut remaining = subject.to_vec();
+    for i in 0..n {
+        if remaining.len() < 3 {
+            break;
+        }
+        let a = hole_ccw[i];
+        let b = hole_ccw[(i + 1) % n];
+        // Outside edge i (left of b->a, i.e. right of a->b): the piece of
+        // `remaining` that's already known to fail this edge's "inside"
+        // test -- part of subject \ hole, final.
+        let outside_piece = clip_half_plane(&remaining, b, a);
+        if outside_piece.len() >= 3 && area(&outside_piece) > 0.5 {
+            pieces.push(outside_piece);
+        }
+        // Narrow `remaining` to "inside edge i" for the next iteration.
+        remaining = clip_half_plane(&remaining, a, b);
+    }
+    pieces
+}
+
+/// Buffer a segment `p`-`q` into a rectangle of the given half-width, CCW
+/// oriented -- the shape a path/street's right-of-way actually occupies,
+/// for use as a `subtract_convex` hole. Degenerates to an empty vec for a
+/// zero-length segment (nothing to buffer).
+pub fn rect_corridor(p: Pt2, q: Pt2, half_width: f64) -> Vec<Pt2> {
+    let dx = q.x - p.x;
+    let dy = q.y - p.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-9 || half_width <= 0.0 {
+        return vec![];
+    }
+    let (nx, ny) = (-dy / len * half_width, dx / len * half_width);
+    vec![
+        Pt2::new(p.x + nx, p.y + ny),
+        Pt2::new(q.x + nx, q.y + ny),
+        Pt2::new(q.x - nx, q.y - ny),
+        Pt2::new(p.x - nx, p.y - ny),
+    ]
 }
 
 #[cfg(test)]
@@ -771,5 +870,74 @@ mod tests {
         let pieces = clip_to_polygon(&subject, &u);
         let total: f64 = pieces.iter().map(|p| area(p)).sum();
         assert!((total - 76.0).abs() < 0.5, "clipped pieces total area = {total}, expected ~76");
+    }
+
+    #[test]
+    fn subtract_convex_hole_entirely_inside_subject() {
+        // 10x10 square minus a centered 4x4 hole -> remaining area 100-16=84.
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0),
+        ];
+        let hole = vec![
+            Pt2::new(3.0, 3.0), Pt2::new(7.0, 3.0), Pt2::new(7.0, 7.0), Pt2::new(3.0, 7.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 84.0).abs() < 0.5, "subtracted area = {total}, expected ~84");
+        // Nothing in the remaining pieces should overlap the hole.
+        for piece in &pieces {
+            let overlap: f64 = clip_to_polygon(&hole, piece).iter().map(|p| area(p)).sum();
+            assert!(overlap < 0.5, "remaining piece should not overlap the subtracted hole, got {overlap} m² overlap");
+        }
+    }
+
+    #[test]
+    fn subtract_convex_hole_entirely_outside_subject_is_a_no_op() {
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0),
+        ];
+        let hole = vec![
+            Pt2::new(5.0, 5.0), Pt2::new(6.0, 5.0), Pt2::new(6.0, 6.0), Pt2::new(5.0, 6.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 1.0).abs() < 1e-6, "non-overlapping hole should leave subject fully intact, got {total}");
+    }
+
+    #[test]
+    fn subtract_convex_hole_straddling_an_edge_removes_only_the_overlap() {
+        // 10x10 square minus a hole straddling its right edge (x in [8,12])
+        // -> remaining area 100 - (2*4) = 92 (only the x in [8,10] portion,
+        // 2 wide x 4 tall, actually overlaps the subject).
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0),
+        ];
+        let hole = vec![
+            Pt2::new(8.0, 3.0), Pt2::new(12.0, 3.0), Pt2::new(12.0, 7.0), Pt2::new(8.0, 7.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 92.0).abs() < 0.5, "subtracted area = {total}, expected ~92");
+    }
+
+    #[test]
+    fn rect_corridor_has_correct_area_and_is_centered_on_the_segment() {
+        let p = Pt2::new(0.0, 0.0);
+        let q = Pt2::new(10.0, 0.0);
+        let corridor = rect_corridor(p, q, 2.0);
+        assert_eq!(corridor.len(), 4);
+        let a = area(&corridor);
+        assert!((a - 40.0).abs() < 1e-6, "10m segment x 4m width should be 40 m², got {a}");
+        // Centered: every vertex should be within 2m of the segment's y=0 line.
+        for v in &corridor {
+            assert!(v.y.abs() <= 2.0 + 1e-9, "corridor should be centered on the segment, vertex y={}", v.y);
+        }
+    }
+
+    #[test]
+    fn rect_corridor_degenerates_to_empty_for_zero_length_segment() {
+        let p = Pt2::new(1.0, 1.0);
+        let corridor = rect_corridor(p, p, 2.0);
+        assert!(corridor.is_empty());
     }
 }
