@@ -90,6 +90,12 @@ pub struct P95Params {
     /// (typically from polygon clipping at concave parcel boundaries) are
     /// discarded before inset.
     pub min_fragment_area_m2: f64,
+    /// Minimum bounding-box short side in metres. `min_pad_area_m2` alone
+    /// doesn't catch a sliver -- a 54m x 5m strip clears 120 m² easily but
+    /// isn't a buildable floor plate at any height; real building footprints
+    /// need SOME minimum width regardless of how much area they have.
+    /// Dropped the same way an undersized pad is, not shrunk or reshaped.
+    pub min_pad_short_side_m: f64,
     /// Courtyard-selection mode (encoded as a float for the param vector):
     /// 0.0 = largest cell becomes courtyard
     /// 1.0 = most-central cell (closest to parcel centroid) becomes courtyard
@@ -136,6 +142,11 @@ impl Parameters for P95Params {
                 25.0, 300.0, 80.0,
             ).with_unit("m²"),
             ParamSpec::float(
+                "min_pad_short_side_m",
+                "Drop pads narrower than this on their short bounding-box side, regardless of area -- a real floor plate needs SOME width.",
+                3.0, 15.0, 7.0,
+            ).with_unit("m"),
+            ParamSpec::float(
                 "courtyard_mode",
                 "0=largest cell becomes courtyard, 1=most-central cell becomes courtyard.",
                 0.0, 1.0, 0.0,
@@ -151,6 +162,7 @@ impl Parameters for P95Params {
             seed_jitter: 0.6,
             min_pad_area_m2: 120.0,
             min_fragment_area_m2: 80.0,
+            min_pad_short_side_m: 7.0,
             courtyard_mode: 0.0,
         }
     }
@@ -163,6 +175,7 @@ impl Parameters for P95Params {
             self.seed_jitter,
             self.min_pad_area_m2,
             self.min_fragment_area_m2,
+            self.min_pad_short_side_m,
             self.courtyard_mode,
         ]
     }
@@ -176,7 +189,8 @@ impl Parameters for P95Params {
         if let (Some(s), Some(v)) = (schema.get(4), v.get(4)) { p.seed_jitter = s.clamp(*v); }
         if let (Some(s), Some(v)) = (schema.get(5), v.get(5)) { p.min_pad_area_m2 = s.clamp(*v); }
         if let (Some(s), Some(v)) = (schema.get(6), v.get(6)) { p.min_fragment_area_m2 = s.clamp(*v); }
-        if let (Some(s), Some(v)) = (schema.get(7), v.get(7)) { p.courtyard_mode = s.clamp(*v); }
+        if let (Some(s), Some(v)) = (schema.get(7), v.get(7)) { p.min_pad_short_side_m = s.clamp(*v); }
+        if let (Some(s), Some(v)) = (schema.get(8), v.get(8)) { p.courtyard_mode = s.clamp(*v); }
         p
     }
 }
@@ -281,6 +295,7 @@ impl PatternOperator for P95BuildingComplex {
         let mut prng = Prng::new(seed);
 
         let mut global_cell_idx = 0;
+        let mut n_skipped_slivers = 0;
 
         for (part_idx, part) in parts.iter().enumerate() {
             let raw_local_poly = ring_to_local(&part.outer, &origin);
@@ -477,6 +492,16 @@ impl PatternOperator for P95BuildingComplex {
                     if inset_cell.len() < 3 || area(&inset_cell) < params.min_pad_area_m2 {
                         continue;
                     }
+                    // Area alone doesn't catch a sliver -- a long thin strip
+                    // clears min_pad_area_m2 easily but isn't a buildable
+                    // floor plate at any height (see min_pad_short_side_m's
+                    // own doc comment).
+                    let (min_pt, max_pt) = bbox(&inset_cell);
+                    let short_side = (max_pt.x - min_pt.x).min(max_pt.y - min_pt.y);
+                    if short_side < params.min_pad_short_side_m {
+                        n_skipped_slivers += 1;
+                        continue;
+                    }
                     let pad_ring = local_to_ring(&inset_cell, &origin);
                     let pad_area_m2 = area(&inset_cell);
                     let pad_area_ac = pad_area_m2 / 4046.86;
@@ -504,6 +529,13 @@ impl PatternOperator for P95BuildingComplex {
                     part_idx, n_skipped_small_fragments, min_worthwhile_area_m2
                 ));
             }
+        }
+
+        if n_skipped_slivers > 0 {
+            steps.push(format!(
+                "{} pad(s) cleared min_pad_area_m2 but were narrower than min_pad_short_side_m ({:.1}m) on their short side -- dropped as slivers, not stretched or shrunk into a usable shape.",
+                n_skipped_slivers, params.min_pad_short_side_m
+            ));
         }
 
         if all_new_parcels.is_empty() && all_new_open.is_empty() {
@@ -540,6 +572,9 @@ impl PatternOperator for P95BuildingComplex {
                 "Reserved-land subtraction (existing open space / streets) assumes those holes are \
                  convex -- true for the squares and path corridors this codebase's own operators \
                  produce, not guaranteed for hand-authored or third-party fixtures.".into(),
+                "min_pad_short_side_m drops a pad based on its bounding-box short side, not its \
+                 true minimum width along every direction -- a non-convex or diagonal sliver could \
+                 still slip through with a short bbox side that overstates its narrowest point.".into(),
             ],
             seed,
             params: params.as_map(),

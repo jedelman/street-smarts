@@ -179,14 +179,21 @@ COLORS = {
     "street": "#6b6259",
 }
 
-# Directional light, roughly matching the isometric camera (elev=35,
-# azim=-60) so faces facing the viewer catch real highlight -- upper-left-
-# front, slightly favoring +z so roofs read brightest, same as a real sun
-# angle in an architectural massing render.
-LIGHT_DIR = np.array([-0.45, -0.35, 0.82])
-LIGHT_DIR = LIGHT_DIR / np.linalg.norm(LIGHT_DIR)
-AMBIENT = 0.40   # floor brightness even for faces facing away from the light
-DIFFUSE = 0.65   # additional brightness for faces facing the light head-on
+# Two-light setup, not one. A single directional light leaves every face
+# NOT facing it at flat ambient -- with a mostly-boxy massing scene that's
+# roughly half the visible surfaces reading as a dark, formless silhouette.
+# KEY is the main sun-like light (matches the isometric camera, elev=35,
+# azim=-60, so the faces facing the viewer catch the strongest highlight).
+# FILL comes from roughly the opposite side, weaker, so the shadow side
+# still reveals real form (a wall, a corner, a courtyard notch) instead of
+# going flat -- the same key+fill logic a real architectural render uses.
+KEY_LIGHT_DIR = np.array([-0.45, -0.35, 0.82])
+KEY_LIGHT_DIR = KEY_LIGHT_DIR / np.linalg.norm(KEY_LIGHT_DIR)
+FILL_LIGHT_DIR = np.array([0.55, 0.45, 0.35])
+FILL_LIGHT_DIR = FILL_LIGHT_DIR / np.linalg.norm(FILL_LIGHT_DIR)
+AMBIENT = 0.28      # floor brightness even where neither light reaches
+KEY_DIFFUSE = 0.55  # brightness added for faces facing the key light
+FILL_DIFFUSE = 0.30  # brightness added for faces facing the fill light
 
 
 def solid_to_triangles(solid):
@@ -200,18 +207,21 @@ def solid_to_triangles(solid):
 
 
 def shade_faces(face_verts, base_hex, alpha):
-    """Per-triangle Lambertian shading + translucency: one RGBA color per
-    face, computed from that face's own normal against LIGHT_DIR. This is
-    what actually reveals building form (which walls face the light, which
-    don't) instead of every face reading as the same flat silhouette
-    color."""
+    """Per-triangle Lambertian shading (key + fill) + translucency: one
+    RGBA color per face, computed from that face's own normal against BOTH
+    lights. This is what actually reveals building form (which walls face
+    which light, which don't) instead of every face reading as the same
+    flat silhouette color -- and the fill light means the shadow side
+    still shows real form instead of going flat."""
     base_rgb = np.array(mcolors.to_rgb(base_hex))
     v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
     normals = np.cross(v1 - v0, v2 - v0)
     norms = np.linalg.norm(normals, axis=1, keepdims=True)
     norms[norms < 1e-9] = 1.0
     normals = normals / norms
-    intensity = AMBIENT + DIFFUSE * np.clip(normals @ LIGHT_DIR, 0.0, None)
+    key = np.clip(normals @ KEY_LIGHT_DIR, 0.0, None)
+    fill = np.clip(normals @ FILL_LIGHT_DIR, 0.0, None)
+    intensity = AMBIENT + KEY_DIFFUSE * key + FILL_DIFFUSE * fill
     intensity = np.clip(intensity, 0.0, 1.15)  # small overshoot allowed for a real specular-ish highlight
     rgb = np.clip(base_rgb[None, :] * intensity[:, None], 0.0, 1.0)
     rgba = np.concatenate([rgb, np.full((len(rgb), 1), alpha)], axis=1)
@@ -253,8 +263,22 @@ def render_isometric(scene, out_path, title):
     cx, cy = (xmax + xmin) / 2, (ymax + ymin) / 2
     ax.set_xlim(cx - max_range, cx + max_range)
     ax.set_ylim(cy - max_range, cy + max_range)
-    ax.set_zlim(0, max(zmax, 20))
-    ax.set_box_aspect((1, 1, 0.25))
+    z_span = max(zmax, 20)
+    ax.set_zlim(0, z_span)
+    # A fixed z-aspect (this used to be a hardcoded 0.25) doesn't know how
+    # wide the site actually is -- on a site whose xy footprint is much
+    # larger than its building heights (the normal case: ~500m site,
+    # ~15-20m buildings), 0.25 exaggerates height by 5-6x relative to true
+    # scale, which is exactly what read as "weirdly tall" buildings that
+    # were, in the real data, ordinary 4-story proportions. Compute the
+    # TRUE proportional aspect from this scene's own real extents, then
+    # apply a modest, fixed exaggeration (buildings still need to read as
+    # taller-than-a-pancake at this zoomed-out a view) instead of a guess
+    # that happened to fit one previous scene's proportions and not others.
+    true_z_aspect = z_span / (2 * max_range)
+    HEIGHT_EXAGGERATION = 2.5
+    z_aspect = min(0.35, true_z_aspect * HEIGHT_EXAGGERATION)
+    ax.set_box_aspect((1, 1, z_aspect))
     ax.view_init(elev=35, azim=-60)
     ax.set_axis_off()
     ax.set_title(title, fontsize=13, color="#f6f3ed")
