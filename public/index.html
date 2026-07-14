@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P95 → BlockGrouping → PathNetwork → BuildingShape">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P95 → BlockGrouping → PathNetwork → P107 Wings of Light → P61 Small Public Squares">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -735,15 +735,18 @@
     const ns = "http://www.w3.org/2000/svg";
     while ($mapSvg.firstChild) $mapSvg.removeChild($mapSvg.firstChild);
 
-    // SVG groups: parcels (under), streets, buildings (top).
+    // SVG groups: parcels (under), open space, streets, buildings (top).
     // This z-ordering gives the layered pipeline a legible read on the map.
     const gParcels = document.createElementNS(ns, "g");
     gParcels.setAttribute("data-layer", "parcels");
+    const gOpenSpace = document.createElementNS(ns, "g");
+    gOpenSpace.setAttribute("data-layer", "open_space");
     const gStreets = document.createElementNS(ns, "g");
     gStreets.setAttribute("data-layer", "streets");
     const gBuildings = document.createElementNS(ns, "g");
     gBuildings.setAttribute("data-layer", "buildings");
     $mapSvg.appendChild(gParcels);
+    $mapSvg.appendChild(gOpenSpace);
     $mapSvg.appendChild(gStreets);
     $mapSvg.appendChild(gBuildings);
 
@@ -775,6 +778,38 @@
         gParcels.appendChild(poly);
         // Only register the primary part for voice-coloring lookups.
         if (pi === 0) parcelById.set(p.id, poly);
+      }
+    }
+
+    // Open space (courtyards, plazas, parks, ...) — drawn above parcels,
+    // below streets/buildings, so P107 courtyards and P61 squares actually
+    // show up on the map instead of being invisible NIR data.
+    const OPEN_SPACE_COLORS = {
+      plaza: "#d9a441",
+      park: "#7a9e5c",
+      sponge: "#4a7a8c",
+      vacant: "#a89c86",
+      parking: "#8a7f6b",
+      other: "#c2b8a3",
+    };
+    for (const o of (neighborhood.open_space || [])) {
+      const parts = (o.polygon.parts && o.polygon.parts.length)
+        ? o.polygon.parts
+        : [{ outer: o.polygon.outer, holes: o.polygon.holes || [] }];
+      for (const part of parts) {
+        if (!part.outer || part.outer.length < 3) continue;
+        const pts = part.outer.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+        const poly = document.createElementNS(ns, "polygon");
+        poly.setAttribute("points", pts);
+        const color = OPEN_SPACE_COLORS[o.kind] || OPEN_SPACE_COLORS.other;
+        poly.setAttribute("fill", color);
+        poly.setAttribute("fill-opacity", "0.75");
+        poly.setAttribute("stroke", "#5a4a1e");
+        poly.setAttribute("stroke-width", "0.5");
+        poly.setAttribute("stroke-opacity", "0.6");
+        poly.dataset.openSpaceId = o.id;
+        poly.dataset.kind = o.kind || "";
+        gOpenSpace.appendChild(poly);
       }
     }
 
@@ -1400,7 +1435,9 @@
     await new Promise(r => setTimeout(r, 16));
     try {
       const t0 = performance.now();
-      // Pipeline: parcel → pads → blocks → paths → buildings.
+      // Pipeline: parcel → pads → blocks → paths → buildings (P107 wings of
+      // light, with real courtyards) → P61 small public squares (breaks any
+      // oversized courtyard into several smaller connected squares).
       // Each step runs with operator-specific defaults (the current params
       // panel only applies to the user's selected single-step operator).
       let currentJson = activeRawNeighborhood;
@@ -1409,7 +1446,8 @@
         { op: "p95_building_complex", target: parcelId },
         { op: "block_grouping", target: "*" },
         { op: "path_network", target: "*" },
-        { op: "building_shape", target: "*" },
+        { op: "p107_wings_of_light", target: "*" },
+        { op: "p61_small_public_squares", target: "*" },
       ];
       for (const step of pipeline) {
         const result = subdivide_parcel(currentJson, step.target, step.op, "null", seed);
@@ -1422,13 +1460,13 @@
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P95+Block+Path+Shape × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P95+Block+Path+P107+P61 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {
           label,
           trace: {
-            headline: `Pipeline produced ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths.`,
+            headline: `Pipeline produced ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.open_space.length} open space feature(s), ${finalNbhd.streets.length} paths.`,
             steps: allTraces.flatMap(t => [`▸ ${t.operator_name}: ${t.headline}`, ...t.steps.map(s => `   · ${s}`)]),
           },
           parcelId,
@@ -1445,7 +1483,7 @@
       $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
       btn.classList.add("active");
 
-      $genStatus.textContent = `Pipeline built in ${dt} ms · ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths`;
+      $genStatus.textContent = `Pipeline built in ${dt} ms · ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.open_space.length} open space, ${finalNbhd.streets.length} paths`;
       $genStatus.className = "generate-status success";
 
       $genTrace.hidden = false;
