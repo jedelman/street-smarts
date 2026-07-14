@@ -55,9 +55,13 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///   4. P107 (#107) -- daylight-depth building shape. Runs ONCE, site-scale,
 ///      after every block has its pads, since it already filters by
 ///      `use_category == "p95_building_pad"` across the whole neighborhood.
-/// There's no single Rust function that runs all four steps -- steps 1, 2,
-/// and 4 are single `run_operator` calls; step 3 is a caller-side loop over
-/// the BLOCK_n parcels P37 produced, calling P61 then P95 once per block.
+/// `crate::pipeline::run_corrected_pipeline` runs all four steps end to end
+/// for callers that just want the final neighborhood (used by
+/// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
+/// per-stage assertions, which reimplement the loop locally to check
+/// intermediate counts). The web UI's "Run full pipeline" button
+/// reimplements the same sequence client-side in JS, since it needs to
+/// update the map after each stage rather than only at the end.
 /// BlockGrouping and the older BuildingShape stub are kept for backward
 /// compatibility with pipelines/tests that ran the OLD order (P95 first,
 /// grouping its pads into blocks afterward) -- not used by the corrected

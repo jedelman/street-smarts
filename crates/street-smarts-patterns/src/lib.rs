@@ -21,6 +21,7 @@ pub mod p37_house_cluster;
 pub mod p95_building_complex;
 pub mod p107_wings_of_light;
 pub mod p61_small_public_squares;
+pub mod pipeline;
 pub mod registry;
 pub mod subdivision;
 
