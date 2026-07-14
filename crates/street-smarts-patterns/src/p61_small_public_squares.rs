@@ -39,6 +39,24 @@
 //! still REPLACED (via `replaced_open_space_ids`) by everything this
 //! operator produces -- both the kept squares and the Undecided remainder.
 //!
+//! # v0.5: raw-land placement, not just resizing an existing plaza
+//!
+//! Everything above assumes a `Plaza` already exists to shrink or partition
+//! -- true when P95/P107 ran first. Alexander's own numbering (52 < 61 < 95)
+//! says P61 should run BEFORE P95, though, and there's no existing plaza to
+//! resize on raw, undeveloped block land. So: when `apply` is given a
+//! specific `parcel_id` (not `"*"`) and no existing Plaza overlaps that
+//! parcel, it places a handful of NEW compliant squares directly on the raw
+//! land instead of erroring -- up to `max_squares`, each stamped at
+//! `max_dimension_m` and clipped to the parcel's real boundary, linked by
+//! the same honest MST backbone the resize path already uses. It does NOT
+//! modify or replace the target parcel's own polygon -- the new squares and
+//! connector streets are added alongside it, and P95's reserved-land
+//! subtraction (`reserved_holes_for_part`) is what actually makes P95 build
+//! around them later. `parcel_id == "*"` still means exactly what it always
+//! did: scan every existing Plaza in the neighborhood, ignore parcels
+//! entirely. That path is unchanged.
+//!
 //! # What this deliberately does NOT do
 //! - Connector segments are geometry-only path centerlines (same
 //!   abstraction PathNetwork uses). Alexander's real edge treatment for the
@@ -57,15 +75,18 @@
 //!   is an honest first approximation, not a claim to match his intent
 //!   exactly.
 
+use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
-    area, bbox, centroid, clip_to_polygon, kruskal_mst, local_to_lnglat, local_to_ring,
-    ring_to_local, scale_toward_centroid, union_pieces, voronoi_cell, MstResult, Pt2,
+    area, bbox, centroid, clip_to_polygon, clip_to_polygon_largest, kruskal_mst, local_to_lnglat,
+    local_to_ring, point_in_polygon, ring_to_local, scale_toward_centroid, union_pieces,
+    voronoi_cell, MstResult, Pt2,
 };
+use crate::prng::Prng;
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Street};
+use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,27 +211,54 @@ impl PatternOperator for P61SmallPublicSquares {
         }
     }
     fn description(&self) -> &'static str {
-        "Break oversized plazas into several smaller connected squares within Alexander's ~18m intimacy threshold."
+        "Place a few small squares on raw block land, or break an oversized existing plaza into several within Alexander's ~18m intimacy threshold."
     }
 
-    /// Operates on every `OpenSpace` of kind `Plaza` in the neighborhood.
-    /// `parcel_id` is unused (this operator works on open space, not
-    /// parcels) but kept for `PatternOperator` trait consistency; pass `"*"`.
+    /// `parcel_id == "*"`: scan every existing `Plaza`-kind `OpenSpace` in
+    /// the neighborhood, ignore parcels entirely -- unchanged from earlier
+    /// versions.
+    ///
+    /// `parcel_id` = a specific parcel: scoped to `Plaza`s overlapping that
+    /// parcel. If there are none, falls through to `place_new_squares` --
+    /// raw-land placement, see the module doc comment's v0.5 section.
     fn apply(
         &self,
         nbhd: &Neighborhood,
-        _parcel_id: &str,
+        parcel_id: &str,
         params: &Self::Params,
         seed: u64,
     ) -> Result<Subdivision, String> {
+        let target_parcel: Option<&Parcel> = if parcel_id == "*" {
+            None
+        } else {
+            Some(
+                nbhd.parcels
+                    .iter()
+                    .find(|p| p.id == parcel_id)
+                    .ok_or_else(|| format!("parcel {} not found", parcel_id))?,
+            )
+        };
+
         let plazas: Vec<&OpenSpace> = nbhd
             .open_space
             .iter()
             .filter(|o| o.kind == OpenSpaceKind::Plaza)
+            .filter(|o| match target_parcel {
+                None => true,
+                Some(tp) => {
+                    let origin = parcel_origin(tp);
+                    let local_parcel = ring_to_local(&tp.polygon.outer, &origin);
+                    let local_plaza_centroid = centroid(&ring_to_local(&o.polygon.outer, &origin));
+                    point_in_polygon(local_plaza_centroid, &local_parcel)
+                }
+            })
             .collect();
 
         if plazas.is_empty() {
-            return Err("p61_small_public_squares: no Plaza-kind open space found. Run P95/P107 first.".into());
+            if let Some(tp) = target_parcel {
+                return place_new_squares(tp, params, seed, self.source());
+            }
+            return Err("p61_small_public_squares: no Plaza-kind open space found. Run P95/P107 first, or pass a specific raw parcel_id to place new squares directly.".into());
         }
 
         let mut new_open: Vec<OpenSpace> = Vec::new();
@@ -451,4 +499,131 @@ impl PatternOperator for P61SmallPublicSquares {
             trace,
         })
     }
+}
+
+fn parcel_origin(p: &Parcel) -> LngLat {
+    LngLat::new(
+        p.polygon.outer.iter().map(|q| q.lng).sum::<f64>() / p.polygon.outer.len() as f64,
+        p.polygon.outer.iter().map(|q| q.lat).sum::<f64>() / p.polygon.outer.len() as f64,
+    )
+}
+
+/// Raw-land placement mode: no existing `Plaza` overlaps `target_parcel`,
+/// so place up to `max_squares` new compliant squares directly on it,
+/// stamped at `max_dimension_m` and clipped to the parcel's real (possibly
+/// non-convex) boundary, linked by an MST backbone -- same connector logic
+/// the resize path already uses. Does NOT touch `target_parcel`'s own
+/// polygon; P95's reserved-land subtraction is what makes building pads
+/// build around these squares later, not anything this function does.
+fn place_new_squares(
+    target_parcel: &Parcel,
+    params: &P61Params,
+    seed: u64,
+    source: SourceCitation,
+) -> Result<Subdivision, String> {
+    let origin = parcel_origin(target_parcel);
+    let local_parcel = ring_to_local(&target_parcel.polygon.outer, &origin);
+    if local_parcel.len() < 3 {
+        return Err(format!(
+            "p61_small_public_squares: parcel {} has degenerate geometry, nothing to place squares on.",
+            target_parcel.id
+        ));
+    }
+
+    let n_target = params.max_squares.round().max(1.0) as usize;
+    let mut prng = Prng::new(seed);
+    // Jitter isn't exposed as its own P61 param (would be a knob nobody has
+    // asked to tune yet) -- 0.5 matches the default other operators
+    // (P37, P95) use for their own stratified seeding.
+    let nodes = stratified_seeds(&local_parcel, n_target, 0.5, &mut prng);
+    if nodes.is_empty() {
+        return Err(format!(
+            "p61_small_public_squares: parcel {} too small or too concave to place any squares on.",
+            target_parcel.id
+        ));
+    }
+
+    let half_side = params.max_dimension_m / 2.0;
+    let mut new_open: Vec<OpenSpace> = Vec::new();
+    let mut square_centers: Vec<Pt2> = Vec::new();
+    let mut n_skipped_tiny = 0;
+    for (idx, &node) in nodes.iter().enumerate() {
+        let square_local = vec![
+            Pt2::new(node.x - half_side, node.y - half_side),
+            Pt2::new(node.x + half_side, node.y - half_side),
+            Pt2::new(node.x + half_side, node.y + half_side),
+            Pt2::new(node.x - half_side, node.y + half_side),
+        ];
+        let clipped = clip_to_polygon_largest(&square_local, &local_parcel);
+        if clipped.len() < 3 || area(&clipped) < params.min_meaningful_area_m2 {
+            n_skipped_tiny += 1;
+            continue;
+        }
+        square_centers.push(centroid(&clipped));
+        new_open.push(OpenSpace {
+            id: format!("{}_p61_new_sq{idx}", target_parcel.id),
+            polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(&clipped, &origin)),
+            kind: OpenSpaceKind::Plaza,
+        });
+    }
+
+    if new_open.is_empty() {
+        return Err(format!(
+            "p61_small_public_squares: every candidate square on parcel {} clipped to nothing usable (too close to the boundary, or too concave).",
+            target_parcel.id
+        ));
+    }
+
+    let mut new_streets: Vec<Street> = Vec::new();
+    if square_centers.len() > 1 {
+        let centers_wgs: Vec<LngLat> = square_centers.iter().map(|c| local_to_lnglat(*c, &origin)).collect();
+        let MstResult { mst_edges, .. } = kruskal_mst(&square_centers);
+        for (i, j, _d) in &mst_edges {
+            new_streets.push(Street {
+                id: format!("{}_p61_new_link_{i}_{j}", target_parcel.id),
+                centerline: vec![centers_wgs[*i], centers_wgs[*j]],
+                classification: Some("pedestrian".into()),
+                row_width_m: Some(params.connector_width_m),
+            });
+        }
+    }
+
+    let steps = vec![format!(
+        "{}: raw land, no existing plaza -- placed {} new compliant square(s) directly ({} candidate(s) too small after clipping to the real boundary), linked by {} connector(s).",
+        target_parcel.id, new_open.len(), n_skipped_tiny, new_streets.len()
+    )];
+
+    let trace = SubdivisionTrace {
+        operator_name: "p61_small_public_squares".into(),
+        operator_source: source,
+        headline: format!(
+            "Placed {} new square(s) directly on raw parcel {} (no existing plaza to resize).",
+            new_open.len(), target_parcel.id
+        ),
+        steps,
+        caveats: vec![
+            "Squares are placed at stratified-random node positions, not at real convergence \
+             points (transit, entrances, street corners) -- this operator has no model of where \
+             people would actually gather, same limitation the resize path's caveats already \
+             state.".into(),
+            "Does not modify the target parcel's own polygon. Downstream operators (P95) need to \
+             read these squares back via reserved-land subtraction to actually build around them \
+             -- this function only places geometry, it doesn't claim the land for real.".into(),
+            "Connector segments are straight geometry-only centerlines between square centroids, \
+             same abstraction PathNetwork and the resize path already use -- not routed, not \
+             materialized with real edge treatment.".into(),
+        ],
+        seed,
+        params: params.as_map(),
+    };
+
+    Ok(Subdivision {
+        new_parcels: vec![],
+        new_open_space: new_open,
+        new_buildings: vec![],
+        new_streets,
+        replaced_parcel_ids: vec![],
+        replaced_open_space_ids: vec![],
+        trace,
+    })
 }
