@@ -2,6 +2,7 @@
 
 use crate::block_grouping::BlockGrouping;
 use crate::building_shape::BuildingShape;
+use crate::p37_house_cluster::P37HouseCluster;
 use crate::p95_building_complex::P95BuildingComplex;
 use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
@@ -39,16 +40,25 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 
 /// Construct boxed instances of all operators.
 ///
-/// **Order matters**: the typical pipeline runs P95 first (parcel → pads),
-/// then BlockGrouping (pads → blocks), then PathNetwork (blocks → streets),
-/// then a building-shape pass (pads → buildings) -- either the older
-/// BuildingShape stub or P107WingsOfLight, which does real daylight-depth
-/// reasoning instead of a plain inscribed rectangle. Both are kept for now
-/// so existing pipelines/tests referencing "building_shape" by name keep
-/// working; P107 is the one worth reaching for going forward.
+/// **Order matters, and it's Alexander's own pattern numbering**: larger,
+/// more-fixed patterns first, smaller ones nested inside what came before.
+/// The corrected pipeline (see `crate::pipeline::run_corrected_pipeline`)
+/// is:
+///   1. P37 House Cluster (#37) -- carve the raw parcel into human-scaled
+///      BLOCK_n sub-parcels. Runs ONCE, site-scale.
+///   2. PathNetwork / P52 (#52) -- connect the blocks to each other. Runs
+///      ONCE, site-scale, on the BLOCK_n parcels P37 produced.
+///   3. Within EACH block: P61 (#61, places a few small squares directly on
+///      the block's raw land) -> P95 (#95, reworked to build pads around
+///      whatever P61 placed) -> P107 (#107, daylight-depth building shape).
+/// BlockGrouping and the older BuildingShape stub are kept for backward
+/// compatibility with pipelines/tests that ran the OLD order (P95 first,
+/// grouping its pads into blocks afterward) -- not used by the corrected
+/// pipeline, which doesn't need to re-derive blocks after the fact because
+/// P37 already provides them up front.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
-        // Pipeline order: parcel → pads → blocks → paths → buildings → squares
+        Box::new(P37HouseCluster),
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
         Box::new(PathNetwork),
