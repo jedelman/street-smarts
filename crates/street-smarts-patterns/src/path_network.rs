@@ -5,25 +5,41 @@
 //! - **P98 Circulation Realms** (distinct walking vs driving zones)
 //! - **P120 Paths and Goals** (paths go where people actually want to walk)
 //!
-//! What it does: from a neighborhood whose pads carry `spec = "BLOCK_<n>"`,
-//! emit a `Street` segment between every pair of adjacent blocks. Adjacency
-//! = block centroids within a threshold distance proportional to the
-//! neighborhood's overall scale.
+//! # v0.2: MST + loop budget, replacing threshold-adjacency
+//!
+//! The original v0.1 connected every pair of blocks within a distance
+//! threshold (median inter-block distance x a multiplier). That produces a
+//! dense proximity mesh -- structurally the OPPOSITE of what P52 actually
+//! prescribes. Alexander's own text: cars should be kept to a limited,
+//! sparse network, not given a fully-connected grid; but a pure branching
+//! tree creates dead-ends, so the network should have a FEW loops, not many.
+//!
+//! This version builds a Minimum Spanning Tree (Kruskal's algorithm, via
+//! `planar::kruskal_mst` -- shared with P61, which needs the same "fewest
+//! edges that still connect everything" reasoning to link its small
+//! squares) over block centroids as the connectivity backbone -- the fewest
+//! possible edges that still reach every block, which is a direct, honest
+//! reading of "kept to a limited network." It then adds
+//! back the `loop_budget` cheapest edges NOT already in the MST, to relieve
+//! dead-ends without reverting to mesh density.
+//!
+//! MST edges are classified `"local"` (the guaranteed-connectivity backbone
+//! -- the real reading of "the car network"). Loop-budget edges are
+//! classified `"pedestrian"` (supplementary shortcuts that reduce
+//! backtracking on foot). This is a real topological distinction, not the
+//! old `classification_mode`/`j%2==0` parity hack it replaces.
 //!
 //! What it does NOT do yet:
 //! - Connect to the existing street grid (Princess Anne Rd, etc.) — needs
 //!   knowledge of which boundary parcels touch existing streets
-//! - Distinguish pedestrian vs vehicular (P98 Circulation Realms) — every
-//!   path is currently "pedestrian"
 //! - Route paths around obstacles (currently they're straight segments
-//!   between block centroids)
+//!   between block centroids) — MST/loop topology is real, but each edge
+//!   is still a straight line, not an obstacle-aware route
 //! - Aggregate adjacent paths into named streets (each segment is its own
 //!   `Street` entity with an auto-id)
-//!
-//! v0.1 produces a coarse graph that demonstrates the layered pipeline.
 
 use crate::parameters::{ParamSpec, Parameters};
-use crate::planar::{average_centroid, lnglat_to_local, Pt2};
+use crate::planar::{average_centroid, kruskal_mst, lnglat_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,53 +49,44 @@ use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathNetworkParams {
-    /// Two blocks are "adjacent" if their centroids are within this multiple
-    /// of the median inter-block distance. 1.5× is the default; lower
-    /// = sparser network, higher = denser (more paths drawn).
-    pub adjacency_multiplier: f64,
+    /// How many extra edges to add beyond the MST backbone, to relieve
+    /// dead-ends with a few loops. 0 = pure tree (real dead-ends exist).
+    /// Each unit adds exactly one more edge, taken in ascending distance
+    /// order from whatever the MST didn't already use.
+    pub loop_budget: f64,
     /// Right-of-way width in metres for each path segment.
     pub path_width_m: f64,
-    /// Classification stored on each Street entity ("pedestrian", "local", etc.)
-    /// — currently always "pedestrian" in v0.1. Reserved for P98.
-    pub classification_mode: f64, // 0.0 = pedestrian, 1.0 = mixed
 }
 
 impl Parameters for PathNetworkParams {
     fn schema() -> Vec<ParamSpec> {
         vec![
             ParamSpec::float(
-                "adjacency_multiplier",
-                "Two blocks are linked if centroids closer than median × this. Higher = denser network.",
-                0.8, 3.0, 1.5,
+                "loop_budget",
+                "Extra edges beyond the MST backbone, to relieve dead-ends without reverting to mesh density.",
+                0.0, 10.0, 2.0,
             ),
             ParamSpec::float(
                 "path_width_m",
                 "Right-of-way width per path segment.",
                 2.0, 12.0, 4.0,
             ).with_unit("m"),
-            ParamSpec::float(
-                "classification_mode",
-                "0=all pedestrian, 1=mixed pedestrian/vehicular. (v0.1 stub for P98.)",
-                0.0, 1.0, 0.0,
-            ),
         ]
     }
     fn defaults() -> Self {
         Self {
-            adjacency_multiplier: 1.5,
+            loop_budget: 2.0,
             path_width_m: 4.0,
-            classification_mode: 0.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.adjacency_multiplier, self.path_width_m, self.classification_mode]
+        vec![self.loop_budget, self.path_width_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
         let mut p = Self::defaults();
-        if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.adjacency_multiplier = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.path_width_m = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.classification_mode = s.clamp(*x); }
         p
     }
 }
@@ -161,77 +168,83 @@ impl PatternOperator for PathNetwork {
             centers_wgs.push(avg);
         }
 
-        // Compute all pairwise distances; the median sets the adjacency threshold.
-        let mut all_dists: Vec<f64> = Vec::new();
+        // MST backbone (Kruskal's): the fewest edges that connect every
+        // block. This IS the honest reading of "cars kept to a limited
+        // network" -- not a tuned distance threshold.
         let nb = centers_local.len();
-        for i in 0..nb {
-            for j in (i + 1)..nb {
-                all_dists.push(centers_local[i].dist(centers_local[j]));
-            }
-        }
-        all_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let median = if all_dists.is_empty() {
-            0.0
-        } else {
-            all_dists[all_dists.len() / 2]
-        };
-        let threshold = median * params.adjacency_multiplier;
+        let crate::planar::MstResult { mst_edges, remaining_edges: remaining } = kruskal_mst(&centers_local);
 
-        // Emit Street segments between adjacent block pairs.
+        if mst_edges.len() < nb.saturating_sub(1) {
+            return Err(format!(
+                "path_network: block centroid graph is disconnected ({} MST edges for {} blocks, expected {}). \
+                 This shouldn't happen for a complete graph -- investigate degenerate/duplicate centroids.",
+                mst_edges.len(), nb, nb.saturating_sub(1)
+            ));
+        }
+
+        // Loop budget: cheapest edges NOT already in the MST, to relieve
+        // dead-ends without reverting to full mesh density. `remaining` is
+        // already sorted ascending (built from the sorted `edges` pass).
+        let loop_budget = params.loop_budget.round().max(0.0) as usize;
+        let loop_edges: Vec<(usize, usize, f64)> =
+            remaining.into_iter().take(loop_budget).collect();
+
+        // Emit Street segments: MST = backbone ("local"), loop edges =
+        // supplementary shortcuts ("pedestrian"). Real topological
+        // distinction, not a parity hack.
         let mut streets: Vec<Street> = Vec::new();
-        let mut adj_count = 0;
-        for i in 0..nb {
-            for j in (i + 1)..nb {
-                let d = centers_local[i].dist(centers_local[j]);
-                if d <= threshold {
-                    let id = format!("path_{}_to_{}", block_ids[i], block_ids[j]);
-                    let classification = if params.classification_mode >= 0.5 && j % 2 == 0 {
-                        "local"
-                    } else {
-                        "pedestrian"
-                    };
-                    streets.push(Street {
-                        id,
-                        centerline: vec![centers_wgs[i], centers_wgs[j]],
-                        classification: Some(classification.into()),
-                        row_width_m: Some(params.path_width_m),
-                    });
-                    adj_count += 1;
-                }
-            }
+        for &(i, j, _d) in mst_edges.iter() {
+            streets.push(Street {
+                id: format!("path_{}_to_{}", block_ids[i], block_ids[j]),
+                centerline: vec![centers_wgs[i], centers_wgs[j]],
+                classification: Some("local".into()),
+                row_width_m: Some(params.path_width_m),
+            });
+        }
+        for &(i, j, _d) in loop_edges.iter() {
+            streets.push(Street {
+                id: format!("loop_{}_to_{}", block_ids[i], block_ids[j]),
+                centerline: vec![centers_wgs[i], centers_wgs[j]],
+                classification: Some("pedestrian".into()),
+                row_width_m: Some(params.path_width_m),
+            });
         }
 
         if streets.is_empty() {
-            return Err(format!(
-                "path_network: 0 adjacency pairs found (threshold {:.0}m, median {:.0}m). \
-                 Try a higher adjacency_multiplier.",
-                threshold, median
-            ));
+            return Err("path_network: produced zero edges -- should be unreachable for nb>=2.".into());
         }
 
         let mut steps = vec![
             format!(
-                "{} blocks, {} adjacency pairs at threshold {:.0}m (median centroid distance {:.0}m)",
-                nb, adj_count, threshold, median
+                "{} blocks -> MST backbone: {} edges (guaranteed connectivity, classified 'local')",
+                nb, mst_edges.len()
             ),
         ];
+        steps.push(format!(
+            "loop_budget={} -> {} extra edges added (classified 'pedestrian')",
+            loop_budget, loop_edges.len()
+        ));
         steps.push(format!("Emitted {} Street segments at {}m right-of-way", streets.len(), params.path_width_m as u32));
 
         let trace = SubdivisionTrace {
             operator_name: "path_network".into(),
             operator_source: self.source(),
             headline: format!(
-                "Laid {} path segments between {} blocks.",
-                streets.len(), nb
+                "Laid {} MST backbone + {} loop edge(s) across {} blocks.",
+                mst_edges.len(), loop_edges.len(), nb
             ),
             steps,
             caveats: vec![
-                "Paths are straight segments between block centroids. They do not yet route \
-                 around obstacles, follow shared edges, or connect to the existing street grid.".into(),
-                "Every path is currently classified pedestrian by default. P98 Circulation Realms \
-                 would distinguish pedestrian/vehicular/transit; that's a separate v0.2 operator.".into(),
+                "Paths are straight segments between block centroids, even along the MST/loop \
+                 backbone -- edges are topologically real (Kruskal's MST + loop budget), but each \
+                 individual edge does not yet route around obstacles or follow shared boundaries.".into(),
+                "Local/pedestrian classification reflects real topology (MST backbone vs. \
+                 supplementary loop edge), but is still a placeholder for real P98 Circulation \
+                 Realms reasoning -- it doesn't know which blocks actually need vehicular access.".into(),
+                "Does not connect to the existing street grid (Princess Anne Rd, etc.) -- needs \
+                 knowledge of which boundary parcels touch existing streets.".into(),
                 "Adjacent paths are not aggregated into named streets. Each segment is its own \
-                 NIR Street entity. v0.2 will graph-aggregate runs into named ways.".into(),
+                 NIR Street entity.".into(),
             ],
             seed: 0,
             params: params.as_map(),
@@ -243,6 +256,7 @@ impl PatternOperator for PathNetwork {
             new_buildings: vec![],
             new_streets: streets,
             replaced_parcel_ids: vec![],
+            replaced_open_space_ids: vec![],
             trace,
         })
     }

@@ -130,11 +130,33 @@ impl Opinion for LevelsOfScale {
             };
         }
 
+        // Score is continuous, not clamped. A flat 1.0 across the whole
+        // [2,5] band gives CMA-ES zero gradient anywhere inside it -- most
+        // real layouts land there, so the opinion was silently
+        // uninformative for exactly the cases that matter most.
+        //
+        // Reinterpretation (this opinion's own encoded interpretation --
+        // Salingaros states the *range*, not a preference within it; this
+        // opinion now treats the range's geometric center as the peak, per
+        // the project's stated principle that opinions disagree, not that
+        // any one of them measures ground truth):
+        //
+        // A Gaussian in LOG-ratio space, since magnification is
+        // multiplicative, not additive -- 2x and 5x are symmetric around
+        // their geometric mean sqrt(10) ≈ 3.16x, not their arithmetic mean.
+        // sigma is derived directly from Salingaros' stated band, not a
+        // tuned magic number: score(2x) = score(5x) = 0.5 by construction.
+        // Naturally bounded in (0,1] and decays smoothly on both sides --
+        // no special-casing r<1, no clamp() calls at all.
+        let ln2 = 2.0_f64.ln();
+        let ln5 = 5.0_f64.ln();
+        let ln_center = 0.5 * (ln2 + ln5);
+        let half_width = 0.5 * (ln5 - ln2);
+        let sigma = half_width / (2.0 * std::f64::consts::LN_2).sqrt();
         let per_ratio_score = |r: f64| -> f64 {
-            if r < 1.0 { return 0.0; }
-            if r >= 2.0 && r <= 5.0 { 1.0 }
-            else if r < 2.0 { ((r - 1.0) / 1.0).clamp(0.0, 1.0) }
-            else { ((10.0 - r) / 5.0).clamp(0.0, 1.0) }
+            if r <= 0.0 { return 0.0; }
+            let d = r.ln() - ln_center;
+            (-(d * d) / (2.0 * sigma * sigma)).exp()
         };
 
         let mut sub_scores: BTreeMap<String, f64> = BTreeMap::new();

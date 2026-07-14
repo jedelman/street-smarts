@@ -48,6 +48,12 @@ pub struct Subdivision {
     /// IDs of source parcels removed from the neighborhood when applying.
     #[serde(default)]
     pub replaced_parcel_ids: Vec<String>,
+    /// IDs of existing open-space entities removed when applying (e.g. an
+    /// oversized plaza being shrunk to comply with P61). Mirrors
+    /// `replaced_parcel_ids` -- without this, an operator that needs to
+    /// REPLACE an existing open space could only ever ADD alongside it.
+    #[serde(default)]
+    pub replaced_open_space_ids: Vec<String>,
     /// Human-readable narrative.
     pub trace: SubdivisionTrace,
 }
@@ -190,7 +196,18 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
         .collect();
     new_parcels.extend(sub.new_parcels.iter().cloned());
 
-    let mut new_open_space = nbhd.open_space.clone();
+    let mut new_open_space: Vec<street_smarts_core::nir::OpenSpace> = {
+        let removed_os: std::collections::HashSet<&str> = sub
+            .replaced_open_space_ids
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        nbhd.open_space
+            .iter()
+            .filter(|o| !removed_os.contains(o.id.as_str()))
+            .cloned()
+            .collect()
+    };
     new_open_space.extend(sub.new_open_space.iter().cloned());
 
     let mut new_buildings = nbhd.buildings.clone();

@@ -221,7 +221,9 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "street-smarts-conflict",
  "street-smarts-core",
+ "street-smarts-opinions",
 ]
 
 [[package]]

@@ -5,3 +5,4 @@ node_modules/
 *.log
 data/tiles/
 data/raster/
+tools/vibe-render/.venv/

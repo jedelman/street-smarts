@@ -60,6 +60,18 @@ pub struct Parcel {
     /// Spec code if part of a designed proposal (e.g. "CLT_NORTH", "MAIN_ST_LARGE").
     #[serde(default)]
     pub spec: Option<String>,
+    /// Density-ring tier ("core" / "mid" / "edge") set by P29 Density Rings
+    /// -- how far this parcel sits from the site's density center. `None`
+    /// if P29 hasn't run.
+    #[serde(default)]
+    pub density_tier: Option<String>,
+    /// Target story count. P29 sets it at block scale (a goal for that
+    /// block as a whole); P96 Number of Stories overwrites it per-pad with
+    /// the actual assigned value once building pads exist. `None` means
+    /// no pattern has assigned a target yet -- downstream operators (P107)
+    /// fall back to their own flat default.
+    #[serde(default)]
+    pub target_stories: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,6 +126,21 @@ pub enum OpenSpaceKind {
     Sponge,    // stormwater / ecological
     Parking,
     Other,
+    /// Land a pattern operator carved out of something else but explicitly
+    /// declined to resolve -- distinct from `Vacant` (an assessor's
+    /// judgment about existing land) or `Other` (a shrug). This is real
+    /// geometry, not a bare number in a trace string: P61's capped-off
+    /// candidate squares and dropped slivers land here, and a future P106
+    /// (Positive Outdoor Space) check should scan for exactly this kind
+    /// rather than trusting operators to have resolved everything.
+    Undecided,
+    /// Informal shared land within ONE house cluster (P37) -- what the
+    /// cluster's households actually face onto and identify with. Distinct
+    /// from `Plaza` (P61's intentionally placed, publicly-scaled small
+    /// square, or P95's designed interconnecting courtyard): this is
+    /// smaller, informal, and belongs to a single cluster rather than the
+    /// neighborhood at large.
+    Common,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

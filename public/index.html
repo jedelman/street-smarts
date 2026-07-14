@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P95 → BlockGrouping → PathNetwork → BuildingShape">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -735,15 +735,18 @@
     const ns = "http://www.w3.org/2000/svg";
     while ($mapSvg.firstChild) $mapSvg.removeChild($mapSvg.firstChild);
 
-    // SVG groups: parcels (under), streets, buildings (top).
+    // SVG groups: parcels (under), open space, streets, buildings (top).
     // This z-ordering gives the layered pipeline a legible read on the map.
     const gParcels = document.createElementNS(ns, "g");
     gParcels.setAttribute("data-layer", "parcels");
+    const gOpenSpace = document.createElementNS(ns, "g");
+    gOpenSpace.setAttribute("data-layer", "open_space");
     const gStreets = document.createElementNS(ns, "g");
     gStreets.setAttribute("data-layer", "streets");
     const gBuildings = document.createElementNS(ns, "g");
     gBuildings.setAttribute("data-layer", "buildings");
     $mapSvg.appendChild(gParcels);
+    $mapSvg.appendChild(gOpenSpace);
     $mapSvg.appendChild(gStreets);
     $mapSvg.appendChild(gBuildings);
 
@@ -775,6 +778,50 @@
         gParcels.appendChild(poly);
         // Only register the primary part for voice-coloring lookups.
         if (pi === 0) parcelById.set(p.id, poly);
+      }
+    }
+
+    // Open space (courtyards, plazas, parks, ...) — drawn above parcels,
+    // below streets/buildings, so P107 courtyards and P61 squares actually
+    // show up on the map instead of being invisible NIR data.
+    const OPEN_SPACE_COLORS = {
+      plaza: "#d9a441",
+      park: "#7a9e5c",
+      sponge: "#4a7a8c",
+      vacant: "#a89c86",
+      parking: "#8a7f6b",
+      other: "#c2b8a3",
+      // P37's informal, cluster-scale shared land -- distinct from a
+      // Plaza (P61's intentionally placed, publicly-scaled square). Sage,
+      // closer to park than plaza, but its own color so it doesn't read as
+      // either.
+      common: "#a3b18a",
+      // Deliberately unresolved: a pattern operator (P61) carved this out
+      // and explicitly declined to decide what it becomes. Dashed outline,
+      // low fill, warn-toned -- reads as "flagged," not "designed," so it
+      // doesn't get mistaken for an intentional plaza on the map.
+      undecided: "#b8602a",
+    };
+    for (const o of (neighborhood.open_space || [])) {
+      const parts = (o.polygon.parts && o.polygon.parts.length)
+        ? o.polygon.parts
+        : [{ outer: o.polygon.outer, holes: o.polygon.holes || [] }];
+      for (const part of parts) {
+        if (!part.outer || part.outer.length < 3) continue;
+        const pts = part.outer.map(q => project([q.lng, q.lat]).map(v => v.toFixed(1)).join(",")).join(" ");
+        const poly = document.createElementNS(ns, "polygon");
+        poly.setAttribute("points", pts);
+        const color = OPEN_SPACE_COLORS[o.kind] || OPEN_SPACE_COLORS.other;
+        poly.setAttribute("fill", color);
+        const isUndecided = o.kind === "undecided";
+        poly.setAttribute("fill-opacity", isUndecided ? "0.25" : "0.75");
+        poly.setAttribute("stroke", isUndecided ? "#b8602a" : "#5a4a1e");
+        poly.setAttribute("stroke-width", isUndecided ? "1" : "0.5");
+        poly.setAttribute("stroke-opacity", isUndecided ? "0.9" : "0.6");
+        if (isUndecided) poly.setAttribute("stroke-dasharray", "2,1.5");
+        poly.dataset.openSpaceId = o.id;
+        poly.dataset.kind = o.kind || "";
+        gOpenSpace.appendChild(poly);
       }
     }
 
@@ -1145,6 +1192,49 @@
   }
   const escapeAttr = escapeHtml;
 
+  // Same local-meter projection convention as the Rust side (planar.rs):
+  // longitude and latitude use DIFFERENT meters-per-degree constants.
+  const M_PER_DEG_LAT = 110_540.0;
+  const M_PER_DEG_LNG = 111_320.0;
+
+  function ringAreaM2(ring) {
+    if (!ring || ring.length < 3) return 0;
+    const lat0 = ring[0].lat;
+    const pts = ring.map(p => [
+      (p.lng - ring[0].lng) * M_PER_DEG_LNG * Math.cos(lat0 * Math.PI / 180),
+      (p.lat - lat0) * M_PER_DEG_LAT,
+    ]);
+    let sum = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[(i + 1) % pts.length];
+      sum += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(sum) / 2;
+  }
+
+  // Mirrors Rust's pipeline::allocate_squares_by_area: split a total square
+  // budget across blocks proportional to block area (largest-remainder
+  // rounding), instead of stamping the full budget onto every block. See
+  // p61_small_public_squares.rs's "v0.6" doc section for why -- Alexander's
+  // "a few" public squares means a handful across the WHOLE site.
+  function allocateSquaresByArea(blockAreas, totalSquares) {
+    const totalArea = blockAreas.reduce((a, b) => a + b, 0);
+    if (totalArea <= 0 || totalSquares <= 0) return blockAreas.map(() => 0);
+    const rawShares = blockAreas.map(a => totalSquares * Math.max(a, 0) / totalArea);
+    const counts = rawShares.map(s => Math.floor(s));
+    let leftover = totalSquares - counts.reduce((a, b) => a + b, 0);
+    const order = rawShares
+      .map((s, i) => [i, s - Math.floor(s)])
+      .sort((a, b) => b[1] - a[1]);
+    for (const [i] of order) {
+      if (leftover <= 0) break;
+      counts[i] += 1;
+      leftover -= 1;
+    }
+    return counts;
+  }
+
   async function loadFixture(name) {
     $report.innerHTML = `<div class="loading">Loading ${name}…</div>`;
     try {
@@ -1400,35 +1490,130 @@
     await new Promise(r => setTimeout(r, 16));
     try {
       const t0 = performance.now();
-      // Pipeline: parcel → pads → blocks → paths → buildings.
-      // Each step runs with operator-specific defaults (the current params
-      // panel only applies to the user's selected single-step operator).
+      // Corrected pipeline: Alexander's own pattern numbering (37 < 52 < 61
+      // < 95 < 107) run in that order, not the old flat P95-first sequence.
+      // See registry.rs's all_operators_v01 doc comment,
+      // pipeline.rs::run_corrected_pipeline, and tests/corrected_pipeline.rs
+      // for the same orchestration, tested.
+      //   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks.
+      //   2. PathNetwork/P52 (once, site-scale): connect the blocks.
+      //   3. P29 Density Rings (once, site-scale): tags each block with a
+      //      density tier and target story count from distance to the
+      //      site's own density center.
+      //   4. P61: a total of `max_squares` (default 4) spread across blocks
+      //      by area (allocateSquaresByArea) -- Alexander's "a few" public
+      //      squares means a handful across the WHOLE site, not
+      //      `max_squares` repeated on every block. Most blocks get zero.
+      //   5. Per block: P95 (reworked) builds pads around whatever P61
+      //      placed on that block, plus street corridors from step 2 --
+      //      each pad inherits its block's P29 tier/target. pad_inset_m is
+      //      now a construction-joint-sized 0.1m, not a real setback.
+      //   6. P108 Connected Buildings (once, site-scale): merges pads
+      //      separated by nothing but that construction joint into one
+      //      continuous party-wall footprint.
+      //   7. P96 Number of Stories (once, site-scale): turns each pad's
+      //      inherited tier target into a real per-pad story count, capping
+      //      ordinary buildings at 4 stories (P21 Four-Story Limit) with a
+      //      very few, widely-spaced exceptions.
+      //   8. P107 (once, site-scale): shape every pad for daylight depth,
+      //      reading P96's target_stories for real height. No longer
+      //      double-applies its own setback on top of a P95/P108 pad's gap.
       let currentJson = activeRawNeighborhood;
       const allTraces = [];
-      const pipeline = [
-        { op: "p95_building_complex", target: parcelId },
-        { op: "block_grouping", target: "*" },
-        { op: "path_network", target: "*" },
-        { op: "building_shape", target: "*" },
-      ];
-      for (const step of pipeline) {
-        const result = subdivide_parcel(currentJson, step.target, step.op, "null", seed);
+      const runStep = (json, target, op, stepSeed, paramsJson) => {
+        const result = subdivide_parcel(json, target, op, paramsJson || "null", stepSeed);
         const parsed = JSON.parse(result);
-        currentJson = JSON.stringify(parsed.neighborhood);
         allTraces.push(parsed.trace);
+        return JSON.stringify(parsed.neighborhood);
+      };
+
+      // 1. P37, once, on the target parcel.
+      currentJson = runStep(currentJson, parcelId, "p37_house_cluster", seed);
+
+      // 2. PathNetwork/P52, once -- connects the BLOCK_n parcels P37 just made.
+      currentJson = runStep(currentJson, "*", "path_network", seed);
+
+      // 3. P29 Density Rings, once -- tags every BLOCK_n with a density
+      // tier/target before P61/P95 place anything within them. Not fatal
+      // if it fails (e.g. no blocks) -- P96 falls back to a flat default.
+      try {
+        currentJson = runStep(currentJson, "*", "p29_density_rings", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p29_density_rings", headline: `Skipped (${e.message || e})`, steps: [] });
       }
+
+      // 4 + 5. P61's site-wide square budget (allocated by block area), then
+      // per block: P95 (reworked, builds around whatever P61 placed).
+      const afterPaths = JSON.parse(currentJson);
+      const blocks = afterPaths.parcels.filter(p => (p.spec || "").startsWith("BLOCK_"));
+      const blockIds = blocks.map(p => p.id);
+      const blockAreas = blocks.map(p => ringAreaM2(p.polygon.outer));
+      const totalSquares = 4; // P61Params::defaults().max_squares
+      const squareCounts = allocateSquaresByArea(blockAreas, totalSquares);
+      let blocksWithSquares = 0;
+      blockIds.forEach((blockId, i) => {
+        const blockSeed = seed + BigInt(i) + 1n;
+        const nSquares = squareCounts[i];
+        if (nSquares > 0) {
+          try {
+            currentJson = runStep(currentJson, blockId, "p61_small_public_squares", blockSeed, JSON.stringify({ max_squares: nSquares }));
+            blocksWithSquares += 1;
+          } catch (e) {
+            // A block too small/concave for P61 to place a square on is not
+            // fatal -- P95 still runs on it below, just without a pre-placed
+            // square to build around.
+            allTraces.push({ operator_name: "p61_small_public_squares", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+          }
+        }
+        try {
+          currentJson = runStep(currentJson, blockId, "p95_building_complex", blockSeed);
+        } catch (e) {
+          allTraces.push({ operator_name: "p95_building_complex", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+        }
+      });
+
+      // 6. P108 Connected Buildings, once -- merges pads separated by
+      // nothing but P95's construction-joint-sized pad_inset_m into one
+      // continuous party-wall footprint. Not fatal if nothing was close
+      // enough to connect.
+      try {
+        currentJson = runStep(currentJson, "*", "p108_connected_buildings", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p108_connected_buildings", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 7. P96 Number of Stories, once -- assigns each pad a real story
+      // count from its inherited P29 tier, before P107 shapes it into a
+      // real building with real height.
+      try {
+        currentJson = runStep(currentJson, "*", "p96_number_of_stories", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p96_number_of_stories", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 8. P107, once -- shapes every pad regardless of which block it came
+      // from. Errors hard if literally every pad site-wide is below its own
+      // size filter (a real edge case at block scale, where pads are
+      // smaller than the old whole-site pipeline produced) -- not fatal to
+      // the rest of the pipeline, so it's caught like the per-block steps.
+      try {
+        currentJson = runStep(currentJson, "*", "p107_wings_of_light", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p107_wings_of_light", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
       const finalNbhd = JSON.parse(currentJson);
       const dt = (performance.now() - t0).toFixed(0);
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P95+Block+Path+Shape × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {
           label,
           trace: {
-            headline: `Pipeline produced ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths.`,
+            headline: `Pipeline produced ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.open_space.length} open space feature(s), ${finalNbhd.streets.length} paths.`,
             steps: allTraces.flatMap(t => [`▸ ${t.operator_name}: ${t.headline}`, ...t.steps.map(s => `   · ${s}`)]),
           },
           parcelId,
@@ -1445,7 +1630,7 @@
       $fixtureNav.querySelectorAll("button").forEach(x => x.classList.remove("active"));
       btn.classList.add("active");
 
-      $genStatus.textContent = `Pipeline built in ${dt} ms · ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.streets.length} paths`;
+      $genStatus.textContent = `Pipeline built in ${dt} ms · ${finalNbhd.parcels.length} parcels, ${finalNbhd.buildings.length} buildings, ${finalNbhd.open_space.length} open space, ${finalNbhd.streets.length} paths`;
       $genStatus.className = "generate-status success";
 
       $genTrace.hidden = false;

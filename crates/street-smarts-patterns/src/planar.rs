@@ -126,6 +126,55 @@ pub fn point_in_polygon(pt: Pt2, poly: &[Pt2]) -> bool {
     inside
 }
 
+/// Shortest distance from a point to a line segment.
+pub fn point_segment_distance(p: Pt2, a: Pt2, b: Pt2) -> f64 {
+    let abx = b.x - a.x;
+    let aby = b.y - a.y;
+    let len_sq = abx * abx + aby * aby;
+    if len_sq < 1e-12 {
+        let dx = p.x - a.x;
+        let dy = p.y - a.y;
+        return (dx * dx + dy * dy).sqrt();
+    }
+    let t = (((p.x - a.x) * abx + (p.y - a.y) * aby) / len_sq).clamp(0.0, 1.0);
+    let cx = a.x + t * abx;
+    let cy = a.y + t * aby;
+    let dx = p.x - cx;
+    let dy = p.y - cy;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Shortest distance between two simple polygons -- every vertex of one
+/// checked against every edge of the other, and vice versa. Correct for
+/// two polygons that don't overlap (returns the true gap); returns some
+/// small-but-not-necessarily-zero value if they overlap (this is a
+/// proximity check for "are these close enough to connect," not a general
+/// intersection test -- overlapping pads shouldn't occur upstream, so this
+/// isn't relied on to detect that).
+pub fn polygon_min_distance(a: &[Pt2], b: &[Pt2]) -> f64 {
+    if a.is_empty() || b.is_empty() { return f64::INFINITY; }
+    let mut best = f64::INFINITY;
+    let check = |poly: &[Pt2], pt: Pt2, best: &mut f64| {
+        if poly.len() < 2 {
+            if let Some(&only) = poly.first() {
+                let dx = pt.x - only.x;
+                let dy = pt.y - only.y;
+                let d = (dx * dx + dy * dy).sqrt();
+                if d < *best { *best = d; }
+            }
+            return;
+        }
+        for i in 0..poly.len() {
+            let j = (i + 1) % poly.len();
+            let d = point_segment_distance(pt, poly[i], poly[j]);
+            if d < *best { *best = d; }
+        }
+    };
+    for &p in a { check(b, p, &mut best); }
+    for &p in b { check(a, p, &mut best); }
+    best
+}
+
 /// Clip a convex polygon `subject` against the half-plane defined by directed
 /// line from `a` to `b`: keeps points to the LEFT of a→b.
 ///
@@ -439,9 +488,296 @@ pub fn clip_to_polygon_largest(convex_subject: &[Pt2], clip_polygon: &[Pt2]) -> 
         .unwrap_or_default()
 }
 
+/// Union a set of polygon pieces that jointly tile a region without gaps or
+/// overlaps (e.g. the pieces `clip_to_polygon` returns for ONE convex
+/// subject, which are convex intersections against different triangles of
+/// the same clip-polygon triangulation).
+///
+/// Algorithm: every edge shared between two adjacent pieces appears twice —
+/// once forward in one piece's boundary, once backward in the other's,
+/// since both pieces were cut from the same underlying triangulation edge.
+/// Cancel those pairs; whatever's left traces the real outer boundary (or
+/// boundaries, if the input pieces are genuinely disjoint — e.g. a Voronoi
+/// cell split by a real concavity in the clip polygon. That's correct, not
+/// a bug: two truly separate pieces of land shouldn't merge into one pad.)
+///
+/// Points are matched by rounding to 0.1mm — comfortably above f64 roundoff
+/// at parcel-scale (metre) coordinates, comfortably below anything that
+/// matters geometrically for a building pad.
+///
+/// Uses `BTreeMap`/`BTreeSet`, not `HashMap`/`HashSet`: an earlier version
+/// used hash maps, whose iteration order isn't seeded, so which vertex
+/// started a boundary trace could vary run-to-run on identical input (noted
+/// as a known gap when it only shifted floating-point noise in a score).
+/// Reworking P95 to build around subtracted reserved land leans on this
+/// function to re-merge subtraction seams (see `subtract_convex`'s
+/// callers), where that same nondeterminism showed up as real, measurable
+/// overlap slivers along a seam, not just score noise -- worth the fix now.
+pub fn union_pieces(pieces: &[Vec<Pt2>]) -> Vec<Vec<Pt2>> {
+    use std::collections::BTreeMap;
+
+    fn key(p: Pt2) -> (i64, i64) {
+        ((p.x * 10_000.0).round() as i64, (p.y * 10_000.0).round() as i64)
+    }
+
+    let mut point_by_key: BTreeMap<(i64, i64), Pt2> = BTreeMap::new();
+    let mut edge_count: BTreeMap<((i64, i64), (i64, i64)), i32> = BTreeMap::new();
+
+    for piece in pieces {
+        let n = piece.len();
+        if n < 3 { continue; }
+        for i in 0..n {
+            let a = piece[i];
+            let b = piece[(i + 1) % n];
+            let (ka, kb) = (key(a), key(b));
+            point_by_key.entry(ka).or_insert(a);
+            point_by_key.entry(kb).or_insert(b);
+            *edge_count.entry((ka, kb)).or_insert(0) += 1;
+        }
+    }
+
+    // Keep only edges whose reverse doesn't also occur — the real boundary.
+    let mut next: BTreeMap<(i64, i64), (i64, i64)> = BTreeMap::new();
+    for (&(a, b), _) in edge_count.iter() {
+        if !edge_count.contains_key(&(b, a)) {
+            next.insert(a, b);
+        }
+    }
+
+    let mut visited: std::collections::BTreeSet<(i64, i64)> = std::collections::BTreeSet::new();
+    let mut loops: Vec<Vec<Pt2>> = Vec::new();
+
+    for (&start, _) in next.iter() {
+        if visited.contains(&start) { continue; }
+        let mut loop_pts: Vec<Pt2> = Vec::new();
+        let mut cur = start;
+        loop {
+            if visited.contains(&cur) { break; }
+            visited.insert(cur);
+            loop_pts.push(*point_by_key.get(&cur).expect("key was inserted alongside edge"));
+            match next.get(&cur) {
+                Some(&n2) => {
+                    cur = n2;
+                    if cur == start { break; }
+                }
+                None => break, // malformed boundary (shouldn't happen for a valid tiling); bail this loop
+            }
+        }
+        if loop_pts.len() >= 3 {
+            loops.push(simplify_collinear(&loop_pts));
+        }
+    }
+    loops
+}
+
+/// Drop vertices that sit (near-)collinear between their neighbors. Cosmetic
+/// only — area/point-in-polygon are unaffected either way — but keeps
+/// unioned pad boundaries from carrying redundant vertices along merged
+/// straight edges.
+fn simplify_collinear(poly: &[Pt2]) -> Vec<Pt2> {
+    let n = poly.len();
+    if n < 4 { return poly.to_vec(); }
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let prev = poly[(i + n - 1) % n];
+        let curr = poly[i];
+        let next = poly[(i + 1) % n];
+        let cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
+        // Keep unless essentially collinear (cross ~ 0 relative to edge lengths).
+        let scale = prev.dist(curr).max(curr.dist(next)).max(1e-9);
+        if cross.abs() / (scale * scale) > 1e-7 {
+            out.push(curr);
+        }
+    }
+    if out.len() >= 3 { out } else { poly.to_vec() }
+}
+/// Scale a polygon toward its centroid by a LINEAR factor (not area ratio --
+/// building_shape.rs's `shrink_toward_centroid` takes an area ratio; this
+/// takes a direct linear factor, which is what you want when the target is
+/// "this bounding dimension should become X metres," as in P61).
+/// factor=1 is a no-op; factor<1 shrinks.
+pub fn scale_toward_centroid(poly: &[Pt2], factor: f64) -> Vec<Pt2> {
+    if poly.is_empty() { return vec![]; }
+    let c = centroid(poly);
+    poly.iter().map(|p| Pt2 { x: c.x + (p.x - c.x) * factor, y: c.y + (p.y - c.y) * factor }).collect()
+}
+
+/// Plain union-find (path compression + union by size), private to this
+/// module. Backs `kruskal_mst` below.
+struct UnionFind {
+    parent: Vec<usize>,
+    size: Vec<usize>,
+}
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self { parent: (0..n).collect(), size: vec![1; n] }
+    }
+    fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+    fn union(&mut self, a: usize, b: usize) -> bool {
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra == rb { return false; }
+        let (big, small) = if self.size[ra] >= self.size[rb] { (ra, rb) } else { (rb, ra) };
+        self.parent[small] = big;
+        self.size[big] += self.size[small];
+        true
+    }
+}
+
+/// Result of `kruskal_mst`: the spanning-tree edges (the fewest that still
+/// connect every point) and every other pairwise edge NOT used by the tree,
+/// both in ascending-distance order. Callers that want a few relieving
+/// loops beyond the pure tree (PathNetwork's `loop_budget`, P61's square
+/// connectors) take the cheapest entries from `remaining_edges`.
+pub struct MstResult {
+    pub mst_edges: Vec<(usize, usize, f64)>,
+    pub remaining_edges: Vec<(usize, usize, f64)>,
+}
+
+/// Kruskal's MST over a point set (Euclidean distance in local metres).
+/// Shared by any operator that wants "the fewest edges that still connect
+/// everything" rather than a full mesh -- the same honest reading of
+/// Alexander's P52 (sparse network, not full connectivity) applies equally
+/// to P61's job of linking a handful of small squares.
+pub fn kruskal_mst(points: &[Pt2]) -> MstResult {
+    let n = points.len();
+    let mut edges: Vec<(usize, usize, f64)> = Vec::new();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            edges.push((i, j, points[i].dist(points[j])));
+        }
+    }
+    edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut uf = UnionFind::new(n);
+    let mut mst_edges = Vec::new();
+    let mut remaining_edges = Vec::new();
+    for (i, j, d) in edges {
+        if uf.union(i, j) {
+            mst_edges.push((i, j, d));
+        } else {
+            remaining_edges.push((i, j, d));
+        }
+    }
+    MstResult { mst_edges, remaining_edges }
+}
+
+/// Subtract a convex `hole` from a (possibly non-convex) `subject` polygon,
+/// returning the remaining land as zero or more simple polygon pieces.
+///
+/// The one general boolean-subtraction primitive this codebase didn't have:
+/// `clip_to_polygon` only computes intersection (A ∩ B). Reworking P95 to
+/// build around P52/P61's pre-placed paths and squares (rather than
+/// carving its own single leftover courtyard) needs real subtraction --
+/// "this parcel, MINUS the land already reserved."
+///
+/// Algorithm: for a convex hole with CCW edges e_1..e_n, `subject \ hole`
+/// decomposes exactly into the union of:
+///   Piece_1 = subject ∩ outside(e_1)
+///   Piece_2 = subject ∩ inside(e_1) ∩ outside(e_2)
+///   Piece_i = subject ∩ inside(e_1..e_{i-1}) ∩ outside(e_i)
+/// These are mutually exclusive by construction (each requires every prior
+/// edge to be "inside" and the current one "outside"), and their union is
+/// exactly "outside at least one edge" = outside the hole. Each piece is
+/// produced by `clip_half_plane`, which is exact against a single infinite
+/// line even when `subject` itself is non-convex -- only intersecting
+/// against MULTIPLE edges of a non-convex clip polygon at once is unsafe
+/// (that's what `clip_to_polygon`'s triangulation trick works around);
+/// sequential single-line clips have no such problem.
+///
+/// `hole` must be convex (callers in this codebase only ever subtract
+/// squares and path corridors, both convex by construction). A non-convex
+/// hole would silently subtract its convex hull instead of its real shape
+/// -- not guarded against here, same tradeoff `clip_convex_to_polygon`
+/// documents for its own convexity assumption.
+///
+/// Do NOT feed this function's output through `union_pieces` expecting it
+/// to re-merge the pieces into fewer, cleaner shapes. `union_pieces`
+/// assumes triangulation-style splits, where a shared internal edge is the
+/// exact same segment in both neighboring pieces. These pieces instead
+/// share boundary along the HOLE's cut lines -- and a real subject vertex
+/// landing near one of those lines can subdivide it differently across
+/// neighboring pieces, so union_pieces cancels the wrong edges and
+/// silently reintroduces part of the hole. Caught this for real in P95's
+/// rework: it cost ~300 m² of a "subtracted" square reappearing in a
+/// downstream building pad. If fragment count matters to a caller, filter
+/// or accept the un-merged pieces; don't union them.
+pub fn subtract_convex(subject: &[Pt2], hole: &[Pt2]) -> Vec<Vec<Pt2>> {
+    if subject.len() < 3 {
+        return vec![];
+    }
+    if hole.len() < 3 {
+        return vec![subject.to_vec()];
+    }
+    let hole_ccw = ensure_ccw(hole);
+    let n = hole_ccw.len();
+    let mut pieces: Vec<Vec<Pt2>> = Vec::new();
+    let mut remaining = subject.to_vec();
+    for i in 0..n {
+        if remaining.len() < 3 {
+            break;
+        }
+        let a = hole_ccw[i];
+        let b = hole_ccw[(i + 1) % n];
+        // Outside edge i (left of b->a, i.e. right of a->b): the piece of
+        // `remaining` that's already known to fail this edge's "inside"
+        // test -- part of subject \ hole, final.
+        let outside_piece = clip_half_plane(&remaining, b, a);
+        if outside_piece.len() >= 3 && area(&outside_piece) > 0.5 {
+            pieces.push(outside_piece);
+        }
+        // Narrow `remaining` to "inside edge i" for the next iteration.
+        remaining = clip_half_plane(&remaining, a, b);
+    }
+    pieces
+}
+
+/// Buffer a segment `p`-`q` into a rectangle of the given half-width, CCW
+/// oriented -- the shape a path/street's right-of-way actually occupies,
+/// for use as a `subtract_convex` hole. Degenerates to an empty vec for a
+/// zero-length segment (nothing to buffer).
+pub fn rect_corridor(p: Pt2, q: Pt2, half_width: f64) -> Vec<Pt2> {
+    let dx = q.x - p.x;
+    let dy = q.y - p.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-9 || half_width <= 0.0 {
+        return vec![];
+    }
+    let (nx, ny) = (-dy / len * half_width, dx / len * half_width);
+    vec![
+        Pt2::new(p.x + nx, p.y + ny),
+        Pt2::new(q.x + nx, q.y + ny),
+        Pt2::new(q.x - nx, q.y - ny),
+        Pt2::new(p.x - nx, p.y - ny),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn union_two_adjacent_squares_merges_to_one_loop() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        // Shares the edge (1,0)-(1,1) with `left`, traversed in reverse per CCW winding.
+        let right = vec![Pt2::new(1.0, 0.0), Pt2::new(2.0, 0.0), Pt2::new(2.0, 1.0), Pt2::new(1.0, 1.0)];
+        let merged = union_pieces(&[left, right]);
+        assert_eq!(merged.len(), 1, "two adjacent squares should merge into one loop");
+        assert!((area(&merged[0]) - 2.0).abs() < 1e-6, "merged area should be 2.0, got {}", area(&merged[0]));
+    }
+
+    #[test]
+    fn union_two_disjoint_squares_stays_two_loops() {
+        let a = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let b = vec![Pt2::new(5.0, 0.0), Pt2::new(6.0, 0.0), Pt2::new(6.0, 1.0), Pt2::new(5.0, 1.0)];
+        let merged = union_pieces(&[a, b]);
+        assert_eq!(merged.len(), 2, "genuinely disjoint pieces should NOT merge");
+    }
+
 
     #[test]
     fn area_of_unit_square() {
@@ -583,5 +919,101 @@ mod tests {
         let pieces = clip_to_polygon(&subject, &u);
         let total: f64 = pieces.iter().map(|p| area(p)).sum();
         assert!((total - 76.0).abs() < 0.5, "clipped pieces total area = {total}, expected ~76");
+    }
+
+    #[test]
+    fn subtract_convex_hole_entirely_inside_subject() {
+        // 10x10 square minus a centered 4x4 hole -> remaining area 100-16=84.
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0),
+        ];
+        let hole = vec![
+            Pt2::new(3.0, 3.0), Pt2::new(7.0, 3.0), Pt2::new(7.0, 7.0), Pt2::new(3.0, 7.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 84.0).abs() < 0.5, "subtracted area = {total}, expected ~84");
+        // Nothing in the remaining pieces should overlap the hole.
+        for piece in &pieces {
+            let overlap: f64 = clip_to_polygon(&hole, piece).iter().map(|p| area(p)).sum();
+            assert!(overlap < 0.5, "remaining piece should not overlap the subtracted hole, got {overlap} m² overlap");
+        }
+    }
+
+    #[test]
+    fn subtract_convex_hole_entirely_outside_subject_is_a_no_op() {
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0),
+        ];
+        let hole = vec![
+            Pt2::new(5.0, 5.0), Pt2::new(6.0, 5.0), Pt2::new(6.0, 6.0), Pt2::new(5.0, 6.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 1.0).abs() < 1e-6, "non-overlapping hole should leave subject fully intact, got {total}");
+    }
+
+    #[test]
+    fn subtract_convex_hole_straddling_an_edge_removes_only_the_overlap() {
+        // 10x10 square minus a hole straddling its right edge (x in [8,12])
+        // -> remaining area 100 - (2*4) = 92 (only the x in [8,10] portion,
+        // 2 wide x 4 tall, actually overlaps the subject).
+        let subject = vec![
+            Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0),
+        ];
+        let hole = vec![
+            Pt2::new(8.0, 3.0), Pt2::new(12.0, 3.0), Pt2::new(12.0, 7.0), Pt2::new(8.0, 7.0),
+        ];
+        let pieces = subtract_convex(&subject, &hole);
+        let total: f64 = pieces.iter().map(|p| area(p)).sum();
+        assert!((total - 92.0).abs() < 0.5, "subtracted area = {total}, expected ~92");
+    }
+
+    #[test]
+    fn rect_corridor_has_correct_area_and_is_centered_on_the_segment() {
+        let p = Pt2::new(0.0, 0.0);
+        let q = Pt2::new(10.0, 0.0);
+        let corridor = rect_corridor(p, q, 2.0);
+        assert_eq!(corridor.len(), 4);
+        let a = area(&corridor);
+        assert!((a - 40.0).abs() < 1e-6, "10m segment x 4m width should be 40 m², got {a}");
+        // Centered: every vertex should be within 2m of the segment's y=0 line.
+        for v in &corridor {
+            assert!(v.y.abs() <= 2.0 + 1e-9, "corridor should be centered on the segment, vertex y={}", v.y);
+        }
+    }
+
+    #[test]
+    fn rect_corridor_degenerates_to_empty_for_zero_length_segment() {
+        let p = Pt2::new(1.0, 1.0);
+        let corridor = rect_corridor(p, p, 2.0);
+        assert!(corridor.is_empty());
+    }
+
+    #[test]
+    fn polygon_min_distance_between_two_squares_with_a_known_gap() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let right = vec![Pt2::new(1.3, 0.0), Pt2::new(2.3, 0.0), Pt2::new(2.3, 1.0), Pt2::new(1.3, 1.0)];
+        let d = polygon_min_distance(&left, &right);
+        assert!((d - 0.3).abs() < 1e-9, "expected exactly 0.3 gap, got {d}");
+    }
+
+    #[test]
+    fn polygon_min_distance_is_zero_for_touching_squares() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let right = vec![Pt2::new(1.0, 0.0), Pt2::new(2.0, 0.0), Pt2::new(2.0, 1.0), Pt2::new(1.0, 1.0)];
+        let d = polygon_min_distance(&left, &right);
+        assert!(d < 1e-9, "touching squares should have ~0 gap, got {d}");
+    }
+
+    #[test]
+    fn polygon_min_distance_finds_nearest_vertex_to_edge_not_just_vertex_to_vertex() {
+        // A square's nearest edge point to an off-axis point isn't
+        // necessarily a vertex -- the closest approach here is
+        // perpendicular onto the square's right edge, not to either corner.
+        let square = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let far_point = vec![Pt2::new(2.0, 0.5)];
+        let d = polygon_min_distance(&square, &far_point);
+        assert!((d - 1.0).abs() < 1e-9, "expected exactly 1.0 (perpendicular to the right edge), got {d}");
     }
 }

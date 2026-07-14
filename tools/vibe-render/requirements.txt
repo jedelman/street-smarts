@@ -1,0 +1,4 @@
+cadquery==2.8.0
+matplotlib==3.11.0
+numpy==2.4.6
+cairosvg==2.9.0
