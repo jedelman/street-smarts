@@ -14,10 +14,12 @@
 //! sparse network, not given a fully-connected grid; but a pure branching
 //! tree creates dead-ends, so the network should have a FEW loops, not many.
 //!
-//! This version builds a Minimum Spanning Tree (Kruskal's algorithm, plain
-//! union-find, no external crate) over block centroids as the connectivity
-//! backbone -- the fewest possible edges that still reach every block, which
-//! is a direct, honest reading of "kept to a limited network." It then adds
+//! This version builds a Minimum Spanning Tree (Kruskal's algorithm, via
+//! `planar::kruskal_mst` -- shared with P61, which needs the same "fewest
+//! edges that still connect everything" reasoning to link its small
+//! squares) over block centroids as the connectivity backbone -- the fewest
+//! possible edges that still reach every block, which is a direct, honest
+//! reading of "kept to a limited network." It then adds
 //! back the `loop_budget` cheapest edges NOT already in the MST, to relieve
 //! dead-ends without reverting to mesh density.
 //!
@@ -37,7 +39,7 @@
 //!   `Street` entity with an auto-id)
 
 use crate::parameters::{ParamSpec, Parameters};
-use crate::planar::{average_centroid, lnglat_to_local, Pt2};
+use crate::planar::{average_centroid, kruskal_mst, lnglat_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,32 +88,6 @@ impl Parameters for PathNetworkParams {
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.path_width_m = s.clamp(*x); }
         p
-    }
-}
-
-/// Plain union-find (path compression + union by size). No external crate --
-/// this is a ~15-line structure, doesn't warrant a dependency.
-struct UnionFind {
-    parent: Vec<usize>,
-    size: Vec<usize>,
-}
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        Self { parent: (0..n).collect(), size: vec![1; n] }
-    }
-    fn find(&mut self, x: usize) -> usize {
-        if self.parent[x] != x {
-            self.parent[x] = self.find(self.parent[x]);
-        }
-        self.parent[x]
-    }
-    fn union(&mut self, a: usize, b: usize) -> bool {
-        let (ra, rb) = (self.find(a), self.find(b));
-        if ra == rb { return false; }
-        let (big, small) = if self.size[ra] >= self.size[rb] { (ra, rb) } else { (rb, ra) };
-        self.parent[small] = big;
-        self.size[big] += self.size[small];
-        true
     }
 }
 
@@ -192,29 +168,11 @@ impl PatternOperator for PathNetwork {
             centers_wgs.push(avg);
         }
 
-        // Compute all pairwise distances, sorted ascending -- Kruskal's needs this order.
-        let nb = centers_local.len();
-        let mut edges: Vec<(usize, usize, f64)> = Vec::new();
-        for i in 0..nb {
-            for j in (i + 1)..nb {
-                edges.push((i, j, centers_local[i].dist(centers_local[j])));
-            }
-        }
-        edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-
         // MST backbone (Kruskal's): the fewest edges that connect every
         // block. This IS the honest reading of "cars kept to a limited
         // network" -- not a tuned distance threshold.
-        let mut uf = UnionFind::new(nb);
-        let mut mst_edges: Vec<(usize, usize, f64)> = Vec::new();
-        let mut remaining: Vec<(usize, usize, f64)> = Vec::new();
-        for &(i, j, d) in &edges {
-            if uf.union(i, j) {
-                mst_edges.push((i, j, d));
-            } else {
-                remaining.push((i, j, d));
-            }
-        }
+        let nb = centers_local.len();
+        let crate::planar::MstResult { mst_edges, remaining_edges: remaining } = kruskal_mst(&centers_local);
 
         if mst_edges.len() < nb.saturating_sub(1) {
             return Err(format!(

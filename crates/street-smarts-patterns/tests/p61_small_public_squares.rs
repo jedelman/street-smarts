@@ -36,20 +36,40 @@ fn square_plaza_neighborhood(side_m: f64) -> Neighborhood {
 }
 
 #[test]
-fn oversized_plaza_gets_shrunk_and_replaced() {
-    // 40m square is well over the 18.3m default threshold.
+fn oversized_plaza_gets_partitioned_into_connected_squares() {
+    // 40m square is well over the 18.3m default threshold. ceil(40/18.3) = 3
+    // grid cells per axis -> 9 squares of ~13.3m each, all compliant, and
+    // an 8-edge MST connecting them (9 points -> 9-1 edges).
     let nbhd = square_plaza_neighborhood(40.0);
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();
 
     assert_eq!(sub.replaced_open_space_ids, vec!["PLAZA_1".to_string()], "original oversized plaza should be marked for replacement");
-    assert_eq!(sub.new_open_space.len(), 1, "should emit exactly one replacement plaza");
+    assert_eq!(sub.new_open_space.len(), 9, "40m square should partition into a 3x3 grid of compliant squares");
+    assert_eq!(sub.new_streets.len(), 8, "9 squares should be linked by an 8-edge MST backbone, not a full mesh");
 
-    let shrunk = &sub.new_open_space[0];
-    let local_area = shrunk.polygon.area_m2();
-    // Shrunk to 18.3m linear -> area should be ~18.3^2 = 335 m², not the
-    // original 1600 m².
-    assert!(local_area < 500.0, "shrunk plaza should be much smaller, got {} m²", local_area);
-    assert!(local_area > 250.0, "shouldn't over-shrink either, got {} m²", local_area);
+    let mut total_area = 0.0;
+    for sq in &sub.new_open_space {
+        let outer = &sq.polygon.outer;
+        let min_lng = outer.iter().map(|p| p.lng).fold(f64::INFINITY, f64::min);
+        let max_lng = outer.iter().map(|p| p.lng).fold(f64::NEG_INFINITY, f64::max);
+        let min_lat = outer.iter().map(|p| p.lat).fold(f64::INFINITY, f64::min);
+        let max_lat = outer.iter().map(|p| p.lat).fold(f64::NEG_INFINITY, f64::max);
+        let m_per_deg = 111_320.0;
+        let width_m = (max_lng - min_lng) * m_per_deg;
+        let height_m = (max_lat - min_lat) * m_per_deg;
+        assert!(width_m.max(height_m) <= 18.3 + 0.01, "every sub-square must comply with the 18.3m cap, got {}", width_m.max(height_m));
+        total_area += sq.polygon.area_m2();
+    }
+    // Grid partition of a plain square conserves area -- no clipping loss.
+    // Tolerance is loose (~1%) because each sub-square's area_m2() reprojects
+    // around its OWN centroid (a slightly different cos(lat) factor per
+    // square than the shared local frame used during partitioning), not
+    // because any land is actually dropped.
+    assert!((total_area - 1600.0).abs() < 20.0, "partitioned squares should conserve the original 1600m² of land, got {}", total_area);
+
+    for street in &sub.new_streets {
+        assert_eq!(street.classification.as_deref(), Some("pedestrian"), "connectors between sibling squares should be pedestrian-classified");
+    }
 }
 
 #[test]
@@ -71,18 +91,61 @@ fn apply_subdivision_actually_removes_the_old_oversized_plaza() {
     let result = apply_subdivision(&nbhd, &sub);
 
     // This is the whole point of replaced_open_space_ids: the OLD oversized
-    // plaza should be GONE, not sitting alongside the new smaller one.
-    assert_eq!(result.open_space.len(), 1, "old oversized plaza should be removed, not duplicated");
-    assert_ne!(result.open_space[0].id, "PLAZA_1", "surviving plaza should be the shrunk replacement, not the original");
+    // plaza should be GONE, replaced by the full set of partitioned
+    // squares, not sitting alongside them.
+    assert_eq!(result.open_space.len(), 9, "old oversized plaza should be removed and replaced by all 9 partitioned squares");
+    assert!(result.open_space.iter().all(|o| o.id != "PLAZA_1"), "surviving plazas should be the partitioned replacements, not the original");
+    assert_eq!(result.streets.len(), 8, "the MST connector streets should also be merged into the neighborhood");
 }
 
 #[test]
 fn params_roundtrip() {
-    let p = P61Params { max_dimension_m: 15.0, min_meaningful_area_m2: 10.0 };
+    let p = P61Params { max_dimension_m: 15.0, min_meaningful_area_m2: 10.0, connector_width_m: 2.5 };
     let v = p.as_vector();
     let back = P61Params::from_vector(&v);
     assert_eq!(back.max_dimension_m, 15.0);
     assert_eq!(back.min_meaningful_area_m2, 10.0);
+    assert_eq!(back.connector_width_m, 2.5);
+}
+
+#[test]
+fn elongated_plaza_partitions_along_the_long_axis_only() {
+    // 60m x 15m: only the long axis exceeds 18.3m. ceil(60/18.3) = 4,
+    // ceil(15/18.3) = 1 -> a 4x1 strip of 4 squares, 3 connectors.
+    let m_per_deg = 111_320.0;
+    let w = 60.0 / m_per_deg;
+    let h = 15.0 / m_per_deg;
+    let ring = vec![
+        LngLat::new(0.0, 0.0),
+        LngLat::new(w, 0.0),
+        LngLat::new(w, h),
+        LngLat::new(0.0, h),
+    ];
+    let nbhd = Neighborhood {
+        id: "test".into(),
+        bbox_wgs84: [0.0, 0.0, w, h],
+        parcels: vec![],
+        buildings: vec![],
+        streets: vec![],
+        open_space: vec![OpenSpace {
+            id: "PLAZA_STRIP".into(),
+            polygon: Polygon::from_ring(ring),
+            kind: OpenSpaceKind::Plaza,
+        }],
+        boundaries: vec![],
+        activity_nodes: vec![],
+        metadata: NeighborhoodMeta {
+            source: "synthetic".into(),
+            fetched_at: "test".into(),
+            license: "test".into(),
+            layer_provenance: Default::default(),
+            label: "P61 elongated fixture".into(),
+        },
+    };
+
+    let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();
+    assert_eq!(sub.new_open_space.len(), 4, "60m x 15m strip should split 4-wide along the long axis only");
+    assert_eq!(sub.new_streets.len(), 3, "4 squares in a line should need exactly 3 connectors (a tree, not a mesh)");
 }
 
 #[test]

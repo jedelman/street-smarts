@@ -544,6 +544,70 @@ pub fn scale_toward_centroid(poly: &[Pt2], factor: f64) -> Vec<Pt2> {
     poly.iter().map(|p| Pt2 { x: c.x + (p.x - c.x) * factor, y: c.y + (p.y - c.y) * factor }).collect()
 }
 
+/// Plain union-find (path compression + union by size), private to this
+/// module. Backs `kruskal_mst` below.
+struct UnionFind {
+    parent: Vec<usize>,
+    size: Vec<usize>,
+}
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self { parent: (0..n).collect(), size: vec![1; n] }
+    }
+    fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] != x {
+            self.parent[x] = self.find(self.parent[x]);
+        }
+        self.parent[x]
+    }
+    fn union(&mut self, a: usize, b: usize) -> bool {
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra == rb { return false; }
+        let (big, small) = if self.size[ra] >= self.size[rb] { (ra, rb) } else { (rb, ra) };
+        self.parent[small] = big;
+        self.size[big] += self.size[small];
+        true
+    }
+}
+
+/// Result of `kruskal_mst`: the spanning-tree edges (the fewest that still
+/// connect every point) and every other pairwise edge NOT used by the tree,
+/// both in ascending-distance order. Callers that want a few relieving
+/// loops beyond the pure tree (PathNetwork's `loop_budget`, P61's square
+/// connectors) take the cheapest entries from `remaining_edges`.
+pub struct MstResult {
+    pub mst_edges: Vec<(usize, usize, f64)>,
+    pub remaining_edges: Vec<(usize, usize, f64)>,
+}
+
+/// Kruskal's MST over a point set (Euclidean distance in local metres).
+/// Shared by any operator that wants "the fewest edges that still connect
+/// everything" rather than a full mesh -- the same honest reading of
+/// Alexander's P52 (sparse network, not full connectivity) applies equally
+/// to P61's job of linking a handful of small squares.
+pub fn kruskal_mst(points: &[Pt2]) -> MstResult {
+    let n = points.len();
+    let mut edges: Vec<(usize, usize, f64)> = Vec::new();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            edges.push((i, j, points[i].dist(points[j])));
+        }
+    }
+    edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut uf = UnionFind::new(n);
+    let mut mst_edges = Vec::new();
+    let mut remaining_edges = Vec::new();
+    for (i, j, d) in edges {
+        if uf.union(i, j) {
+            mst_edges.push((i, j, d));
+        } else {
+            remaining_edges.push((i, j, d));
+        }
+    }
+    MstResult { mst_edges, remaining_edges }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
