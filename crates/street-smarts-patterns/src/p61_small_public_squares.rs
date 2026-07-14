@@ -5,36 +5,50 @@
 //! > A square which is more than about 60 feet [~18m] across... will
 //! > never feel comfortable or intimate, unless it is extremely crowded.
 //!
-//! # v0.2 approach
+//! # v0.3 approach
 //! Scans existing `OpenSpace` entities of kind `Plaza` -- the courtyards
 //! P95 and P107 already produce are the natural candidates here, since
 //! this pipeline doesn't yet place squares anywhere else. For each:
 //! - If its longer bounding-box dimension is already <= `max_dimension_m`,
 //!   leave it alone -- P61 is already satisfied.
-//! - If it's too large, this is Alexander's actual guidance, not a
-//!   shrink-and-abandon: break it into a grid of smaller squares (Voronoi
+//! - If it's too large, break it into a grid of smaller squares (Voronoi
 //!   seeds on a regular grid, clipped to the plaza's real -- possibly
 //!   non-convex -- boundary), each within `max_dimension_m`, and link them
 //!   with an honest MST path backbone (`planar::kruskal_mst`, shared with
 //!   P52's PathNetwork) -- the fewest connecting segments that still reach
-//!   every new square, not a full mesh. The old oversized plaza is REPLACED
-//!   (via `replaced_open_space_ids`) by the whole set of new squares, so
-//!   the original land stays assigned to public space rather than partly
-//!   evaporating.
+//!   every new square, not a full mesh.
+//!
+//! v0.2 tiled the WHOLE plaza this way, which is wrong at real scale: a
+//! multi-acre courtyard genuinely needs 40+ squares to tile exhaustively at
+//! an 18.3m cap -- no amount of smarter packing math changes that, since
+//! it's an area argument, not a layout one. That's not what "a few smaller
+//! connected squares" describes, and it's not how real precedent for this
+//! pattern actually works: Barcelona's *superilles* place a small number of
+//! plaza nodes per reclaimed superblock (roughly one per several acres),
+//! not one every 18m: most of the reclaimed area stays ordinary street/
+//! green space. Lisbon's Alfama praças are the same -- sparse, at natural
+//! convergence points, even though the surrounding fabric is tight and
+//! irregular. So v0.3 caps the square count at `max_squares` (default 4 --
+//! Alexander's own "a few"), keeps the largest-area candidates (maximizes
+//! usable public space for a fixed count), and reports whatever land the
+//! cap left uncovered explicitly rather than either tiling over it or
+//! quietly discarding it. The old oversized plaza is still REPLACED (via
+//! `replaced_open_space_ids`) by the kept squares.
 //!
 //! # What this deliberately does NOT do
 //! - Connector segments are geometry-only path centerlines (same
 //!   abstraction PathNetwork uses). Alexander's real edge treatment for the
 //!   links between squares -- colonnades, trees, level changes -- is not
 //!   modeled; that's a materials/design decision downstream of geometry.
-//! - Sub-square pieces smaller than `min_meaningful_area_m2` (slivers left
-//!   over from clipping to a non-convex plaza boundary) are dropped, not
-//!   fabricated as land use. They're reported in the trace, not hidden.
-//!   Those dropped slivers -- and any land a future version doesn't
-//!   reassign -- are exactly the kind of undefined leftover space
-//!   Alexander's Positive Outdoor Space (P106) warns against; a later
-//!   version should route them through a P106 check instead of discarding
-//!   them silently.
+//! - Which candidate squares survive the `max_squares` cap is decided by
+//!   area alone (biggest first), not by position -- real superilla/praça
+//!   placement responds to where people actually converge (transit, main
+//!   entrances, street corners), which this operator has no model of.
+//! - Land left uncovered by the cap -- like the sub-`min_meaningful_area_m2`
+//!   slivers below -- is not assigned anywhere. It's exactly the kind of
+//!   undefined leftover space Alexander's Positive Outdoor Space (P106)
+//!   warns against; a later version should route it through a P106 check
+//!   instead of leaving it as a bare number in the trace.
 //! - The grid partition is a rectangular heuristic. Alexander's own
 //!   sketches for this pattern are organic, hand-drawn subdivisions; a grid
 //!   is an honest first approximation, not a claim to match his intent
@@ -65,6 +79,13 @@ pub struct P61Params {
     /// vehicular default -- these are pedestrian links between intimate
     /// squares, not streets.
     pub connector_width_m: f64,
+    /// Cap on how many squares a single oversized plaza gets split into --
+    /// Alexander's own "a few," and the same order of magnitude real
+    /// precedent (Barcelona superilles, Lisbon's Alfama praças) actually
+    /// uses per reclaimed area. Prevents exhaustively tiling a multi-acre
+    /// courtyard into dozens of postage-stamp squares; excess candidate
+    /// area is reported as uncovered, not fabricated or silently dropped.
+    pub max_squares: f64,
 }
 
 impl Parameters for P61Params {
@@ -85,13 +106,18 @@ impl Parameters for P61Params {
                 "Right-of-way for the pedestrian links between sibling squares.",
                 1.5, 8.0, 3.0,
             ).with_unit("m"),
+            ParamSpec::float(
+                "max_squares",
+                "Cap on squares per oversized plaza -- Alexander's 'a few,' not exhaustive tiling.",
+                1.0, 20.0, 4.0,
+            ),
         ]
     }
     fn defaults() -> Self {
-        Self { max_dimension_m: 18.3, min_meaningful_area_m2: 20.0, connector_width_m: 3.0 }
+        Self { max_dimension_m: 18.3, min_meaningful_area_m2: 20.0, connector_width_m: 3.0, max_squares: 4.0 }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.max_dimension_m, self.min_meaningful_area_m2, self.connector_width_m]
+        vec![self.max_dimension_m, self.min_meaningful_area_m2, self.connector_width_m, self.max_squares]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -99,6 +125,7 @@ impl Parameters for P61Params {
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.max_dimension_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.min_meaningful_area_m2 = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.connector_width_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.max_squares = s.clamp(*x); }
         p
     }
 }
@@ -193,6 +220,7 @@ impl PatternOperator for P61SmallPublicSquares {
         let mut n_squares_total = 0;
         let mut n_connectors_total = 0;
         let mut any_dropped_slivers = false;
+        let mut any_capped = false;
 
         for plaza in &plazas {
             let plaza_area_m2 = plaza.polygon.area_m2();
@@ -261,6 +289,21 @@ impl PatternOperator for P61SmallPublicSquares {
                 ));
             }
 
+            // Cap at max_squares -- "a few," not exhaustive tiling. Keep the
+            // largest-area candidates (maximizes usable public space for a
+            // fixed count) and report whatever the cap left uncovered
+            // explicitly, rather than tiling over the rest of a multi-acre
+            // plaza or silently dropping it.
+            let max_squares = params.max_squares.round().max(1.0) as usize;
+            let mut capped_area = 0.0;
+            if squares.len() > max_squares {
+                squares.sort_by(|a, b| area(b).partial_cmp(&area(a)).unwrap_or(std::cmp::Ordering::Equal));
+                for extra in &squares[max_squares..] {
+                    capped_area += area(extra);
+                }
+                squares.truncate(max_squares);
+            }
+
             let plaza_id = plaza.id.clone();
             for (idx, sq_local) in squares.iter().enumerate() {
                 let ring = local_to_ring(sq_local, &origin);
@@ -296,12 +339,18 @@ impl PatternOperator for P61SmallPublicSquares {
             replaced_ids.push(plaza.id.clone());
             n_partitioned += 1;
 
-            let leftover_note = if dropped_area > 1.0 {
+            let mut leftover_note = String::new();
+            if dropped_area > 1.0 {
                 any_dropped_slivers = true;
-                format!(" ({:.0}m² dropped as too-small slivers, not fabricated as land use)", dropped_area)
-            } else {
-                String::new()
-            };
+                leftover_note.push_str(&format!(" ({:.0}m² dropped as too-small slivers, not fabricated as land use)", dropped_area));
+            }
+            if capped_area > 1.0 {
+                any_capped = true;
+                leftover_note.push_str(&format!(
+                    " (capped at {} square(s): {:.0}m² of otherwise-compliant candidate squares left UNCOVERED, not tiled over)",
+                    max_squares, capped_area
+                ));
+            }
             steps.push(format!(
                 "{}: {:.1}m across ({:.0}m²) -> split into {} connected square(s) linked by {} path segment(s){}.",
                 plaza.id, longer_side, plaza_area_m2, squares.len(), n_connectors, leftover_note
@@ -339,6 +388,19 @@ impl PatternOperator for P61SmallPublicSquares {
                  undefined space Alexander's Positive Outdoor Space (P106) warns against. A \
                  later version should route it through a P106 check instead of discarding it \
                  silently.".into()
+            );
+        }
+        if any_capped {
+            caveats.push(
+                "At least one plaza had more compliant candidate squares than max_squares \
+                 allows. The excess was left UNCOVERED, not tiled or fabricated -- real \
+                 precedent (Barcelona's superilles, Lisbon's Alfama praças) places a small \
+                 number of square nodes per reclaimed area, not one every 18m, so exhaustive \
+                 tiling was the wrong default even though it was geometrically achievable. \
+                 Which candidates survive the cap is decided by area alone (biggest first), not \
+                 by where people would actually converge -- this operator has no model of that. \
+                 The uncovered land, like dropped slivers, is a P106 (Positive Outdoor Space) \
+                 question this version doesn't resolve.".into()
             );
         }
 
