@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1497,13 +1497,22 @@
       // for the same orchestration, tested.
       //   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks.
       //   2. PathNetwork/P52 (once, site-scale): connect the blocks.
-      //   3. P61: a total of `max_squares` (default 4) spread across blocks
+      //   3. P29 Density Rings (once, site-scale): tags each block with a
+      //      density tier and target story count from distance to the
+      //      site's own density center.
+      //   4. P61: a total of `max_squares` (default 4) spread across blocks
       //      by area (allocateSquaresByArea) -- Alexander's "a few" public
       //      squares means a handful across the WHOLE site, not
       //      `max_squares` repeated on every block. Most blocks get zero.
-      //   4. Per block: P95 (reworked) builds pads around whatever P61
-      //      placed on that block, plus street corridors from step 2.
-      //   5. P107 (once, site-scale): shape every pad for daylight depth.
+      //   5. Per block: P95 (reworked) builds pads around whatever P61
+      //      placed on that block, plus street corridors from step 2 --
+      //      each pad inherits its block's P29 tier/target.
+      //   6. P96 Number of Stories (once, site-scale): turns each pad's
+      //      inherited tier target into a real per-pad story count, capping
+      //      ordinary buildings at 4 stories (P21 Four-Story Limit) with a
+      //      very few, widely-spaced exceptions.
+      //   7. P107 (once, site-scale): shape every pad for daylight depth,
+      //      reading P96's target_stories for real height.
       let currentJson = activeRawNeighborhood;
       const allTraces = [];
       const runStep = (json, target, op, stepSeed, paramsJson) => {
@@ -1519,7 +1528,16 @@
       // 2. PathNetwork/P52, once -- connects the BLOCK_n parcels P37 just made.
       currentJson = runStep(currentJson, "*", "path_network", seed);
 
-      // 3 + 4. P61's site-wide square budget (allocated by block area), then
+      // 3. P29 Density Rings, once -- tags every BLOCK_n with a density
+      // tier/target before P61/P95 place anything within them. Not fatal
+      // if it fails (e.g. no blocks) -- P96 falls back to a flat default.
+      try {
+        currentJson = runStep(currentJson, "*", "p29_density_rings", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p29_density_rings", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 4 + 5. P61's site-wide square budget (allocated by block area), then
       // per block: P95 (reworked, builds around whatever P61 placed).
       const afterPaths = JSON.parse(currentJson);
       const blocks = afterPaths.parcels.filter(p => (p.spec || "").startsWith("BLOCK_"));
@@ -1549,7 +1567,16 @@
         }
       });
 
-      // 4. P107, once -- shapes every pad regardless of which block it came
+      // 6. P96 Number of Stories, once -- assigns each pad a real story
+      // count from its inherited P29 tier, before P107 shapes it into a
+      // real building with real height.
+      try {
+        currentJson = runStep(currentJson, "*", "p96_number_of_stories", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p96_number_of_stories", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 7. P107, once -- shapes every pad regardless of which block it came
       // from. Errors hard if literally every pad site-wide is below its own
       // size filter (a real edge case at block scale, where pads are
       // smaller than the old whole-site pipeline produced) -- not fatal to
@@ -1565,7 +1592,7 @@
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P37+P52+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P107 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P96+P107 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {

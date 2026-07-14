@@ -28,6 +28,8 @@ fn four_corner_blocks() -> Neighborhood {
             ownership: None,
             is_eda: false,
             spec: Some(block.into()),
+            density_tier: None,
+            target_stories: None,
         }
     };
 

@@ -56,7 +56,13 @@ pub struct P107Params {
     /// If carving a courtyard would leave a hole smaller than this, it's
     /// not meaningful open space -- fall back to a solid footprint instead.
     pub courtyard_min_area_m2: f64,
+    /// Fallback height for a pad with no `target_stories` assignment (P96
+    /// Number of Stories didn't run, or didn't reach this pad).
     pub assumed_height_m: f64,
+    /// Floor-to-floor height used to convert a pad's `target_stories` (set
+    /// by P96) into real building height. Only used when `target_stories`
+    /// is present -- otherwise `assumed_height_m` applies directly.
+    pub floor_to_floor_m: f64,
 }
 
 impl Parameters for P107Params {
@@ -84,8 +90,13 @@ impl Parameters for P107Params {
             ).with_unit("m²"),
             ParamSpec::float(
                 "assumed_height_m",
-                "Assumed building height for the NIR Building entity.",
+                "Fallback building height when a pad has no target_stories assignment.",
                 3.0, 30.0, 9.0,
+            ).with_unit("m"),
+            ParamSpec::float(
+                "floor_to_floor_m",
+                "Floor-to-floor height used to convert a pad's target_stories into real height.",
+                2.5, 5.0, 3.5,
             ).with_unit("m"),
         ]
     }
@@ -96,6 +107,7 @@ impl Parameters for P107Params {
             min_pad_area_m2: 120.0,
             courtyard_min_area_m2: 30.0,
             assumed_height_m: 9.0,
+            floor_to_floor_m: 3.5,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
@@ -105,6 +117,7 @@ impl Parameters for P107Params {
             self.min_pad_area_m2,
             self.courtyard_min_area_m2,
             self.assumed_height_m,
+            self.floor_to_floor_m,
         ]
     }
     fn from_vector(v: &[f64]) -> Self {
@@ -115,6 +128,7 @@ impl Parameters for P107Params {
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.min_pad_area_m2 = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.courtyard_min_area_m2 = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.assumed_height_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(5), v.get(5)) { p.floor_to_floor_m = s.clamp(*x); }
         p
     }
 }
@@ -200,8 +214,18 @@ impl PatternOperator for P107WingsOfLight {
             let (min_pt, max_pt) = bbox(&envelope);
             let short_side = (max_pt.x - min_pt.x).min(max_pt.y - min_pt.y);
 
-            let height_jitter = (prng.next_f64() - 0.5) * 1.5;
-            let height_m = (params.assumed_height_m + height_jitter).max(2.5);
+            // P96 Number of Stories may have already assigned this pad a
+            // real story count -- respect it (small jitter for an organic
+            // feel, not enough to cross into a different story count).
+            // Falls back to the flat assumed_height_m default otherwise,
+            // unchanged from before P96 existed.
+            let height_m = if let Some(target_stories) = parcel.target_stories {
+                let height_jitter = (prng.next_f64() - 0.5) * (params.floor_to_floor_m * 0.2);
+                (target_stories * params.floor_to_floor_m + height_jitter).max(2.5)
+            } else {
+                let height_jitter = (prng.next_f64() - 0.5) * 1.5;
+                (params.assumed_height_m + height_jitter).max(2.5)
+            };
 
             if short_side <= params.max_wing_width_m {
                 // Already narrow enough -- fill solid, P107 is satisfied

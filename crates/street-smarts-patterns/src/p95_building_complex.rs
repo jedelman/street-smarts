@@ -480,6 +480,12 @@ impl PatternOperator for P95BuildingComplex {
                         ownership: None,
                         is_eda: true,
                         spec: Some(format!("P95_CELL_{}", global_cell_idx)),
+                        // Carry the source block's P29 density assignment
+                        // forward so P96 Number of Stories has a tier to
+                        // work from without needing to re-derive which
+                        // block a pad came from.
+                        density_tier: source.density_tier.clone(),
+                        target_stories: source.target_stories,
                     });
                 }
             }

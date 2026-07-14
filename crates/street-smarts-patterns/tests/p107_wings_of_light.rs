@@ -27,6 +27,8 @@ fn rect_pad_neighborhood(width_m: f64, depth_m: f64) -> Neighborhood {
         ownership: None,
         is_eda: false,
         spec: None,
+        density_tier: None,
+        target_stories: None,
     };
     Neighborhood {
         id: "test".into(),

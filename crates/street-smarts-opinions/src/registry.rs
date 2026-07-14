@@ -2,7 +2,7 @@
 
 use crate::activist::OwnershipPattern;
 use crate::geometric::{LevelsOfScale, StrongCenters};
-use crate::pattern::{P95BuildingComplexOpinion, P106PositiveOutdoorSpace};
+use crate::pattern::{P21FourStoryLimit, P95BuildingComplexOpinion, P106PositiveOutdoorSpace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::nir::Neighborhood;
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, OpinionRef};
@@ -22,6 +22,7 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(OwnershipPattern),
         Box::new(P95BuildingComplexOpinion),
         Box::new(P106PositiveOutdoorSpace),
+        Box::new(P21FourStoryLimit),
     ]
 }
 

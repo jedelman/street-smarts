@@ -26,6 +26,8 @@ fn raw_parcel(id: &str, ring: Vec<LngLat>) -> Parcel {
         ownership: None,
         is_eda: true,
         spec: None,
+        density_tier: None,
+        target_stories: None,
     }
 }
 

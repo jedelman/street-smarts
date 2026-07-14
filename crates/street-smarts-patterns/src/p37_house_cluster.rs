@@ -324,6 +324,9 @@ impl PatternOperator for P37HouseCluster {
                         ownership: None,
                         is_eda: true,
                         spec: Some(format!("BLOCK_{}", global_block_idx)),
+                        // Set later by P29 Density Rings, if it runs.
+                        density_tier: None,
+                        target_stories: None,
                     });
                     n_emitted += 1;
 

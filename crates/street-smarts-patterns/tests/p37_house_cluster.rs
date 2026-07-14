@@ -23,6 +23,8 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
             ownership: None,
             is_eda: true,
             spec: None,
+            density_tier: None,
+            target_stories: None,
         }],
         buildings: vec![],
         streets: vec![],

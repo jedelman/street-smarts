@@ -60,6 +60,18 @@ pub struct Parcel {
     /// Spec code if part of a designed proposal (e.g. "CLT_NORTH", "MAIN_ST_LARGE").
     #[serde(default)]
     pub spec: Option<String>,
+    /// Density-ring tier ("core" / "mid" / "edge") set by P29 Density Rings
+    /// -- how far this parcel sits from the site's density center. `None`
+    /// if P29 hasn't run.
+    #[serde(default)]
+    pub density_tier: Option<String>,
+    /// Target story count. P29 sets it at block scale (a goal for that
+    /// block as a whole); P96 Number of Stories overwrites it per-pad with
+    /// the actual assigned value once building pads exist. `None` means
+    /// no pattern has assigned a target yet -- downstream operators (P107)
+    /// fall back to their own flat default.
+    #[serde(default)]
+    pub target_stories: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

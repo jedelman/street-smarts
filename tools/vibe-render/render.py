@@ -98,17 +98,24 @@ def build_scene(nbhd):
         if bid.endswith("_building"):
             building_ids_with_real_shape.add(bid[: -len("_building")])
 
-    # Un-shaped pads (P95 produced them, P107 didn't get to them) -- flat
-    # default-height massing box, so the render isn't missing most of the
-    # actual building count.
+    # Un-shaped pads (P95 produced them, P107 didn't get to them) -- massing
+    # box at P96's assigned height if it ran (target_stories * a 3.5m
+    # floor-to-floor assumption, matching P107's own convention), else the
+    # flat default, so the render isn't missing most of the actual building
+    # count -- and doesn't understate height variation P96 actually assigned
+    # just because P107 never got around to shaping the pad into a real
+    # Building.
+    FLOOR_TO_FLOOR_M = 3.5
     for p in parcels:
         if p.get("use_category") not in ("p95_building_pad", "p95_pad_with_building"):
             continue
         if p["id"] in building_ids_with_real_shape:
             continue
+        target_stories = p.get("target_stories")
+        height = target_stories * FLOOR_TO_FLOOR_M if target_stories else DEFAULT_BUILDING_HEIGHT_M
         parts = p["polygon"].get("parts") or [{"outer": p["polygon"]["outer"], "holes": p["polygon"].get("holes", [])}]
         for part in parts:
-            solid = extrude_polygon(part["outer"], part.get("holes", []), DEFAULT_BUILDING_HEIGHT_M, origin_lng, origin_lat)
+            solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 building_solids.append((solid, "building_unshaped"))
 

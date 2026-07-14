@@ -9,7 +9,12 @@
 //!   2. PathNetwork/P52 (once, site-scale): connect the blocks -- unchanged
 //!      code, already filters by `spec.starts_with("BLOCK_")`, which P37
 //!      produces directly.
-//!   3. P61 (site-scale budget, spread across blocks): Alexander's "a few"
+//!   3. P29 Density Rings (once, site-scale): tags each BLOCK_n with a
+//!      density tier and target story count from its distance to the
+//!      site's own density center -- see p29's module doc for why it runs
+//!      here instead of at its real Alexander-numbered position (29, well
+//!      before House Cluster).
+//!   4. P61 (site-scale budget, spread across blocks): Alexander's "a few"
 //!      public squares means a handful across the WHOLE site, not
 //!      `max_squares` repeated on every block -- see p61's own module doc,
 //!      "v0.6" section, for why that was the biggest single contributor to
@@ -19,12 +24,19 @@
 //!      are seeded on whatever land P37's common land didn't already claim
 //!      on that block (`place_new_squares_n` subtracts existing reserved
 //!      open space before seeding).
-//!   4. Per block: P95 (reworked) builds pads around whatever P37/P61
-//!      placed on that block, plus street corridors from step 2.
-//!   5. P107 (once, site-scale): shape every P95 pad for daylight depth --
-//!      unchanged code, already filters by `use_category == "p95_building_pad"`
-//!      across the whole neighborhood regardless of which block a pad came
-//!      from.
+//!   5. Per block: P95 (reworked) builds pads around whatever P37/P61
+//!      placed on that block, plus street corridors from step 2 -- each pad
+//!      inherits its source block's P29 density tier/target.
+//!   6. P96 Number of Stories (once, site-scale): turns each pad's
+//!      inherited tier target into a real per-pad story count, capping
+//!      ordinary buildings at 4 stories (P21 Four-Story Limit) with a very
+//!      few, widely-spaced exceptions where a tier's target calls for more.
+//!   7. P107 (once, site-scale): shape every P95 pad for daylight depth,
+//!      reading P96's `target_stories` assignment for real height -- unless
+//!      P96 didn't run, the flat `assumed_height_m` fallback applies
+//!      exactly as before P96 existed. Already filters by
+//!      `use_category == "p95_building_pad"` across the whole neighborhood
+//!      regardless of which block a pad came from.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -35,9 +47,11 @@
 //! rather than only at the end.
 
 use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
+use crate::p29_density_rings::{P29DensityRings, P29Params};
 use crate::p37_house_cluster::{P37HouseCluster, P37Params};
 use crate::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPublicSquares};
 use crate::p95_building_complex::{P95BuildingComplex, P95Params};
+use crate::p96_number_of_stories::{P96NumberOfStories, P96Params};
 use crate::path_network::{PathNetwork, PathNetworkParams};
 use crate::{apply_subdivision, Parameters, PatternOperator};
 use street_smarts_core::nir::Neighborhood;
@@ -86,6 +100,10 @@ pub fn run_corrected_pipeline(baseline: &Neighborhood, parcel_id: &str, seed: u6
     let sub52 = PathNetwork.apply(&nbhd, "*", &PathNetworkParams::defaults(), seed).unwrap();
     nbhd = apply_subdivision(&nbhd, &sub52);
 
+    if let Ok(sub29) = P29DensityRings.apply(&nbhd, "*", &P29Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub29);
+    }
+
     let block_ids: Vec<String> = nbhd.parcels.iter()
         .filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_"))
         .map(|p| p.id.clone())
@@ -111,6 +129,10 @@ pub fn run_corrected_pipeline(baseline: &Neighborhood, parcel_id: &str, seed: u6
         if let Ok(sub95) = P95BuildingComplex.apply(&nbhd, block_id, &P95Params::defaults(), block_seed) {
             nbhd = apply_subdivision(&nbhd, &sub95);
         }
+    }
+
+    if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &P96Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub96);
     }
 
     if let Ok(sub107) = P107WingsOfLight.apply(&nbhd, "*", &P107Params::defaults(), seed) {
