@@ -7,22 +7,33 @@
 //!   2. PathNetwork/P52 (once, site-scale): connect the blocks -- unchanged
 //!      code, already filters by `spec.starts_with("BLOCK_")`, which P37
 //!      produces directly.
-//!   3. Per block: P61 places a few squares on the block's raw land, then
-//!      P95 (reworked) builds pads around them.
-//!   4. P107 (once, site-scale): shape every P95 pad for daylight depth --
+//!   3. P61 (site-scale budget): a total of `max_squares` (default 4)
+//!      spread across blocks by area (`pipeline::allocate_squares_by_area`)
+//!      -- Alexander's "a few" public squares means a handful across the
+//!      WHOLE site, not `max_squares` repeated on every block. Most blocks
+//!      get zero. See p61's own module doc ("v0.6") for why the old
+//!      per-block-full-budget version was the biggest single contributor to
+//!      fragmentation.
+//!   4. Per block: P95 (reworked) builds pads around whatever P61 placed on
+//!      that block (if anything) plus street corridors from step 2.
+//!   5. P107 (once, site-scale): shape every P95 pad for daylight depth --
 //!      unchanged code, already filters by `use_category == "p95_building_pad"`
 //!      across the whole neighborhood regardless of which block a pad came
 //!      from.
 //!
 //! This is what a corrected `registry.rs`/web-UI pipeline should run; this
 //! test is the real proof it actually composes end to end, not a mockup.
+//! It reimplements `pipeline::run_corrected_pipeline`'s loop locally (rather
+//! than calling it directly) so it can assert on intermediate per-stage
+//! counts the shared function doesn't expose.
 
 use street_smarts_core::nir::Neighborhood;
 use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
-use street_smarts_patterns::p61_small_public_squares::{P61Params, P61SmallPublicSquares};
+use street_smarts_patterns::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPublicSquares};
 use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
 use street_smarts_patterns::path_network::{PathNetwork, PathNetworkParams};
+use street_smarts_patterns::pipeline::allocate_squares_by_area;
 use street_smarts_patterns::{apply_subdivision, Parameters, PatternOperator};
 
 #[test]
@@ -46,21 +57,42 @@ fn corrected_pipeline_runs_end_to_end_on_the_real_mall_parcel() {
     nbhd = apply_subdivision(&nbhd, &sub52);
     assert!(!nbhd.streets.is_empty(), "blocks should be connected by real streets");
 
-    // 3. Per block: P61 (raw-land placement) then P95 (reworked, builds around it).
+    // 3 + 4. P61's site-wide square budget (allocated by block area), then
+    // per block: P95 (reworked, builds around whatever P61 placed).
+    let block_areas: Vec<f64> = block_ids.iter()
+        .map(|id| nbhd.parcels.iter().find(|p| &p.id == id).unwrap().polygon.area_m2())
+        .collect();
+    let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
+    let square_counts = allocate_squares_by_area(&block_areas, total_squares);
+    assert_eq!(
+        square_counts.iter().sum::<usize>(), total_squares,
+        "the site-wide square budget should be fully allocated across blocks, not per-block"
+    );
+    assert!(
+        square_counts.iter().filter(|&&n| n == 0).count() > 0,
+        "with only {total_squares} squares for {} blocks, most blocks should get none -- that's the whole point of allocating by area instead of stamping max_squares on every block",
+        block_ids.len()
+    );
+
     let mut n_blocks_with_squares = 0;
     let mut total_pads = 0;
     let mut total_courtyards = 0;
     let mut per_block_pad_counts: Vec<usize> = Vec::new();
     for (i, block_id) in block_ids.iter().enumerate() {
         let seed = 100 + i as u64;
-        if let Ok(sub61) = P61SmallPublicSquares.apply(&nbhd, block_id, &P61Params::defaults(), seed) {
-            if !sub61.new_open_space.is_empty() {
-                n_blocks_with_squares += 1;
+        let n_squares = square_counts[i];
+        if n_squares > 0 {
+            let block_parcel = nbhd.parcels.iter().find(|p| &p.id == block_id).unwrap().clone();
+            if let Ok(sub61) = place_new_squares_n(&block_parcel, n_squares, &P61Params::defaults(), seed, P61SmallPublicSquares.source()) {
+                if !sub61.new_open_space.is_empty() {
+                    n_blocks_with_squares += 1;
+                }
+                nbhd = apply_subdivision(&nbhd, &sub61);
             }
-            nbhd = apply_subdivision(&nbhd, &sub61);
         }
-        // P95 must still succeed even if P61 found the block too small/
-        // concave to place a square on (falls through gracefully).
+        // P95 must still succeed even if a block got zero squares allocated
+        // (falls through gracefully, builds on raw land minus street
+        // corridors only).
         if let Ok(sub95) = P95BuildingComplex.apply(&nbhd, block_id, &P95Params::defaults(), seed) {
             total_pads += sub95.new_parcels.len();
             total_courtyards += sub95.new_open_space.len();

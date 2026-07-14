@@ -49,9 +49,12 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///      BLOCK_n sub-parcels. Runs ONCE, site-scale.
 ///   2. PathNetwork / P52 (#52) -- connect the blocks to each other. Runs
 ///      ONCE, site-scale, on the BLOCK_n parcels P37 produced.
-///   3. Within EACH block: P61 (#61, places a few small squares directly on
-///      the block's raw land) -> P95 (#95, reworked to build pads around
-///      whatever P61 placed).
+///   3. P61 (#61) -- a total of `max_squares` (default 4, Alexander's own
+///      "a few") small squares spread across the SITE's blocks by area, not
+///      `max_squares` repeated on every block (see p61's "v0.6" module doc
+///      for why that was wrong). Most blocks get zero squares. Then within
+///      EACH block: P95 (#95, reworked to build pads around whatever P61
+///      placed on that block, if anything).
 ///   4. P107 (#107) -- daylight-depth building shape. Runs ONCE, site-scale,
 ///      after every block has its pads, since it already filters by
 ///      `use_category == "p95_building_pad"` across the whole neighborhood.

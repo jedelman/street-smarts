@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → [per block: P61 Small Public Squares → P95 Building Complex] → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1187,6 +1187,49 @@
   }
   const escapeAttr = escapeHtml;
 
+  // Same local-meter projection convention as the Rust side (planar.rs):
+  // longitude and latitude use DIFFERENT meters-per-degree constants.
+  const M_PER_DEG_LAT = 110_540.0;
+  const M_PER_DEG_LNG = 111_320.0;
+
+  function ringAreaM2(ring) {
+    if (!ring || ring.length < 3) return 0;
+    const lat0 = ring[0].lat;
+    const pts = ring.map(p => [
+      (p.lng - ring[0].lng) * M_PER_DEG_LNG * Math.cos(lat0 * Math.PI / 180),
+      (p.lat - lat0) * M_PER_DEG_LAT,
+    ]);
+    let sum = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[(i + 1) % pts.length];
+      sum += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(sum) / 2;
+  }
+
+  // Mirrors Rust's pipeline::allocate_squares_by_area: split a total square
+  // budget across blocks proportional to block area (largest-remainder
+  // rounding), instead of stamping the full budget onto every block. See
+  // p61_small_public_squares.rs's "v0.6" doc section for why -- Alexander's
+  // "a few" public squares means a handful across the WHOLE site.
+  function allocateSquaresByArea(blockAreas, totalSquares) {
+    const totalArea = blockAreas.reduce((a, b) => a + b, 0);
+    if (totalArea <= 0 || totalSquares <= 0) return blockAreas.map(() => 0);
+    const rawShares = blockAreas.map(a => totalSquares * Math.max(a, 0) / totalArea);
+    const counts = rawShares.map(s => Math.floor(s));
+    let leftover = totalSquares - counts.reduce((a, b) => a + b, 0);
+    const order = rawShares
+      .map((s, i) => [i, s - Math.floor(s)])
+      .sort((a, b) => b[1] - a[1]);
+    for (const [i] of order) {
+      if (leftover <= 0) break;
+      counts[i] += 1;
+      leftover -= 1;
+    }
+    return counts;
+  }
+
   async function loadFixture(name) {
     $report.innerHTML = `<div class="loading">Loading ${name}…</div>`;
     try {
@@ -1444,17 +1487,22 @@
       const t0 = performance.now();
       // Corrected pipeline: Alexander's own pattern numbering (37 < 52 < 61
       // < 95 < 107) run in that order, not the old flat P95-first sequence.
-      // See registry.rs's all_operators_v01 doc comment and
-      // tests/corrected_pipeline.rs for the same orchestration, tested.
+      // See registry.rs's all_operators_v01 doc comment,
+      // pipeline.rs::run_corrected_pipeline, and tests/corrected_pipeline.rs
+      // for the same orchestration, tested.
       //   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks.
       //   2. PathNetwork/P52 (once, site-scale): connect the blocks.
-      //   3. Per block: P61 places a few squares on the block's raw land,
-      //      then P95 (reworked) builds pads around them.
-      //   4. P107 (once, site-scale): shape every pad for daylight depth.
+      //   3. P61: a total of `max_squares` (default 4) spread across blocks
+      //      by area (allocateSquaresByArea) -- Alexander's "a few" public
+      //      squares means a handful across the WHOLE site, not
+      //      `max_squares` repeated on every block. Most blocks get zero.
+      //   4. Per block: P95 (reworked) builds pads around whatever P61
+      //      placed on that block, plus street corridors from step 2.
+      //   5. P107 (once, site-scale): shape every pad for daylight depth.
       let currentJson = activeRawNeighborhood;
       const allTraces = [];
-      const runStep = (json, target, op, stepSeed) => {
-        const result = subdivide_parcel(json, target, op, "null", stepSeed);
+      const runStep = (json, target, op, stepSeed, paramsJson) => {
+        const result = subdivide_parcel(json, target, op, paramsJson || "null", stepSeed);
         const parsed = JSON.parse(result);
         allTraces.push(parsed.trace);
         return JSON.stringify(parsed.neighborhood);
@@ -1466,22 +1514,28 @@
       // 2. PathNetwork/P52, once -- connects the BLOCK_n parcels P37 just made.
       currentJson = runStep(currentJson, "*", "path_network", seed);
 
-      // 3. Per block: P61 (raw-land placement) then P95 (builds around it).
+      // 3 + 4. P61's site-wide square budget (allocated by block area), then
+      // per block: P95 (reworked, builds around whatever P61 placed).
       const afterPaths = JSON.parse(currentJson);
-      const blockIds = afterPaths.parcels
-        .filter(p => (p.spec || "").startsWith("BLOCK_"))
-        .map(p => p.id);
+      const blocks = afterPaths.parcels.filter(p => (p.spec || "").startsWith("BLOCK_"));
+      const blockIds = blocks.map(p => p.id);
+      const blockAreas = blocks.map(p => ringAreaM2(p.polygon.outer));
+      const totalSquares = 4; // P61Params::defaults().max_squares
+      const squareCounts = allocateSquaresByArea(blockAreas, totalSquares);
       let blocksWithSquares = 0;
       blockIds.forEach((blockId, i) => {
         const blockSeed = seed + BigInt(i) + 1n;
-        try {
-          currentJson = runStep(currentJson, blockId, "p61_small_public_squares", blockSeed);
-          blocksWithSquares += 1;
-        } catch (e) {
-          // A block too small/concave for P61 to place a square on is not
-          // fatal -- P95 still runs on it below, just without a pre-placed
-          // square to build around.
-          allTraces.push({ operator_name: "p61_small_public_squares", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+        const nSquares = squareCounts[i];
+        if (nSquares > 0) {
+          try {
+            currentJson = runStep(currentJson, blockId, "p61_small_public_squares", blockSeed, JSON.stringify({ max_squares: nSquares }));
+            blocksWithSquares += 1;
+          } catch (e) {
+            // A block too small/concave for P61 to place a square on is not
+            // fatal -- P95 still runs on it below, just without a pre-placed
+            // square to build around.
+            allTraces.push({ operator_name: "p61_small_public_squares", headline: `Block ${blockId}: skipped (${e.message || e})`, steps: [] });
+          }
         }
         try {
           currentJson = runStep(currentJson, blockId, "p95_building_complex", blockSeed);
@@ -1506,7 +1560,7 @@
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P37+P52+[P61+P95]×${blockIds.length} blocks+P107 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P107 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {

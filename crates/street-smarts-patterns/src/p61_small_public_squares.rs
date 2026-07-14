@@ -57,6 +57,30 @@
 //! did: scan every existing Plaza in the neighborhood, ignore parcels
 //! entirely. That path is unchanged.
 //!
+//! # v0.6: site-scale square budget, not one `max_squares` cluster per block
+//!
+//! v0.5 fixed WHERE squares get placed (raw block land, not just resized
+//! plazas) but not WHAT SCALE they're placed at: the corrected pipeline was
+//! calling `apply()` once per P37 block, each call placing up to
+//! `max_squares` (default 4) new squares -- so a 12-block site could get on
+//! the order of 40+ squares total, each one a P95 subtraction hole on its
+//! own block. That's the wrong scale for this pattern: Alexander's "a few"
+//! public squares describes a handful across a whole neighborhood/site, the
+//! same tier as P37 (House Cluster) and P52 (Network of Paths) run once,
+//! not something nested inside every individual house cluster. It was also
+//! the biggest single contributor to the block-level fragmentation tracked
+//! separately (P95's `subtract_convex` holes compounding across several
+//! same-block squares plus street corridors).
+//!
+//! `crate::pipeline::run_corrected_pipeline` now calls `place_new_squares_n`
+//! (below) directly, once per block, but with an explicit count allocated
+//! by area across the WHOLE site so the total stays at `max_squares`, not
+//! `max_squares` times the block count -- most blocks get zero squares,
+//! same as real precedent (a superilla-scale plaza serves several blocks,
+//! not one per block). `apply()` itself is unchanged for the case where a
+//! caller (the web UI's single-operator picker, a direct registry call)
+//! wants `max_squares` placed on one specific parcel.
+//!
 //! # What this deliberately does NOT do
 //! - Connector segments are geometry-only path centerlines (same
 //!   abstraction PathNetwork uses). Alexander's real edge treatment for the
@@ -515,8 +539,32 @@ fn parcel_origin(p: &Parcel) -> LngLat {
 /// the resize path already uses. Does NOT touch `target_parcel`'s own
 /// polygon; P95's reserved-land subtraction is what makes building pads
 /// build around these squares later, not anything this function does.
+///
+/// Delegates to `place_new_squares_n` with `n_target` taken straight from
+/// `params.max_squares` -- the right thing when `apply()` is called
+/// directly on a single parcel via the registry/web UI's "run one
+/// operator" path. The corrected pipeline (`crate::pipeline`) does NOT use
+/// this: it calls `place_new_squares_n` directly with a per-block count
+/// allocated across the whole site, not `max_squares` repeated on every
+/// block -- see that module's doc comment for why.
 fn place_new_squares(
     target_parcel: &Parcel,
+    params: &P61Params,
+    seed: u64,
+    source: SourceCitation,
+) -> Result<Subdivision, String> {
+    let n_target = params.max_squares.round().max(1.0) as usize;
+    place_new_squares_n(target_parcel, n_target, params, seed, source)
+}
+
+/// Same as `place_new_squares`, but with the target square count passed in
+/// explicitly instead of always taking it from `params.max_squares`. `pub`
+/// so `crate::pipeline` can allocate a total "a few squares" budget across
+/// an entire site's blocks (by area) instead of stamping `max_squares` full
+/// squares onto every individual block.
+pub fn place_new_squares_n(
+    target_parcel: &Parcel,
+    n_target: usize,
     params: &P61Params,
     seed: u64,
     source: SourceCitation,
@@ -530,7 +578,6 @@ fn place_new_squares(
         ));
     }
 
-    let n_target = params.max_squares.round().max(1.0) as usize;
     let mut prng = Prng::new(seed);
     // Jitter isn't exposed as its own P61 param (would be a knob nobody has
     // asked to tune yet) -- 0.5 matches the default other operators
