@@ -114,6 +114,14 @@ pub enum OpenSpaceKind {
     Sponge,    // stormwater / ecological
     Parking,
     Other,
+    /// Land a pattern operator carved out of something else but explicitly
+    /// declined to resolve -- distinct from `Vacant` (an assessor's
+    /// judgment about existing land) or `Other` (a shrug). This is real
+    /// geometry, not a bare number in a trace string: P61's capped-off
+    /// candidate squares and dropped slivers land here, and a future P106
+    /// (Positive Outdoor Space) check should scan for exactly this kind
+    /// rather than trusting operators to have resolved everything.
+    Undecided,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

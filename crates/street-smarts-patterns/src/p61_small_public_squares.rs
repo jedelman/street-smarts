@@ -5,7 +5,7 @@
 //! > A square which is more than about 60 feet [~18m] across... will
 //! > never feel comfortable or intimate, unless it is extremely crowded.
 //!
-//! # v0.3 approach
+//! # v0.4 approach
 //! Scans existing `OpenSpace` entities of kind `Plaza` -- the courtyards
 //! P95 and P107 already produce are the natural candidates here, since
 //! this pipeline doesn't yet place squares anywhere else. For each:
@@ -28,12 +28,16 @@
 //! not one every 18m: most of the reclaimed area stays ordinary street/
 //! green space. Lisbon's Alfama praças are the same -- sparse, at natural
 //! convergence points, even though the surrounding fabric is tight and
-//! irregular. So v0.3 caps the square count at `max_squares` (default 4 --
-//! Alexander's own "a few"), keeps the largest-area candidates (maximizes
-//! usable public space for a fixed count), and reports whatever land the
-//! cap left uncovered explicitly rather than either tiling over it or
-//! quietly discarding it. The old oversized plaza is still REPLACED (via
-//! `replaced_open_space_ids`) by the kept squares.
+//! irregular. So v0.3 capped the square count at `max_squares` (default 4 --
+//! Alexander's own "a few") and kept the largest-area candidates (maximizes
+//! usable public space for a fixed count); v0.4 goes one step further and
+//! emits everything the cap (and the `min_meaningful_area_m2` sliver filter)
+//! leaves out as real `OpenSpaceKind::Undecided` geometry, not a summed
+//! float in a trace string -- so a future P106 (Positive Outdoor Space)
+//! check has actual polygons to scan instead of having to trust that
+//! "uncovered" land was resolved somewhere. The old oversized plaza is
+//! still REPLACED (via `replaced_open_space_ids`) by everything this
+//! operator produces -- both the kept squares and the Undecided remainder.
 //!
 //! # What this deliberately does NOT do
 //! - Connector segments are geometry-only path centerlines (same
@@ -44,11 +48,10 @@
 //!   area alone (biggest first), not by position -- real superilla/praça
 //!   placement responds to where people actually converge (transit, main
 //!   entrances, street corners), which this operator has no model of.
-//! - Land left uncovered by the cap -- like the sub-`min_meaningful_area_m2`
-//!   slivers below -- is not assigned anywhere. It's exactly the kind of
-//!   undefined leftover space Alexander's Positive Outdoor Space (P106)
-//!   warns against; a later version should route it through a P106 check
-//!   instead of leaving it as a bare number in the trace.
+//! - Undecided geometry is exactly that -- undecided. This operator marks
+//!   it, it doesn't resolve it. What it becomes (a second pattern, a park,
+//!   merged into a neighbor) is the kind of question Alexander's Positive
+//!   Outdoor Space (P106) exists to ask; no P106 check reads this yet.
 //! - The grid partition is a rectangular heuristic. Alexander's own
 //!   sketches for this pattern are organic, hand-drawn subdivisions; a grid
 //!   is an honest first approximation, not a claim to match his intent
@@ -218,6 +221,7 @@ impl PatternOperator for P61SmallPublicSquares {
         let mut n_already_ok = 0;
         let mut n_skipped_tiny = 0;
         let mut n_squares_total = 0;
+        let mut n_undecided_total = 0;
         let mut n_connectors_total = 0;
         let mut any_dropped_slivers = false;
         let mut any_capped = false;
@@ -253,12 +257,17 @@ impl PatternOperator for P61SmallPublicSquares {
             // remainder.
             let raw_pieces = partition_plaza(&local, params.max_dimension_m);
             let mut squares: Vec<Vec<Pt2>> = Vec::new();
-            let mut dropped_area = 0.0;
+            // Real leftover geometry, not just a summed float -- P106
+            // (Positive Outdoor Space) needs actual polygons to scan, so
+            // every piece this operator declines to make a square out of
+            // is kept and emitted as `OpenSpaceKind::Undecided` below,
+            // instead of only being described in the trace text.
+            let mut undecided_pieces: Vec<Vec<Pt2>> = Vec::new();
             for piece in raw_pieces {
                 if piece.len() < 3 { continue; }
                 let piece_area = area(&piece);
                 if piece_area < params.min_meaningful_area_m2 {
-                    dropped_area += piece_area;
+                    undecided_pieces.push(piece);
                     continue;
                 }
                 // The grid guarantees compliance for a convex plaza, but
@@ -275,12 +284,19 @@ impl PatternOperator for P61SmallPublicSquares {
                 };
                 squares.push(final_piece);
             }
+            let dropped_area: f64 = undecided_pieces.iter().map(|p| area(p)).sum();
 
             if squares.is_empty() {
                 // Degenerate partition (e.g. a sliver-thin plaza where
                 // every grid cell clipped to nothing meaningful) -- fall
                 // back to shrinking the whole plaza rather than losing the
-                // open space entirely.
+                // open space entirely. Known gap: the ring between the
+                // original plaza and the shrunk square isn't computed here
+                // (would need real polygon subtraction, not just convex
+                // clipping) so it does NOT get emitted as Undecided the way
+                // the normal partition path's leftovers do -- rare in
+                // practice (no test exercises it on real geometry), said
+                // plainly rather than silently narrowed.
                 let factor = params.max_dimension_m / longer_side;
                 squares.push(scale_toward_centroid(&local, factor));
                 steps.push(format!(
@@ -291,20 +307,28 @@ impl PatternOperator for P61SmallPublicSquares {
 
             // Cap at max_squares -- "a few," not exhaustive tiling. Keep the
             // largest-area candidates (maximizes usable public space for a
-            // fixed count) and report whatever the cap left uncovered
-            // explicitly, rather than tiling over the rest of a multi-acre
-            // plaza or silently dropping it.
+            // fixed count) and move whatever the cap left over into the
+            // same real Undecided geometry as dropped slivers, rather than
+            // tiling over the rest of a multi-acre plaza or discarding it.
             let max_squares = params.max_squares.round().max(1.0) as usize;
             let mut capped_area = 0.0;
             if squares.len() > max_squares {
                 squares.sort_by(|a, b| area(b).partial_cmp(&area(a)).unwrap_or(std::cmp::Ordering::Equal));
-                for extra in &squares[max_squares..] {
-                    capped_area += area(extra);
+                for extra in squares.split_off(max_squares) {
+                    capped_area += area(&extra);
+                    undecided_pieces.push(extra);
                 }
-                squares.truncate(max_squares);
             }
 
             let plaza_id = plaza.id.clone();
+            for (idx, piece_local) in undecided_pieces.iter().enumerate() {
+                let ring = local_to_ring(piece_local, &origin);
+                new_open.push(OpenSpace {
+                    id: format!("{plaza_id}_p61_undecided{idx}"),
+                    polygon: street_smarts_core::geometry::Polygon::from_ring(ring),
+                    kind: OpenSpaceKind::Undecided,
+                });
+            }
             for (idx, sq_local) in squares.iter().enumerate() {
                 let ring = local_to_ring(sq_local, &origin);
                 new_open.push(OpenSpace {
@@ -314,6 +338,7 @@ impl PatternOperator for P61SmallPublicSquares {
                 });
             }
             n_squares_total += squares.len();
+            n_undecided_total += undecided_pieces.len();
 
             // Link the new squares with an honest MST backbone -- the same
             // "fewest edges that still connect everything" reasoning as
@@ -342,12 +367,12 @@ impl PatternOperator for P61SmallPublicSquares {
             let mut leftover_note = String::new();
             if dropped_area > 1.0 {
                 any_dropped_slivers = true;
-                leftover_note.push_str(&format!(" ({:.0}m² dropped as too-small slivers, not fabricated as land use)", dropped_area));
+                leftover_note.push_str(&format!(" ({:.0}m² too small to be a square, marked Undecided not fabricated as one)", dropped_area));
             }
             if capped_area > 1.0 {
                 any_capped = true;
                 leftover_note.push_str(&format!(
-                    " (capped at {} square(s): {:.0}m² of otherwise-compliant candidate squares left UNCOVERED, not tiled over)",
+                    " (capped at {} square(s): {:.0}m² of otherwise-compliant candidate squares marked UNCOVERED/Undecided, not tiled over)",
                     max_squares, capped_area
                 ));
             }
@@ -365,8 +390,8 @@ impl PatternOperator for P61SmallPublicSquares {
         }
 
         steps.insert(0, format!(
-            "{} plaza(s) already compliant, {} split into {} total square(s) ({} connector segments), {} too small to bother with.",
-            n_already_ok, n_partitioned, n_squares_total, n_connectors_total, n_skipped_tiny
+            "{} plaza(s) already compliant, {} split into {} total square(s) + {} Undecided piece(s) ({} connector segments), {} too small to bother with.",
+            n_already_ok, n_partitioned, n_squares_total, n_undecided_total, n_connectors_total, n_skipped_tiny
         ));
 
         let mut caveats = vec![
@@ -382,25 +407,24 @@ impl PatternOperator for P61SmallPublicSquares {
         ];
         if any_dropped_slivers {
             caveats.push(
-                "Some partitioned pieces were too small to count as a usable square and were \
-                 dropped rather than fabricated as land use -- that dropped land, like any \
-                 future leftover this operator doesn't reassign, is exactly the kind of \
-                 undefined space Alexander's Positive Outdoor Space (P106) warns against. A \
-                 later version should route it through a P106 check instead of discarding it \
-                 silently.".into()
+                "Some partitioned pieces were too small to count as a usable square -- emitted \
+                 as real OpenSpaceKind::Undecided geometry (not a Plaza, not fabricated land \
+                 use), so a future P106 (Positive Outdoor Space) check has actual polygons to \
+                 scan instead of a bare number.".into()
             );
         }
         if any_capped {
             caveats.push(
                 "At least one plaza had more compliant candidate squares than max_squares \
-                 allows. The excess was left UNCOVERED, not tiled or fabricated -- real \
-                 precedent (Barcelona's superilles, Lisbon's Alfama praças) places a small \
-                 number of square nodes per reclaimed area, not one every 18m, so exhaustive \
-                 tiling was the wrong default even though it was geometrically achievable. \
-                 Which candidates survive the cap is decided by area alone (biggest first), not \
-                 by where people would actually converge -- this operator has no model of that. \
-                 The uncovered land, like dropped slivers, is a P106 (Positive Outdoor Space) \
-                 question this version doesn't resolve.".into()
+                 allows. The excess is emitted as real OpenSpaceKind::Undecided geometry, not \
+                 tiled or fabricated as more squares -- real precedent (Barcelona's superilles, \
+                 Lisbon's Alfama praças) places a small number of square nodes per reclaimed \
+                 area, not one every 18m, so exhaustive tiling was the wrong default even though \
+                 it was geometrically achievable. Which candidates survive the cap is decided by \
+                 area alone (biggest first), not by where people would actually converge -- this \
+                 operator has no model of that. The Undecided land, like dropped slivers, is a \
+                 P106 (Positive Outdoor Space) question this version doesn't resolve, just makes \
+                 scannable.".into()
             );
         }
 

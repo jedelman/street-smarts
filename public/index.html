@@ -791,6 +791,11 @@
       vacant: "#a89c86",
       parking: "#8a7f6b",
       other: "#c2b8a3",
+      // Deliberately unresolved: a pattern operator (P61) carved this out
+      // and explicitly declined to decide what it becomes. Dashed outline,
+      // low fill, warn-toned -- reads as "flagged," not "designed," so it
+      // doesn't get mistaken for an intentional plaza on the map.
+      undecided: "#b8602a",
     };
     for (const o of (neighborhood.open_space || [])) {
       const parts = (o.polygon.parts && o.polygon.parts.length)
@@ -803,10 +808,12 @@
         poly.setAttribute("points", pts);
         const color = OPEN_SPACE_COLORS[o.kind] || OPEN_SPACE_COLORS.other;
         poly.setAttribute("fill", color);
-        poly.setAttribute("fill-opacity", "0.75");
-        poly.setAttribute("stroke", "#5a4a1e");
-        poly.setAttribute("stroke-width", "0.5");
-        poly.setAttribute("stroke-opacity", "0.6");
+        const isUndecided = o.kind === "undecided";
+        poly.setAttribute("fill-opacity", isUndecided ? "0.25" : "0.75");
+        poly.setAttribute("stroke", isUndecided ? "#b8602a" : "#5a4a1e");
+        poly.setAttribute("stroke-width", isUndecided ? "1" : "0.5");
+        poly.setAttribute("stroke-opacity", isUndecided ? "0.9" : "0.6");
+        if (isUndecided) poly.setAttribute("stroke-dasharray", "2,1.5");
         poly.dataset.openSpaceId = o.id;
         poly.dataset.kind = o.kind || "";
         gOpenSpace.appendChild(poly);

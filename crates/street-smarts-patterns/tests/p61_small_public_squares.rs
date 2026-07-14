@@ -40,16 +40,21 @@ fn oversized_plaza_is_capped_at_max_squares_by_default() {
     // 40m square is well over the 18.3m default threshold. The grid would
     // produce a 3x3 = 9-cell candidate partition, but the default
     // max_squares=4 caps it to "a few," not exhaustive tiling -- the excess
-    // candidates are reported as uncovered, not fabricated as more squares.
+    // candidates are emitted as real Undecided geometry, not more squares.
     let nbhd = square_plaza_neighborhood(40.0);
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();
 
     assert_eq!(sub.replaced_open_space_ids, vec!["PLAZA_1".to_string()], "original oversized plaza should be marked for replacement");
-    assert_eq!(sub.new_open_space.len(), 4, "default max_squares=4 should cap the 3x3 candidate grid down to 4 squares");
+
+    let squares: Vec<_> = sub.new_open_space.iter().filter(|o| o.kind == OpenSpaceKind::Plaza).collect();
+    let undecided: Vec<_> = sub.new_open_space.iter().filter(|o| o.kind == OpenSpaceKind::Undecided).collect();
+    assert_eq!(sub.new_open_space.len(), squares.len() + undecided.len(), "every emitted open space should be either a kept square or Undecided leftover");
+    assert_eq!(squares.len(), 4, "default max_squares=4 should cap the 3x3 candidate grid down to 4 kept squares");
+    assert_eq!(undecided.len(), 5, "the other 5 candidates should be emitted as real Undecided geometry, not silently dropped");
     assert_eq!(sub.new_streets.len(), 3, "4 squares should be linked by a 3-edge MST backbone, not a full mesh");
 
-    let mut total_area = 0.0;
-    for sq in &sub.new_open_space {
+    let mut squares_area = 0.0;
+    for sq in &squares {
         let outer = &sq.polygon.outer;
         let min_lng = outer.iter().map(|p| p.lng).fold(f64::INFINITY, f64::min);
         let max_lng = outer.iter().map(|p| p.lng).fold(f64::NEG_INFINITY, f64::max);
@@ -58,12 +63,17 @@ fn oversized_plaza_is_capped_at_max_squares_by_default() {
         let m_per_deg = 111_320.0;
         let width_m = (max_lng - min_lng) * m_per_deg;
         let height_m = (max_lat - min_lat) * m_per_deg;
-        assert!(width_m.max(height_m) <= 18.3 + 0.01, "every sub-square must comply with the 18.3m cap, got {}", width_m.max(height_m));
-        total_area += sq.polygon.area_m2();
+        assert!(width_m.max(height_m) <= 18.3 + 0.01, "every kept square must comply with the 18.3m cap, got {}", width_m.max(height_m));
+        squares_area += sq.polygon.area_m2();
     }
-    // 4 squares of ~177.8m² each cover well under the original 1600m² --
-    // the rest is real, reported uncovered land, not fabricated.
-    assert!(total_area < 900.0, "capped squares should cover a minority of the original 1600m², got {}", total_area);
+    // 4 squares of ~177.8m² each cover well under the original 1600m².
+    assert!(squares_area < 900.0, "capped squares should cover a minority of the original 1600m², got {}", squares_area);
+
+    // Squares + Undecided together should conserve essentially all the
+    // original land -- nothing evaporates, it's just tagged by disposition.
+    let undecided_area: f64 = undecided.iter().map(|o| o.polygon.area_m2()).sum();
+    assert!((squares_area + undecided_area - 1600.0).abs() < 20.0, "squares + Undecided should conserve the original 1600m², got {}", squares_area + undecided_area);
+
     assert!(sub.trace.steps.iter().any(|s| s.contains("UNCOVERED")), "trace should explicitly report the capped-off land, got: {:?}", sub.trace.steps);
 
     for street in &sub.new_streets {
@@ -81,6 +91,7 @@ fn raising_max_squares_restores_full_partition_coverage() {
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_open_space.len(), 9, "raising max_squares past the candidate count should uncap the full 3x3 partition");
+    assert!(sub.new_open_space.iter().all(|o| o.kind == OpenSpaceKind::Plaza), "with no capping, every candidate should survive as a kept square, not Undecided");
     assert_eq!(sub.new_streets.len(), 8, "9 squares should be linked by an 8-edge MST backbone");
 
     let total_area: f64 = sub.new_open_space.iter().map(|sq| sq.polygon.area_m2()).sum();
@@ -111,9 +122,11 @@ fn apply_subdivision_actually_removes_the_old_oversized_plaza() {
     let result = apply_subdivision(&nbhd, &sub);
 
     // This is the whole point of replaced_open_space_ids: the OLD oversized
-    // plaza should be GONE, replaced by the capped set of partitioned
-    // squares, not sitting alongside them.
-    assert_eq!(result.open_space.len(), 4, "old oversized plaza should be removed and replaced by the 4 capped partitioned squares");
+    // plaza should be GONE, replaced by the kept squares AND the Undecided
+    // leftover the cap produced -- not sitting alongside either of them.
+    assert_eq!(result.open_space.len(), 9, "old oversized plaza should be removed and replaced by 4 kept squares + 5 Undecided pieces");
+    assert_eq!(result.open_space.iter().filter(|o| o.kind == OpenSpaceKind::Plaza).count(), 4, "4 of the 9 should be kept squares");
+    assert_eq!(result.open_space.iter().filter(|o| o.kind == OpenSpaceKind::Undecided).count(), 5, "the other 5 should be real Undecided geometry");
     assert!(result.open_space.iter().all(|o| o.id != "PLAZA_1"), "surviving plazas should be the partitioned replacements, not the original");
     assert_eq!(result.streets.len(), 3, "the MST connector streets should also be merged into the neighborhood");
 }
