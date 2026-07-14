@@ -69,8 +69,16 @@ pub struct P95Params {
     pub min_buildings: f64,
     /// Maximum pad count regardless of area.
     pub max_buildings: f64,
-    /// Inset around each pad in metres — the "interconnecting space" of P95
-    /// (paths, alleys, shared yards between buildings).
+    /// Inset around each pad in metres. Deliberately tiny (default 0.1m,
+    /// a construction joint, not a real setback) -- P95's older 3.0m
+    /// default assumed every pad should stand apart from its neighbors,
+    /// which is the opposite of what real urban infill (and Alexander's
+    /// own P108 Connected Buildings) argues for: buildings running to the
+    /// lot line, sharing walls, not each surrounded by its own yard.
+    /// `p108_connected_buildings` is what decides which pads should
+    /// actually merge into one continuous building and which should stay
+    /// separate (a real street or square between them, not just this
+    /// inset) -- this parameter no longer does that job on its own.
     pub pad_inset_m: f64,
     /// Stratified-random jitter strength. 0.0 = pure grid, 1.0 = pure random.
     /// (Currently used as a knob on the seeding RNG range.)
@@ -109,8 +117,8 @@ impl Parameters for P95Params {
             ).with_unit("buildings"),
             ParamSpec::float(
                 "pad_inset_m",
-                "Inset around each pad — width of paths/alleys between buildings.",
-                0.0, 10.0, 3.0,
+                "Construction-joint gap between pads, not a real setback -- P108 decides what actually stays separate.",
+                0.0, 10.0, 0.1,
             ).with_unit("m"),
             ParamSpec::float(
                 "seed_jitter",
@@ -139,7 +147,7 @@ impl Parameters for P95Params {
             buildings_per_kilo_m2: 1.0,
             min_buildings: 3.0,
             max_buildings: 14.0,
-            pad_inset_m: 3.0,
+            pad_inset_m: 0.1,
             seed_jitter: 0.6,
             min_pad_area_m2: 120.0,
             min_fragment_area_m2: 80.0,
@@ -458,7 +466,8 @@ impl PatternOperator for P95BuildingComplex {
                 });
 
                 // Emit each building-pad cell as a new EDA parcel. Inset by
-                // params.pad_inset_m to make room for "interconnecting spaces".
+                // params.pad_inset_m -- a construction joint now, not a real
+                // setback (see the param's own doc comment).
                 for (_, raw_cell) in cells_sorted {
                     let inset_cell = if params.pad_inset_m > 0.0 {
                         inset_convex(&raw_cell, params.pad_inset_m)

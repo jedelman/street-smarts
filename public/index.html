@@ -564,7 +564,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1506,13 +1506,18 @@
       //      `max_squares` repeated on every block. Most blocks get zero.
       //   5. Per block: P95 (reworked) builds pads around whatever P61
       //      placed on that block, plus street corridors from step 2 --
-      //      each pad inherits its block's P29 tier/target.
-      //   6. P96 Number of Stories (once, site-scale): turns each pad's
+      //      each pad inherits its block's P29 tier/target. pad_inset_m is
+      //      now a construction-joint-sized 0.1m, not a real setback.
+      //   6. P108 Connected Buildings (once, site-scale): merges pads
+      //      separated by nothing but that construction joint into one
+      //      continuous party-wall footprint.
+      //   7. P96 Number of Stories (once, site-scale): turns each pad's
       //      inherited tier target into a real per-pad story count, capping
       //      ordinary buildings at 4 stories (P21 Four-Story Limit) with a
       //      very few, widely-spaced exceptions.
-      //   7. P107 (once, site-scale): shape every pad for daylight depth,
-      //      reading P96's target_stories for real height.
+      //   8. P107 (once, site-scale): shape every pad for daylight depth,
+      //      reading P96's target_stories for real height. No longer
+      //      double-applies its own setback on top of a P95/P108 pad's gap.
       let currentJson = activeRawNeighborhood;
       const allTraces = [];
       const runStep = (json, target, op, stepSeed, paramsJson) => {
@@ -1567,7 +1572,17 @@
         }
       });
 
-      // 6. P96 Number of Stories, once -- assigns each pad a real story
+      // 6. P108 Connected Buildings, once -- merges pads separated by
+      // nothing but P95's construction-joint-sized pad_inset_m into one
+      // continuous party-wall footprint. Not fatal if nothing was close
+      // enough to connect.
+      try {
+        currentJson = runStep(currentJson, "*", "p108_connected_buildings", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p108_connected_buildings", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 7. P96 Number of Stories, once -- assigns each pad a real story
       // count from its inherited P29 tier, before P107 shapes it into a
       // real building with real height.
       try {
@@ -1576,7 +1591,7 @@
         allTraces.push({ operator_name: "p96_number_of_stories", headline: `Skipped (${e.message || e})`, steps: [] });
       }
 
-      // 7. P107, once -- shapes every pad regardless of which block it came
+      // 8. P107, once -- shapes every pad regardless of which block it came
       // from. Errors hard if literally every pad site-wide is below its own
       // size filter (a real edge case at block scale, where pads are
       // smaller than the old whole-site pipeline produced) -- not fatal to
@@ -1592,7 +1607,7 @@
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P96+P107 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {

@@ -7,6 +7,7 @@ use crate::p37_house_cluster::P37HouseCluster;
 use crate::p95_building_complex::P95BuildingComplex;
 use crate::p96_number_of_stories::P96NumberOfStories;
 use crate::p107_wings_of_light::P107WingsOfLight;
+use crate::p108_connected_buildings::P108ConnectedBuildings;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
 use crate::parameters::ParamSpec;
@@ -64,18 +65,24 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///      EACH block: P95 (#95, reworked to build pads around whatever P61
 ///      placed on that block, if anything) -- pads inherit their source
 ///      block's density tier/target from P29.
-///   5. P96 Number of Stories (#96) -- turns each pad's inherited tier
+///   5. P108 Connected Buildings (#108) -- merges pads separated by nothing
+///      but P95's construction-joint-sized `pad_inset_m` (default 0.1m)
+///      into one continuous party-wall footprint. Runs ONCE, site-scale,
+///      BEFORE P96/P107 (Alexander numbers it after Wings of Light, but
+///      daylight-depth shaping needs to see the real, final connected
+///      footprint -- see the module's own doc comment for why).
+///   6. P96 Number of Stories (#96) -- turns each pad's inherited tier
 ///      target into a real per-pad story count, capping ordinary buildings
 ///      at `max_ordinary_stories` (P21 Four-Story Limit) and allowing a
 ///      very few, widely-spaced exceptions where a tier's target exceeds
 ///      it. Runs ONCE, site-scale, over every `p95_building_pad`.
-///   6. P107 (#107) -- daylight-depth building shape. Runs ONCE, site-scale,
+///   7. P107 (#107) -- daylight-depth building shape. Runs ONCE, site-scale,
 ///      after every block has its pads, since it already filters by
 ///      `use_category == "p95_building_pad"` across the whole neighborhood.
 ///      Reads each pad's `target_stories` (P96's assignment) to compute
 ///      real height, falling back to its own flat `assumed_height_m` for
 ///      any pad P96 didn't touch.
-/// `crate::pipeline::run_corrected_pipeline` runs all six steps end to end
+/// `crate::pipeline::run_corrected_pipeline` runs all seven steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -98,6 +105,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P61SmallPublicSquares),
         Box::new(P29DensityRings),
         Box::new(P96NumberOfStories),
+        Box::new(P108ConnectedBuildings),
     ]
 }
 

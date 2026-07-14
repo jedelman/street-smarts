@@ -126,6 +126,55 @@ pub fn point_in_polygon(pt: Pt2, poly: &[Pt2]) -> bool {
     inside
 }
 
+/// Shortest distance from a point to a line segment.
+pub fn point_segment_distance(p: Pt2, a: Pt2, b: Pt2) -> f64 {
+    let abx = b.x - a.x;
+    let aby = b.y - a.y;
+    let len_sq = abx * abx + aby * aby;
+    if len_sq < 1e-12 {
+        let dx = p.x - a.x;
+        let dy = p.y - a.y;
+        return (dx * dx + dy * dy).sqrt();
+    }
+    let t = (((p.x - a.x) * abx + (p.y - a.y) * aby) / len_sq).clamp(0.0, 1.0);
+    let cx = a.x + t * abx;
+    let cy = a.y + t * aby;
+    let dx = p.x - cx;
+    let dy = p.y - cy;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Shortest distance between two simple polygons -- every vertex of one
+/// checked against every edge of the other, and vice versa. Correct for
+/// two polygons that don't overlap (returns the true gap); returns some
+/// small-but-not-necessarily-zero value if they overlap (this is a
+/// proximity check for "are these close enough to connect," not a general
+/// intersection test -- overlapping pads shouldn't occur upstream, so this
+/// isn't relied on to detect that).
+pub fn polygon_min_distance(a: &[Pt2], b: &[Pt2]) -> f64 {
+    if a.is_empty() || b.is_empty() { return f64::INFINITY; }
+    let mut best = f64::INFINITY;
+    let check = |poly: &[Pt2], pt: Pt2, best: &mut f64| {
+        if poly.len() < 2 {
+            if let Some(&only) = poly.first() {
+                let dx = pt.x - only.x;
+                let dy = pt.y - only.y;
+                let d = (dx * dx + dy * dy).sqrt();
+                if d < *best { *best = d; }
+            }
+            return;
+        }
+        for i in 0..poly.len() {
+            let j = (i + 1) % poly.len();
+            let d = point_segment_distance(pt, poly[i], poly[j]);
+            if d < *best { *best = d; }
+        }
+    };
+    for &p in a { check(b, p, &mut best); }
+    for &p in b { check(a, p, &mut best); }
+    best
+}
+
 /// Clip a convex polygon `subject` against the half-plane defined by directed
 /// line from `a` to `b`: keeps points to the LEFT of a→b.
 ///
@@ -939,5 +988,32 @@ mod tests {
         let p = Pt2::new(1.0, 1.0);
         let corridor = rect_corridor(p, p, 2.0);
         assert!(corridor.is_empty());
+    }
+
+    #[test]
+    fn polygon_min_distance_between_two_squares_with_a_known_gap() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let right = vec![Pt2::new(1.3, 0.0), Pt2::new(2.3, 0.0), Pt2::new(2.3, 1.0), Pt2::new(1.3, 1.0)];
+        let d = polygon_min_distance(&left, &right);
+        assert!((d - 0.3).abs() < 1e-9, "expected exactly 0.3 gap, got {d}");
+    }
+
+    #[test]
+    fn polygon_min_distance_is_zero_for_touching_squares() {
+        let left = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let right = vec![Pt2::new(1.0, 0.0), Pt2::new(2.0, 0.0), Pt2::new(2.0, 1.0), Pt2::new(1.0, 1.0)];
+        let d = polygon_min_distance(&left, &right);
+        assert!(d < 1e-9, "touching squares should have ~0 gap, got {d}");
+    }
+
+    #[test]
+    fn polygon_min_distance_finds_nearest_vertex_to_edge_not_just_vertex_to_vertex() {
+        // A square's nearest edge point to an off-axis point isn't
+        // necessarily a vertex -- the closest approach here is
+        // perpendicular onto the square's right edge, not to either corner.
+        let square = vec![Pt2::new(0.0, 0.0), Pt2::new(1.0, 0.0), Pt2::new(1.0, 1.0), Pt2::new(0.0, 1.0)];
+        let far_point = vec![Pt2::new(2.0, 0.5)];
+        let d = polygon_min_distance(&square, &far_point);
+        assert!((d - 1.0).abs() < 1e-9, "expected exactly 1.0 (perpendicular to the right edge), got {d}");
     }
 }

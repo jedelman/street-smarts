@@ -26,17 +26,27 @@
 //!      open space before seeding).
 //!   5. Per block: P95 (reworked) builds pads around whatever P37/P61
 //!      placed on that block, plus street corridors from step 2 -- each pad
-//!      inherits its source block's P29 density tier/target.
-//!   6. P96 Number of Stories (once, site-scale): turns each pad's
+//!      inherits its source block's P29 density tier/target. `pad_inset_m`
+//!      is now a construction-joint-sized 0.1m, not a real setback.
+//!   6. P108 Connected Buildings (once, site-scale): merges pads separated
+//!      by nothing but that construction joint into one continuous
+//!      party-wall footprint -- pads separated by a real reserved gap
+//!      (street, square, common land) stay apart. Runs before P96/P107 so
+//!      daylight-depth shaping sees the real, final connected mass; see
+//!      p108's own module doc for why that deviates from Alexander's
+//!      numbering (108, after Wings of Light).
+//!   7. P96 Number of Stories (once, site-scale): turns each pad's
 //!      inherited tier target into a real per-pad story count, capping
 //!      ordinary buildings at 4 stories (P21 Four-Story Limit) with a very
 //!      few, widely-spaced exceptions where a tier's target calls for more.
-//!   7. P107 (once, site-scale): shape every P95 pad for daylight depth,
-//!      reading P96's `target_stories` assignment for real height -- unless
-//!      P96 didn't run, the flat `assumed_height_m` fallback applies
+//!   8. P107 (once, site-scale): shape every P95/P108 pad for daylight
+//!      depth, reading P96's `target_stories` assignment for real height --
+//!      unless P96 didn't run, the flat `assumed_height_m` fallback applies
 //!      exactly as before P96 existed. Already filters by
 //!      `use_category == "p95_building_pad"` across the whole neighborhood
-//!      regardless of which block a pad came from.
+//!      regardless of which block a pad came from, and no longer applies
+//!      its own setback on top of a P95/P108 pad's own gap (see p107's
+//!      "v0.2" module doc).
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -47,6 +57,7 @@
 //! rather than only at the end.
 
 use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
+use crate::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
 use crate::p37_house_cluster::{P37HouseCluster, P37Params};
 use crate::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPublicSquares};
@@ -129,6 +140,10 @@ pub fn run_corrected_pipeline(baseline: &Neighborhood, parcel_id: &str, seed: u6
         if let Ok(sub95) = P95BuildingComplex.apply(&nbhd, block_id, &P95Params::defaults(), block_seed) {
             nbhd = apply_subdivision(&nbhd, &sub95);
         }
+    }
+
+    if let Ok(sub108) = P108ConnectedBuildings.apply(&nbhd, "*", &P108Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub108);
     }
 
     if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &P96Params::defaults(), seed) {
