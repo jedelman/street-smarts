@@ -89,6 +89,7 @@ fn params_roundtrip() {
     let p = P37Params {
         target_block_area_m2: 5000.0, min_blocks: 3.0, max_blocks: 8.0, block_inset_m: 8.0,
         seed_jitter: 0.3, min_block_area_m2: 1000.0, common_land_fraction: 0.2, min_common_land_area_m2: 200.0,
+        seeding_mode: 1.0,
     };
     let v = p.as_vector();
     let back = P37Params::from_vector(&v);
@@ -100,6 +101,7 @@ fn params_roundtrip() {
     assert_eq!(back.min_block_area_m2, 1000.0);
     assert_eq!(back.common_land_fraction, 0.2);
     assert_eq!(back.min_common_land_area_m2, 200.0);
+    assert_eq!(back.seeding_mode, 1.0);
 }
 
 #[test]
