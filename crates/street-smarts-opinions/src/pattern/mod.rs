@@ -4,5 +4,7 @@
 //! wholeness properties.
 
 pub mod p95_building_complex;
+pub mod p106_positive_outdoor_space;
 
 pub use p95_building_complex::P95BuildingComplexOpinion;
+pub use p106_positive_outdoor_space::P106PositiveOutdoorSpace;

@@ -2,14 +2,16 @@
 //!
 //! Concrete `Opinion` implementations.
 //!
-//! v0.1 ships FOUR opinions:
+//! v0.1 shipped four opinions; v0.2 adds a fifth:
 //!   - `LevelsOfScale` (geometric, after Alexander/Salingaros 2025)
 //!   - `StrongCenters` (geometric, after Alexander/Salingaros 2025)
 //!   - `OwnershipPattern` (activist — non-substitutable equity guard)
 //!   - `P95BuildingComplexOpinion` (pattern — scores P95's own output directly)
+//!   - `P106PositiveOutdoorSpace` (pattern — convexity + resolved-land check
+//!     over ALL open space, not just P95/P61's)
 //!
 //! All other geometric opinions, remaining pattern-presence scorers,
-//! and the VLM family are deferred to v0.2.
+//! and the VLM family are deferred to a later version.
 
 #![forbid(unsafe_code)]
 
