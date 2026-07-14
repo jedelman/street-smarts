@@ -413,7 +413,11 @@ fn average_lat(ring: &[LngLat]) -> f64 {
 /// place at cell center (grid-like); 1.0 = place uniformly within the cell.
 /// Returns however many we actually got inside (may be less than target if
 /// the polygon is concave).
-fn stratified_seeds(poly: &[Pt2], target: usize, jitter_strength: f64, prng: &mut Prng) -> Vec<Pt2> {
+///
+/// `pub`, not private: the pattern-order prototype (see
+/// `tests/pattern_order_prototype.rs`) reuses this to seed path/square nodes
+/// directly on raw parcel land, before any P95 pad-carving runs.
+pub fn stratified_seeds(poly: &[Pt2], target: usize, jitter_strength: f64, prng: &mut Prng) -> Vec<Pt2> {
     let (min_pt, max_pt) = bbox(poly);
     let w = max_pt.x - min_pt.x;
     let h = max_pt.y - min_pt.y;
