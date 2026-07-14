@@ -8,11 +8,19 @@ use street_smarts_patterns::{Parameters, PatternOperator};
 /// (0,0) lng/lat (fine for local-metres math at this scale -- not real
 /// Norfolk coordinates, this is a synthetic unit fixture).
 fn rect_pad_neighborhood(width_m: f64, depth_m: f64) -> Neighborhood {
-    // ~111,320 m per degree longitude at the equator; good enough for a
-    // synthetic small-scale fixture, not meant to be geographically real.
-    let m_per_deg = 111_320.0;
-    let w = width_m / m_per_deg;
-    let d = depth_m / m_per_deg;
+    rect_neighborhood(width_m, depth_m, Some("p95_building_pad".into()))
+}
+
+fn rect_neighborhood(width_m: f64, depth_m: f64, use_category: Option<String>) -> Neighborhood {
+    // Longitude and latitude use DIFFERENT meters-per-degree constants,
+    // same as planar.rs's real projection -- using one constant for both
+    // axes (as this fixture used to) silently shrinks `depth_m` by ~0.7%
+    // once the real code projects it back, which is exactly what tripped
+    // up the setback-area assertions below at first.
+    let m_per_deg_lng = 111_320.0;
+    let m_per_deg_lat = 110_540.0;
+    let w = width_m / m_per_deg_lng;
+    let d = depth_m / m_per_deg_lat;
     let ring = vec![
         LngLat::new(0.0, 0.0),
         LngLat::new(w, 0.0),
@@ -23,7 +31,7 @@ fn rect_pad_neighborhood(width_m: f64, depth_m: f64) -> Neighborhood {
         id: "TESTPAD".into(),
         polygon: Polygon::from_ring(ring),
         area_acres: (width_m * depth_m) / 4046.86,
-        use_category: Some("p95_building_pad".into()),
+        use_category,
         ownership: None,
         is_eda: false,
         spec: None,
@@ -79,6 +87,41 @@ fn deep_pad_gets_courtyard_ring() {
     // something, not a token sliver).
     let courtyard_area = sub.new_open_space[0].polygon.area_m2();
     assert!(courtyard_area > 30.0, "courtyard should clear courtyard_min_area_m2, got {}", courtyard_area);
+}
+
+#[test]
+fn p95_pad_gets_no_extra_setback_beyond_its_own_pad_inset() {
+    // A P95 pad's own pad_inset_m already reserved its gap -- P107
+    // shouldn't inset it again for setback_m. Footprint should equal the
+    // full pad geometry (minus nothing), narrow enough to stay solid.
+    let nbhd = rect_pad_neighborhood(40.0, 12.0);
+    let sub = P107WingsOfLight.apply(&nbhd, "TESTPAD", &P107Params::defaults(), 1).unwrap();
+    let footprint_area = sub.new_buildings[0].polygon.area_m2();
+    let full_pad_area = 40.0 * 12.0;
+    assert!(
+        (footprint_area - full_pad_area).abs() < 1.0,
+        "P95 pad footprint should equal the full pad ({full_pad_area} m²), no extra setback applied, got {footprint_area} m²"
+    );
+}
+
+#[test]
+fn non_p95_parcel_still_gets_a_real_setback() {
+    // A parcel P107 is called on directly (not a P95 pad) has no other
+    // reserved gap -- setback_m should still apply, same as before this fix.
+    let nbhd = rect_neighborhood(40.0, 12.0, None);
+    let params = P107Params::defaults();
+    let sub = P107WingsOfLight.apply(&nbhd, "TESTPAD", &params, 1).unwrap();
+    let footprint_area = sub.new_buildings[0].polygon.area_m2();
+    let full_pad_area = 40.0 * 12.0;
+    let expected_after_setback = (40.0 - 2.0 * params.setback_m) * (12.0 - 2.0 * params.setback_m);
+    assert!(
+        footprint_area < full_pad_area - 1.0,
+        "a non-P95 parcel should still lose real area to setback_m, got {footprint_area} vs full {full_pad_area}"
+    );
+    assert!(
+        (footprint_area - expected_after_setback).abs() < 1.0,
+        "expected ~{expected_after_setback} m² after a real setback, got {footprint_area} m²"
+    );
 }
 
 #[test]

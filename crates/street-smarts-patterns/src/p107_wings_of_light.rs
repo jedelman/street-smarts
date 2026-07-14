@@ -30,6 +30,27 @@
 //! if it came from a concave source parcel) will misbehave the same way
 //! `clip_convex_to_polygon` warns about on non-convex input. Not handled in
 //! v0.1 -- this is a real gap, not swept under a caveat that undersells it.
+//!
+//! # v0.2: don't double-apply the yard setback on a P95 pad
+//! `setback_m` used to inset EVERY pad's boundary before drawing the
+//! footprint, regardless of where the pad came from. But a pad tagged
+//! `use_category: "p95_building_pad"` was already inset by P95's own
+//! `pad_inset_m` -- "room for interconnecting spaces" between neighboring
+//! buildings within a complex. Applying `setback_m` again on top of that
+//! shrinks the footprint by BOTH insets, stacked -- with each at its 3.0m
+//! default, two neighboring buildings end up ~12m apart (2 x (pad_inset_m
+//! + setback_m)) for a gap that was only ever supposed to be sized once.
+//! Real urban infill -- party-wall buildings running straight to the lot
+//! line with zero gap -- is the opposite of what stacking these produces:
+//! isolated pavilions, each surrounded by its own moat, even when nothing
+//! actually calls for one. Alexander's own P108 (Connected Buildings)
+//! argues against exactly this.
+//!
+//! So: `setback_m` now only applies when the pad did NOT already come from
+//! P95 (i.e. `use_category != "p95_building_pad"`) -- someone calling P107
+//! directly on a raw parcel still gets a real yard, since nothing else
+//! reserved one. A P95 pad's own inset is treated as the authoritative gap;
+//! P107 builds right to that boundary.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
@@ -49,7 +70,10 @@ pub struct P107Params {
     /// be up to ~2x that (~15m) and still keep every interior point within
     /// range of a window wall. Default assumes double-loaded wings.
     pub max_wing_width_m: f64,
-    /// Perimeter yard, same convention as the old BuildingShape stub.
+    /// Perimeter yard, same convention as the old BuildingShape stub. Only
+    /// applied to a pad that did NOT already come from P95 (see the module
+    /// doc's "v0.2" section) -- a P95 pad's own `pad_inset_m` is treated as
+    /// the authoritative gap, not stacked with this one.
     pub setback_m: f64,
     /// Don't bother shaping pads smaller than this.
     pub min_pad_area_m2: f64,
@@ -205,7 +229,16 @@ impl PatternOperator for P107WingsOfLight {
                 skipped_other += 1;
                 continue;
             }
-            let envelope = inset_convex(&local, params.setback_m);
+            // A P95 pad already has its own gap reserved (pad_inset_m) --
+            // don't inset it again for a "yard" that's already there. Only
+            // apply setback_m to a pad this operator has no other reason to
+            // believe already has room around it.
+            let from_p95_pad = parcel.use_category.as_deref() == Some("p95_building_pad");
+            let envelope = if from_p95_pad {
+                local.clone()
+            } else {
+                inset_convex(&local, params.setback_m)
+            };
             if envelope.len() < 3 || area(&envelope) < 50.0 {
                 skipped_small += 1;
                 continue;
@@ -317,6 +350,12 @@ impl PatternOperator for P107WingsOfLight {
                 "max_wing_width_m assumes double-loaded wings (rooms on both sides of a central \
                  spine). Real programs vary; this is a placeholder depth, not derived from any \
                  actual room layout.".into(),
+                "setback_m is skipped entirely for pads that came from P95 -- P95's own \
+                 pad_inset_m already reserved that gap, and stacking a second setback on top \
+                 produced isolated pavilions with far more space between buildings than either \
+                 pattern called for on its own. Real party-wall infill (buildings running to the \
+                 lot line with zero gap) needs more than removing the double setback -- see P108 \
+                 Connected Buildings, not implemented here.".into(),
             ],
             seed,
             params: params.as_map(),
