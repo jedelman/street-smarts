@@ -40,6 +40,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up Python (for the vibe-render gallery)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Test
         run: cargo test --workspace --release
 
@@ -50,6 +55,9 @@ jobs:
             --out-dir ../../public/pkg
           rm -f public/pkg/.gitignore
 
+      - name: Generate vibe-render gallery
+        run: PUBLISH_DIR=public/vibe-render scripts/vibe-render.sh
+
       - name: Verify required outputs
         run: |
           test -f public/index.html
@@ -57,6 +65,11 @@ jobs:
           test -f public/pkg/street_smarts_web_bg.wasm
           test -f public/data/eastside-baseline.json
           test -f public/data/eastside-proposal.json
+          test -f public/vibe-render/index.html
+          test -f public/vibe-render/clean_baseline.png
+          test -f public/vibe-render/barrio_mallcore.png
+          test -f public/vibe-render/mallcore_seeding_stratified.png
+          test -f public/vibe-render/mallcore_seeding_fieldguided.png
           echo "All required outputs present."
 
       - name: Bundle size

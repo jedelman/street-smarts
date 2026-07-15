@@ -1,0 +1,54 @@
+name: Vibe render (3D pattern-pipeline check)
+
+# Runs the 3D massing "vibe test" (scripts/vibe-render.sh) on every PR and
+# uploads the resulting PNG/SVG renders as a downloadable Actions artifact,
+# so a reviewer can eyeball scale/density/fragmentation before merging
+# without running cadquery/OpenCascade locally. Separate from deploy.yml
+# on purpose -- this never touches the live site or its deploy credentials,
+# it only runs read-only against fixture data and uploads files.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vibe-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run vibe-render
+        run: scripts/vibe-render.sh
+
+      - name: Upload vibe-render artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-render-${{ github.event.pull_request.number || github.sha }}
+          path: |
+            target/vibe-render/*.png
+            target/vibe-render/*.svg
+          if-no-files-found: error
+          retention-days: 30

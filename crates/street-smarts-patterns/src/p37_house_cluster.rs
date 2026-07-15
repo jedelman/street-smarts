@@ -62,12 +62,33 @@
 //! - The common-land fraction is uniform across all blocks. Real house
 //!   clusters vary in how much shared land they set aside; this doesn't
 //!   respond to block shape, adjacency, or anything but its own area.
+//!
+//! # v0.3: field-guided seeding (prototype, opt-in)
+//!
+//! `seeding_mode` (0=Stratified, the unchanged v0.2 default; 1=FieldGuided)
+//! is a narrow port of eastside-commons' `EC_FieldSolver` idea: instead of
+//! a blind jittered grid, block seeds are placed at local maxima of a
+//! rasterized pressure field built from real anchors already present in
+//! `nbhd` -- a positive Gaussian bump at every parcel whose `spec` starts
+//! with `"CIVIC"` (eastside-commons' own tagging convention for civic
+//! anchors, e.g. `CIVIC_700`), and positive pressure along every street
+//! centerline in `nbhd.streets`. The intuition: house clusters in real
+//! neighborhoods aren't scattered at random -- they cluster near existing
+//! civic anchors and along existing streets, the same way EC's pattern
+//! defs paint pressure toward `SPINE`/`MAP` anchors. See `field.rs` for
+//! the ported math and for what was deliberately NOT ported (EC's
+//! line-tracing and bounding-rect footprints -- street-smarts keeps its
+//! own, more rigorous Voronoi-cell footprint step regardless of seeding
+//! mode). Falls back to `Stratified` automatically when the parcel has no
+//! CIVIC-tagged neighbors and no streets to pull toward -- a raw
+//! greenfield site with literally nothing to converge on.
 
+use crate::field::Field;
 use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
-    area, bbox, clip_to_polygon, inset_convex, local_to_ring, ring_to_local, scale_toward_centroid,
-    union_pieces, voronoi_cell, Pt2,
+    area, average_centroid, bbox, clip_to_polygon, inset_convex, lnglat_to_local, local_to_ring,
+    ring_to_local, scale_toward_centroid, union_pieces, voronoi_cell, Pt2,
 };
 use crate::prng::Prng;
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
@@ -107,6 +128,11 @@ pub struct P37Params {
     /// would be smaller than this -- not worth reserving land nobody could
     /// use as shared space.
     pub min_common_land_area_m2: f64,
+    /// Block-seeding strategy, float-encoded like P95's `courtyard_mode`:
+    /// 0=Stratified (blind jittered grid, the v0.2 default), 1=FieldGuided
+    /// (prototype -- seeds pulled toward CIVIC-tagged parcels and street
+    /// centerlines already in the neighborhood; see the v0.3 module doc).
+    pub seeding_mode: f64,
 }
 
 impl Parameters for P37Params {
@@ -152,6 +178,11 @@ impl Parameters for P37Params {
                 "Skip common-land generation for a block if the patch would be smaller than this.",
                 50.0, 1000.0, 150.0,
             ).with_unit("m²"),
+            ParamSpec::float(
+                "seeding_mode",
+                "Block-seeding strategy: 0=Stratified (blind jittered grid), 1=FieldGuided (prototype -- seeds pulled toward civic anchors and streets).",
+                0.0, 1.0, 0.0,
+            ),
         ]
     }
     fn defaults() -> Self {
@@ -164,6 +195,7 @@ impl Parameters for P37Params {
             min_block_area_m2: 1500.0,
             common_land_fraction: 0.12,
             min_common_land_area_m2: 150.0,
+            seeding_mode: 0.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
@@ -176,6 +208,7 @@ impl Parameters for P37Params {
             self.min_block_area_m2,
             self.common_land_fraction,
             self.min_common_land_area_m2,
+            self.seeding_mode,
         ]
     }
     fn from_vector(v: &[f64]) -> Self {
@@ -189,6 +222,7 @@ impl Parameters for P37Params {
         if let (Some(s), Some(x)) = (schema.get(5), v.get(5)) { p.min_block_area_m2 = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(6), v.get(6)) { p.common_land_fraction = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(7), v.get(7)) { p.min_common_land_area_m2 = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(8), v.get(8)) { p.seeding_mode = s.clamp(*x); }
         p
     }
 }
@@ -266,7 +300,22 @@ impl PatternOperator for P37HouseCluster {
                 part_idx, part_area_ac, part_area_m2, n_blocks, params.target_block_area_m2
             ));
 
-            let seeds = stratified_seeds(&local_poly, n_blocks, params.seed_jitter, &mut prng);
+            let seeds = if params.seeding_mode >= 0.5 {
+                let result = field_guided_seeds(nbhd, &local_poly, &origin, n_blocks, &mut prng);
+                steps.push(format!(
+                    "part[{}]: field-guided seeding -- {} civic anchor(s), {} street segment(s), {} seed(s) from field maxima{}",
+                    part_idx, result.n_civic_anchors, result.n_street_segments, result.n_field_seeds,
+                    if result.n_field_seeds < n_blocks { ", remainder filled by stratified seeding" } else { "" }
+                ));
+                if result.seeds.is_empty() {
+                    steps.push(format!("part[{}]: no civic anchors or streets nearby -- falling back to stratified seeding", part_idx));
+                    stratified_seeds(&local_poly, n_blocks, params.seed_jitter, &mut prng)
+                } else {
+                    result.seeds
+                }
+            } else {
+                stratified_seeds(&local_poly, n_blocks, params.seed_jitter, &mut prng)
+            };
             if seeds.len() < 1 {
                 steps.push(format!("part[{}]: 0 valid seeds -- too small or too concave. Skipping.", part_idx));
                 continue;
@@ -394,6 +443,11 @@ impl PatternOperator for P37HouseCluster {
                 "Blocks are emitted with is_eda=true and no ownership -- downstream operators \
                  (P52, P61, P95) need to run PER BLOCK, targeting each BLOCK_n parcel \
                  individually, not '*'.".into(),
+                "seeding_mode=FieldGuided is a v0.3 prototype: seeds cluster toward CIVIC-tagged \
+                 parcels and streets already in the neighborhood instead of a blind jittered grid, \
+                 but the pressure-field math (sigma, weights, threshold) hasn't been tuned against \
+                 real outcomes the way Stratified's parameters have -- treat its output as a \
+                 hypothesis to compare against Stratified, not a default.".into(),
             ],
             seed,
             params: params.as_map(),
@@ -418,4 +472,88 @@ fn average_lng(ring: &[LngLat]) -> f64 {
 fn average_lat(ring: &[LngLat]) -> f64 {
     if ring.is_empty() { return 0.0; }
     ring.iter().map(|p| p.lat).sum::<f64>() / ring.len() as f64
+}
+
+struct FieldSeedResult {
+    seeds: Vec<Pt2>,
+    n_civic_anchors: usize,
+    n_street_segments: usize,
+    n_field_seeds: usize,
+}
+
+/// v0.3 prototype: place block seeds at local maxima of a pressure field
+/// built from real anchors in `nbhd` -- see the module doc's v0.3 section
+/// and `field.rs` for what's actually being ported from EC_FieldSolver.
+fn field_guided_seeds(
+    nbhd: &Neighborhood,
+    local_poly: &[Pt2],
+    origin: &LngLat,
+    target: usize,
+    prng: &mut Prng,
+) -> FieldSeedResult {
+    if target == 0 || local_poly.len() < 3 {
+        return FieldSeedResult { seeds: vec![], n_civic_anchors: 0, n_street_segments: 0, n_field_seeds: 0 };
+    }
+
+    let (min_pt, max_pt) = bbox(local_poly);
+    let w = (max_pt.x - min_pt.x).max(1.0);
+    let h = (max_pt.y - min_pt.y).max(1.0);
+    // Pad the field beyond the polygon's own bbox so a civic anchor or
+    // street just outside the block-carving parcel still pulls seeds
+    // toward that edge, not just anchors strictly inside it.
+    let pad = w.max(h) * 0.15;
+    let field_min = Pt2::new(min_pt.x - pad, min_pt.y - pad);
+    let field_max = Pt2::new(max_pt.x + pad, max_pt.y + pad);
+    let diag = ((w + 2.0 * pad).powi(2) + (h + 2.0 * pad).powi(2)).sqrt();
+    // Aim for roughly 80 cells across the diagonal -- fine enough to find
+    // real local maxima, coarse enough to stay fast on a large site.
+    let cell_size = (diag / 80.0).max(3.0);
+
+    let mut field = Field::new(field_min, field_max, cell_size);
+    let mut n_civic_anchors = 0;
+    let mut n_street_segments = 0;
+
+    for p in &nbhd.parcels {
+        if p.spec.as_deref().map(|s| s.starts_with("CIVIC")).unwrap_or(false) {
+            let anchor_lnglat = average_centroid(&p.polygon.outer);
+            let anchor_local = lnglat_to_local(&anchor_lnglat, origin);
+            field.paint_gaussian(anchor_local, 45.0, 1.0);
+            n_civic_anchors += 1;
+        }
+    }
+    for street in &nbhd.streets {
+        for pair in street.centerline.windows(2) {
+            let a = lnglat_to_local(&pair[0], origin);
+            let b = lnglat_to_local(&pair[1], origin);
+            field.paint_segment(a, b, 18.0, 0.6);
+            n_street_segments += 1;
+        }
+    }
+
+    if n_civic_anchors == 0 && n_street_segments == 0 {
+        return FieldSeedResult { seeds: vec![], n_civic_anchors, n_street_segments, n_field_seeds: 0 };
+    }
+    field.normalize();
+
+    let poly_area = area(local_poly);
+    let min_separation = (poly_area / target as f64).sqrt() * 0.6;
+    let field_seeds = field.find_seeds(local_poly, target, 0.12, min_separation);
+    let n_field_seeds = field_seeds.len();
+
+    let mut seeds = field_seeds;
+    if seeds.len() < target {
+        // The field tells us where pressure IS, not where the parcel still
+        // has usable room once target exceeds the number of real anchors
+        // -- fill remaining slots with stratified seeding, rejecting any
+        // candidate that would crowd a seed the field already placed.
+        let extra = stratified_seeds(local_poly, target * 2, 0.6, prng);
+        for p in extra {
+            if seeds.len() >= target { break; }
+            if seeds.iter().all(|&q| q.dist(p) >= min_separation * 0.6) {
+                seeds.push(p);
+            }
+        }
+    }
+
+    FieldSeedResult { seeds, n_civic_anchors, n_street_segments, n_field_seeds }
 }

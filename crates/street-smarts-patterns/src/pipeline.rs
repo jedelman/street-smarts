@@ -105,7 +105,22 @@ pub fn allocate_squares_by_area(block_areas_m2: &[f64], total_squares: usize) ->
 /// skipped rather than aborting the whole run -- same tolerance the web UI's
 /// per-block loop applies.
 pub fn run_corrected_pipeline(baseline: &Neighborhood, parcel_id: &str, seed: u64) -> Neighborhood {
-    let sub37 = P37HouseCluster.apply(baseline, parcel_id, &P37Params::defaults(), seed).unwrap();
+    run_corrected_pipeline_with_p37(baseline, parcel_id, seed, &P37Params::defaults())
+}
+
+/// Same as `run_corrected_pipeline`, but with an explicit P37 parameter set
+/// -- lets callers (currently just `examples/dump_pipeline_seeding.rs`, for
+/// comparing P37's `seeding_mode` prototype against production) swap P37's
+/// behavior without touching every other stage. `run_corrected_pipeline`
+/// itself stays a thin wrapper over this with P37's defaults, so production
+/// behavior is unchanged.
+pub fn run_corrected_pipeline_with_p37(
+    baseline: &Neighborhood,
+    parcel_id: &str,
+    seed: u64,
+    p37_params: &P37Params,
+) -> Neighborhood {
+    let sub37 = P37HouseCluster.apply(baseline, parcel_id, p37_params, seed).unwrap();
     let mut nbhd = apply_subdivision(baseline, &sub37);
 
     let sub52 = PathNetwork.apply(&nbhd, "*", &PathNetworkParams::defaults(), seed).unwrap();
