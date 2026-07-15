@@ -4,14 +4,23 @@
 # isometric views. A gut check on scale and density, not a real
 # architectural rendering -- see tools/vibe-render/render.py for caveats.
 #
-# Runs two scenarios that have earned their keep as regression cases:
+# Runs three scenarios:
 #   - clean_baseline: eastside-baseline.json, parcel 00001129 (47.7-acre
 #     pre-redevelopment mega-parcel, no EDA tags)
 #   - barrio_mallcore: eastside-proposal.json, parcel 13279568 (MALL_CORE,
 #     27.8 acres, the fragmentation stress case -- see task #7)
+#   - mallcore_seeding: MALL_CORE again, rendered twice -- once with P37's
+#     default Stratified seeding, once with the FieldGuided prototype
+#     (seeding_mode=1.0) -- so the two can be compared side by side. See
+#     crates/street-smarts-patterns/src/field.rs and
+#     examples/dump_pipeline_seeding.rs.
 #
 # Output goes to $OUT_DIR (default: target/vibe-render/), both the
 # intermediate pipeline JSON and the rendered PNG/SVG files.
+#
+# If $PUBLISH_DIR is set, the four isometric PNGs used for the public
+# gallery (see public/vibe-render/index.html) are also copied there under
+# fixed filenames, ready to ship as static site assets.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,12 +28,14 @@ cd "$(dirname "$0")/.."
 OUT_DIR="${OUT_DIR:-target/vibe-render}"
 VENV_DIR="${VENV_DIR:-tools/vibe-render/.venv}"
 SEED="${VIBE_RENDER_SEED:-42}"
+PUBLISH_DIR="${PUBLISH_DIR:-}"
 
 mkdir -p "$OUT_DIR"
 
-echo "==> building dump_pipeline example"
-cargo build --release -p street-smarts-patterns --example dump_pipeline
+echo "==> building dump_pipeline + dump_pipeline_seeding examples"
+cargo build --release -p street-smarts-patterns --example dump_pipeline --example dump_pipeline_seeding
 DUMP_BIN="target/release/examples/dump_pipeline"
+DUMP_SEEDING_BIN="target/release/examples/dump_pipeline_seeding"
 
 echo "==> running corrected pipeline: clean_baseline"
 "$DUMP_BIN" data/eastside-baseline.json 00001129 "$SEED" "$OUT_DIR/clean_baseline.json"
@@ -32,17 +43,29 @@ echo "==> running corrected pipeline: clean_baseline"
 echo "==> running corrected pipeline: barrio_mallcore"
 "$DUMP_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/barrio_mallcore.json"
 
+echo "==> running corrected pipeline: mallcore_seeding (stratified vs field-guided)"
+"$DUMP_SEEDING_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/mallcore_seeding"
+
 echo "==> preparing Python render environment"
 if [ ! -d "$VENV_DIR" ]; then
   python3 -m venv "$VENV_DIR"
 fi
 "$VENV_DIR/bin/pip" install -q -r tools/vibe-render/requirements.txt
 
-echo "==> rendering: clean_baseline"
-"$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/clean_baseline.json" "$OUT_DIR/clean_baseline"
-
-echo "==> rendering: barrio_mallcore"
-"$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/barrio_mallcore.json" "$OUT_DIR/barrio_mallcore"
+for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
+  echo "==> rendering: $scenario"
+  "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
+done
 
 echo "==> done. Renders in $OUT_DIR/"
 ls "$OUT_DIR"/*.png "$OUT_DIR"/*.svg 2>/dev/null
+
+if [ -n "$PUBLISH_DIR" ]; then
+  echo "==> publishing gallery images to $PUBLISH_DIR"
+  mkdir -p "$PUBLISH_DIR"
+  cp "$OUT_DIR/clean_baseline_isometric.png" "$PUBLISH_DIR/clean_baseline.png"
+  cp "$OUT_DIR/barrio_mallcore_isometric.png" "$PUBLISH_DIR/barrio_mallcore.png"
+  cp "$OUT_DIR/mallcore_seeding_stratified_isometric.png" "$PUBLISH_DIR/mallcore_seeding_stratified.png"
+  cp "$OUT_DIR/mallcore_seeding_fieldguided_isometric.png" "$PUBLISH_DIR/mallcore_seeding_fieldguided.png"
+  ls "$PUBLISH_DIR"
+fi
