@@ -78,11 +78,11 @@
 //!   buildings standing close but not merged can each get windows facing
 //!   the gap between them.
 
+use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{centroid, lnglat_to_local, ring_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
-use street_smarts_core::geometry::{haversine_m, LngLat};
 use street_smarts_core::nir::{Building, Neighborhood, Opening, OpeningKind};
 use street_smarts_core::opinion::SourceCitation;
 
@@ -363,30 +363,6 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
     }
 }
 
-/// Nearest point on any street centerline or open-space centroid to a
-/// building's centroid -- the real pipeline data this operator uses instead
-/// of guessing which wall should hold the door.
-fn nearest_public_realm_point(nbhd: &Neighborhood, b: &Building) -> Option<LngLat> {
-    let bc = b.polygon.centroid();
-    let mut best: Option<(f64, LngLat)> = None;
-    for s in &nbhd.streets {
-        for p in &s.centerline {
-            let d = haversine_m(&bc, p);
-            if best.map(|(bd, _)| d < bd).unwrap_or(true) {
-                best = Some((d, *p));
-            }
-        }
-    }
-    for o in &nbhd.open_space {
-        let c = o.polygon.centroid();
-        let d = haversine_m(&bc, &c);
-        if best.map(|(bd, _)| d < bd).unwrap_or(true) {
-            best = Some((d, c));
-        }
-    }
-    best.map(|(_, p)| p)
-}
-
 /// Pick the outer-ring edge index whose outward normal points most directly
 /// at `target_local`, among edges long enough to hold a door. Falls back to
 /// the single longest qualifying edge when there's no target (no streets or
@@ -506,7 +482,7 @@ fn place_wall_openings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use street_smarts_core::geometry::Polygon;
+    use street_smarts_core::geometry::{LngLat, Polygon};
     use street_smarts_core::nir::{NeighborhoodMeta, Street};
 
     fn nbhd(buildings: Vec<Building>, streets: Vec<Street>) -> Neighborhood {
@@ -547,6 +523,7 @@ mod tests {
             parcel_id: Some("PAD_1".into()),
             floors: None,
             openings: vec![],
+            interior_cells: vec![],
         }
     }
 

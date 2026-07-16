@@ -200,6 +200,7 @@ impl PatternOperator for BuildingShape {
                 parcel_id: Some(parcel.id.clone()),
                 floors: None,
                 openings: vec![],
+                interior_cells: vec![],
             });
 
             // Update the parcel's use_category to indicate a building exists.

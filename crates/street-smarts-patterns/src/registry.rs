@@ -8,6 +8,9 @@ use crate::p95_building_complex::P95BuildingComplex;
 use crate::p96_number_of_stories::P96NumberOfStories;
 use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::p108_connected_buildings::P108ConnectedBuildings;
+use crate::p127_intimacy_gradient::P127IntimacyGradient;
+use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
+use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
@@ -83,15 +86,32 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///      Reads each pad's `target_stories` (P96's assignment) to compute
 ///      real height, falling back to its own flat `assumed_height_m` for
 ///      any pad P96 didn't touch.
-///   8. P221 (#221) -- real window/door openings. Runs ONCE, site-scale,
-///      after every building exists (it targets `nbhd.buildings` directly,
-///      not parcels -- the first operator in this crate to do so). Reads
-///      each building's real height (-> floor count) and footprint (-> wall
-///      segments) to place openings; no randomness. See the module's own
-///      doc comment for the pattern-graph reasoning (P107 -> P159 -> P221)
-///      and the `street-smarts-opinions::pattern::p159_light_on_two_sides`
-///      opinion that scores the result.
-/// `crate::pipeline::run_corrected_pipeline` runs all eight steps end to end
+///   8. P127 Intimacy Gradient (#127) -- partitions each building's ground
+///      floor into a depth-ordered sequence of cells (public wall/entrance
+///      bay -> deepest point). Runs ONCE, site-scale, on `nbhd.buildings`
+///      (the second operator in this crate to target buildings directly,
+///      after P221 -- except this one now runs BEFORE P221, since
+///      canonical numbering (107 < 127 < 129 < 131 < 221) needs no
+///      reordering here, unlike P29/P108 above). See the module's own doc
+///      comment for the sourced sequence (Alexander's own transition text
+///      lists 127 -> 128 -> 129 -> 130 -> 131 -> 132 -> 133 explicitly).
+///   9. P129 Common Areas at the Heart (#129) -- marks which of P127's
+///      cells sits nearest the plan's center of gravity. Runs ONCE,
+///      site-scale, right after P127.
+///   10. P131 The Flow Through Rooms (#131) -- connects P127's cells into a
+///      chain (solid buildings) or a closed loop (courtyard buildings get
+///      one for free from their ring shape; solid buildings get a
+///      loop-closing passage cell only when short and wide enough, per
+///      Pattern 132's own cited length threshold -- folded into this
+///      operator rather than a separate P132 one, see its module doc).
+///   11. P221 (#221) -- real window/door openings. Runs ONCE, site-scale,
+///      after every building exists. Reads each building's real height
+///      (-> floor count) and footprint (-> wall segments) to place
+///      openings; no randomness. See the module's own doc comment for the
+///      pattern-graph reasoning (P107 -> P159 -> P221) and the
+///      `street-smarts-opinions::pattern::p159_light_on_two_sides` opinion
+///      that scores the result.
+/// `crate::pipeline::run_corrected_pipeline` runs all eleven steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -115,6 +135,9 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P29DensityRings),
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
+        Box::new(P127IntimacyGradient),
+        Box::new(P129CommonAreasAtTheHeart),
+        Box::new(P131TheFlowThroughRooms),
         Box::new(P221NaturalDoorsAndWindows),
     ]
 }

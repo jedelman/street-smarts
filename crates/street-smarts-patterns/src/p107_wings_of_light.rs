@@ -273,6 +273,7 @@ impl PatternOperator for P107WingsOfLight {
                     parcel_id: Some(parcel.id.clone()),
                     floors: None,
                     openings: vec![],
+                    interior_cells: vec![],
                 });
                 n_solid += 1;
             } else {
@@ -293,6 +294,7 @@ impl PatternOperator for P107WingsOfLight {
                         parcel_id: Some(parcel.id.clone()),
                         floors: None,
                         openings: vec![],
+                        interior_cells: vec![],
                     });
                     n_solid += 1;
                 } else {
@@ -310,6 +312,7 @@ impl PatternOperator for P107WingsOfLight {
                         parcel_id: Some(parcel.id.clone()),
                         floors: None,
                         openings: vec![],
+                        interior_cells: vec![],
                     });
                     new_open.push(OpenSpace {
                         id: format!("{}_P107_courtyard", parcel.id),

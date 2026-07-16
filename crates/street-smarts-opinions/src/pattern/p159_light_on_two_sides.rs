@@ -317,6 +317,7 @@ mod tests {
             year_built: None,
             parcel_id: None,
             floors: Some(2),
+            interior_cells: vec![],
             openings: vec![
                 win(0, false, 0.9), // corner bay, edge 0 near its end
                 win(1, false, 0.1), // corner bay, edge 1 near its start (same corner)
@@ -352,6 +353,7 @@ mod tests {
             year_built: None,
             parcel_id: None,
             floors: Some(2),
+            interior_cells: vec![],
             openings: vec![win(0, false, 0.5), win(0, true, 0.5)],
         };
         let n = nbhd(vec![b]);
@@ -378,6 +380,7 @@ mod tests {
             year_built: None,
             parcel_id: None,
             floors: Some(2),
+            interior_cells: vec![],
             openings: vec![win(0, false, 0.5), win(1, false, 0.5)],
         };
         let n = nbhd(vec![b]);

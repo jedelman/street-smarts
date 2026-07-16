@@ -108,6 +108,49 @@ pub struct Building {
     /// existing fixture round-trips unchanged (defaults to `vec![]`).
     #[serde(default)]
     pub openings: Vec<Opening>,
+    /// The building's interior, partitioned into cells by
+    /// `p127_intimacy_gradient` (depth), `p129_common_areas_at_the_heart`
+    /// (which cell is common), and `p131_the_flow_through_rooms`
+    /// (adjacency). Empty until those operators have run. Ground-floor
+    /// only in this version -- see `InteriorCell.floor`.
+    #[serde(default)]
+    pub interior_cells: Vec<InteriorCell>,
+}
+
+/// One cell of a building's interior partition. Deliberately FORM-only --
+/// a position in the public/private gradient and a set of connections, not
+/// a room type. Nothing here ever says "bedroom" or "kitchen": Alexander's
+/// own pattern language describes spatial relationships, not prescribed
+/// uses, and this project doesn't assume a program this pipeline has no
+/// way to know.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InteriorCell {
+    pub id: String,
+    /// The cell's own 2D footprint.
+    pub polygon: Polygon,
+    /// Position in the public-to-private gradient: 0.0 sits at the
+    /// public-facing wall, 1.0 is the deepest point in the building (a
+    /// solid building's far band, or the courtyard-ring point diametrically
+    /// opposite the entrance). Set by `p127_intimacy_gradient`.
+    pub depth: f64,
+    /// True for the one cell `p129_common_areas_at_the_heart` identifies as
+    /// nearest the whole footprint's center of gravity.
+    #[serde(default)]
+    pub is_common: bool,
+    /// Free-form, same convention as `Parcel.use_category` /
+    /// `Building.typology`: "room" for a normal gradient band/bay, or
+    /// "passage" for a P131/P132 loop-closing passage cell.
+    #[serde(default)]
+    pub kind: String,
+    /// Other `InteriorCell` ids this one connects to via an internal
+    /// doorway. Set by `p131_the_flow_through_rooms`; empty until it runs.
+    #[serde(default)]
+    pub connects_to: Vec<String>,
+    /// 0 = ground floor. Always 0 in this version -- there's no modeled
+    /// way to reach an upper floor (no staircase/vertical circulation
+    /// pattern implemented yet), so partitioning one would be fiction.
+    #[serde(default)]
+    pub floor: u32,
 }
 
 /// A window or door opening on one of a `Building`'s exterior walls.

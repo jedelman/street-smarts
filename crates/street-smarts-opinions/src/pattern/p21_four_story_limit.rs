@@ -231,6 +231,7 @@ mod tests {
             parcel_id: None,
             floors: None,
             openings: vec![],
+            interior_cells: vec![],
         }
     }
 

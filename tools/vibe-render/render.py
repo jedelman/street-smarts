@@ -6,10 +6,15 @@ elevation, floor-plan, and isometric views. Still a gut check on scale and
 density, not a finished architectural rendering -- but window and door
 openings ARE now real OpenCascade boolean cuts (`punch_openings`), driven
 by `p221_natural_doors_and_windows`'s pattern-derived placement, not
-decoration. What's still NOT here: real wall thickness (a punch just pierces
-solid mass -- see `punch_openings`'s own caveat), interior room partitions
-(so `render_floor_plan`'s output is a real footprint-with-openings section,
-not a room layout), and roof forms.
+decoration, and so ARE interior partition walls (`build_interior_partitions`,
+material ADDED rather than subtracted): real wall slabs with a door-sized
+gap, one per connection in `p127_intimacy_gradient` / `p129_common_areas_
+at_the_heart` / `p131_the_flow_through_rooms`'s cell graph, unioned into
+the solid -- so `render_floor_plan`'s section shows real rooms, not just
+the exterior footprint with window/door gaps. Ground floor only, since no
+staircase pattern exists yet to reach an upper one. What's still NOT here:
+real wall thickness on the EXTERIOR walls (a punch just pierces solid mass
+-- see `punch_openings`'s own caveat) and roof forms.
 
 Also exports a single `.glb` (binary glTF) per scenario, colored the same
 as the isometric render, with every building's real punched openings --
@@ -41,6 +46,10 @@ STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
 OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness this massing model doesn't have
+INTERIOR_WALL_THICKNESS_M = 0.12  # a light stud partition, not a structural wall
+INTERIOR_DOOR_WIDTH_M = 0.9
+INTERIOR_DOOR_HEIGHT_M = 2.1
+INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
 
 
 def project(lng, lat, origin_lng, origin_lat):
@@ -195,6 +204,92 @@ def fuse_all(solids):
         return combined
 
 
+def shared_boundary(poly_a, poly_b, eps=0.05):
+    """Find the coincident edge two adjacent `InteriorCell` polygons share
+    -- both p127_intimacy_gradient's band/bay cuts and its loop-closing
+    passage are built from the SAME shared threshold lines, so adjacent
+    cells always have an exactly (up to floating point) coincident edge
+    somewhere on their boundary. Matched by nearby endpoints, forward or
+    reversed winding. Returns `((ax,ay),(bx,by))` or `None`.
+    """
+    def close(p, q):
+        return math.hypot(p[0] - q[0], p[1] - q[1]) < eps
+
+    na, nb = len(poly_a), len(poly_b)
+    for i in range(na):
+        a1, a2 = poly_a[i], poly_a[(i + 1) % na]
+        for j in range(nb):
+            b1, b2 = poly_b[j], poly_b[(j + 1) % nb]
+            if (close(a1, b1) and close(a2, b2)) or (close(a1, b2) and close(a2, b1)):
+                return (a1, a2)
+    return None
+
+
+def build_interior_partitions(building, solid, origin_lng, origin_lat):
+    """Add real interior partition walls -- thin slabs with a door-sized
+    gap cut out, unioned into `solid` -- for every connection in
+    `building["interior_cells"]`'s `connects_to` graph (p131's chain/loop).
+    This is what makes `render_floor_plan`'s section actually show rooms,
+    not just the exterior footprint with window/door gaps: real
+    OpenCascade material addition along each shared cell boundary, same
+    category of operation as `punch_openings`' subtraction.
+
+    Ground-floor only, matching `interior_cells` itself (floor 0 only --
+    there's no staircase pattern implemented, so nothing reaches an upper
+    floor yet).
+    """
+    cells = building.get("interior_cells") or []
+    if len(cells) < 2:
+        return solid
+
+    cell_xy = {c["id"]: ring_to_xy(c["polygon"]["outer"], origin_lng, origin_lat) for c in cells}
+    seen_pairs = set()
+    wall_solids = []
+    for c in cells:
+        for other_id in c.get("connects_to") or []:
+            pair = tuple(sorted((c["id"], other_id)))
+            if pair in seen_pairs or other_id not in cell_xy:
+                continue
+            seen_pairs.add(pair)
+            edge = shared_boundary(cell_xy[c["id"]], cell_xy[other_id])
+            if edge is None:
+                continue
+            (ax, ay), (bx, by) = edge
+            length = math.hypot(bx - ax, by - ay)
+            if length < INTERIOR_WALL_MIN_LENGTH_M:
+                continue
+            angle_deg = math.degrees(math.atan2(by - ay, bx - ax))
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            try:
+                wall = (
+                    cq.Workplane("XY")
+                    .box(length, INTERIOR_WALL_THICKNESS_M, FLOOR_TO_FLOOR_M)
+                    .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+                    .translate((mx, my, FLOOR_TO_FLOOR_M / 2))
+                )
+                door = (
+                    cq.Workplane("XY")
+                    .box(INTERIOR_DOOR_WIDTH_M, INTERIOR_WALL_THICKNESS_M * 3, INTERIOR_DOOR_HEIGHT_M)
+                    .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+                    .translate((mx, my, INTERIOR_DOOR_HEIGHT_M / 2))
+                )
+                wall_with_gap = wall.val().cut(door.val())
+                wall_solids.append(cq.Workplane(obj=wall_with_gap))
+            except Exception as e:
+                print(f"  ! interior wall build failed for {building.get('id')}: {e}", file=sys.stderr)
+
+    if not wall_solids:
+        return solid
+    walls_combined = fuse_all(wall_solids)
+    if walls_combined is None:
+        return solid
+    try:
+        return cq.Workplane(obj=solid.val().fuse(walls_combined.val()))
+    except Exception as e:
+        print(f"  ! interior wall union failed for {building.get('id')}: {e}", file=sys.stderr)
+        return solid
+
+
 def build_scene(nbhd):
     parcels = site_parcels(nbhd)
     if not parcels:
@@ -221,6 +316,7 @@ def build_scene(nbhd):
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 solid = punch_openings(solid, b, origin_lng, origin_lat)
+                solid = build_interior_partitions(b, solid, origin_lng, origin_lat)
                 building_solids.append((solid, "building_shaped"))
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
