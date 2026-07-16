@@ -607,6 +607,101 @@ def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
     print(f"wrote {out_path}")
 
 
+ELEVATION_FRONTAGE_DIST_M = 60.0  # how close a building's centroid must be to a street to count as facing it
+
+
+def point_to_polyline_dist(pt, pts):
+    """Distance from `pt` to the closest point anywhere on the polyline
+    `pts` (its segments, not just its vertices)."""
+    px, py = pt
+    best = math.inf
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        abx, aby = bx - ax, by - ay
+        len2 = abx * abx + aby * aby
+        if len2 < 1e-9:
+            d = math.hypot(px - ax, py - ay)
+        else:
+            t = max(0.0, min(1.0, ((px - ax) * abx + (py - ay) * aby) / len2))
+            d = math.hypot(px - (ax + t * abx), py - (ay + t * aby))
+        best = min(best, d)
+    return best
+
+
+def choose_elevation_directions(nbhd, origin_lng, origin_lat):
+    """Pick up to two streets to generate elevations perpendicular to,
+    instead of two arbitrary world-axis slices (old `(0,-1,0)`/`(1,0,0)`)
+    that don't correspond to any real street -- on a rotated or organic
+    street grid those just cut across whatever buildings happen to be
+    lying near that axis, which is what was reading as "just lines" with
+    no legible facade content.
+
+    For each street, "information" = how many buildings sit within
+    `ELEVATION_FRONTAGE_DIST_M` of it (real frontage, not the whole scene)
+    times how widely they're spread along its own length -- a street with
+    a handful of buildings scattered along a long block beats one with
+    many buildings bunched at one end (same drawing content, no more
+    information), and beats a short street with one lonely building
+    (nothing to compose an elevation from).
+
+    Returns up to two `(direction_xyz, label)` pairs: the single
+    highest-scoring street ("front"), and the highest-scoring street
+    whose own direction differs from the front street's by at least 40
+    degrees ("side") -- a genuine cross-street view, not a second look at
+    the same frontage from a nearly-parallel street. Falls back to the
+    old fixed side axis if no sufficiently different street scores at
+    all (e.g. a single-orientation grid).
+    """
+    building_centroids = []
+    for b in nbhd.get("buildings", []):
+        pts = ring_to_xy(b["polygon"]["outer"], origin_lng, origin_lat)
+        if len(pts) < 3:
+            continue
+        building_centroids.append((sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)))
+
+    scored = []
+    for s in nbhd.get("streets", []):
+        line = s.get("centerline") or []
+        if len(line) < 2:
+            continue
+        pts = [project(p["lng"], p["lat"], origin_lng, origin_lat) for p in line]
+        ax, ay = pts[0]
+        bx, by = pts[-1]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        ux, uy = dx / length, dy / length
+        along = [cx * ux + cy * uy for cx, cy in building_centroids if point_to_polyline_dist((cx, cy), pts) <= ELEVATION_FRONTAGE_DIST_M]
+        if len(along) < 2:
+            continue
+        spread = max(along) - min(along)
+        score = len(along) * spread
+        angle_deg = math.degrees(math.atan2(uy, ux)) % 180.0
+        label = s.get("id") or s.get("classification") or "street"
+        scored.append((score, angle_deg, (-uy, ux), label, len(along), spread))
+
+    if not scored:
+        return [((0, -1, 0), "elevation (front)"), ((1, 0, 0), "elevation (side)")]
+
+    scored.sort(key=lambda r: r[0], reverse=True)
+    front = scored[0]
+    print(f"  chosen front elevation street: {front[3]} ({front[4]} buildings, {front[5]:.0f}m frontage)")
+    results = [((front[2][0], front[2][1], 0.0), "elevation (front)")]
+
+    def angle_diff(a, b):
+        d = abs(a - b) % 180.0
+        return min(d, 180.0 - d)
+
+    side_candidates = [r for r in scored[1:] if angle_diff(r[1], front[1]) >= 40.0]
+    if side_candidates:
+        side = side_candidates[0]
+        print(f"  chosen side elevation street: {side[3]} ({side[4]} buildings, {side[5]:.0f}m frontage)")
+        results.append(((side[2][0], side[2][1], 0.0), "elevation (side)"))
+    else:
+        results.append(((1, 0, 0), "elevation (side)"))
+    return results
+
+
 def main():
     if len(sys.argv) != 3:
         print("usage: render.py <neighborhood.json> <output_prefix>")
@@ -621,10 +716,12 @@ def main():
 
     exterior_master = build_exterior_master(scene)
     render_svg_projection(exterior_master, f"{out_prefix}_plan.svg", (0, 0, 1), "plan")
-    render_svg_projection(exterior_master, f"{out_prefix}_elevation_front.svg", (0, -1, 0), "elevation (front)")
-    render_svg_projection(exterior_master, f"{out_prefix}_elevation_side.svg", (1, 0, 0), "elevation (side)")
 
     origin_lng, origin_lat = scene["origin"]
+    elevations = choose_elevation_directions(nbhd, origin_lng, origin_lat)
+    render_svg_projection(exterior_master, f"{out_prefix}_elevation_front.svg", elevations[0][0], elevations[0][1])
+    render_svg_projection(exterior_master, f"{out_prefix}_elevation_side.svg", elevations[1][0], elevations[1][1])
+
     render_floor_plan(nbhd, origin_lng, origin_lat, 0, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground)")
     max_floors = max((b.get("floors") or 1) for b in nbhd.get("buildings", [])) if nbhd.get("buildings") else 1
     if max_floors >= 2:
