@@ -63,13 +63,13 @@ echo "==> done. Renders in $OUT_DIR/"
 ls "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb 2>/dev/null
 
 if [ -n "$PUBLISH_DIR" ]; then
-  echo "==> publishing gallery images to $PUBLISH_DIR"
+  echo "==> publishing every render.py artifact (png/svg/glb) to $PUBLISH_DIR"
   mkdir -p "$PUBLISH_DIR"
-  cp "$OUT_DIR/clean_baseline_isometric.png" "$PUBLISH_DIR/clean_baseline.png"
-  cp "$OUT_DIR/barrio_mallcore_isometric.png" "$PUBLISH_DIR/barrio_mallcore.png"
-  cp "$OUT_DIR/mallcore_seeding_stratified_isometric.png" "$PUBLISH_DIR/mallcore_seeding_stratified.png"
-  cp "$OUT_DIR/mallcore_seeding_fieldguided_isometric.png" "$PUBLISH_DIR/mallcore_seeding_fieldguided.png"
-  cp "$OUT_DIR/clean_baseline.glb" "$PUBLISH_DIR/clean_baseline.glb"
-  cp "$OUT_DIR/barrio_mallcore.glb" "$PUBLISH_DIR/barrio_mallcore.glb"
+  # Blanket copy, not a per-file allowlist: every artifact type render.py
+  # produces (isometric PNG, plan/elevation/floor-plan SVGs, .glb) for
+  # every scenario, under its own real filename -- so a future new output
+  # type is published automatically without touching this script again.
+  # index.html links against these exact filenames.
+  cp "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb "$PUBLISH_DIR/" 2>/dev/null
   ls "$PUBLISH_DIR"
 fi
