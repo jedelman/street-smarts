@@ -6,4 +6,7 @@ node_modules/
 data/tiles/
 data/raster/
 tools/vibe-render/.venv/
+tools/vibe-render/__pycache__/
 public/vibe-render/*.png
+public/vibe-render/*.svg
+public/vibe-render/*.glb

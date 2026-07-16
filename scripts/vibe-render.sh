@@ -15,8 +15,10 @@
 #     crates/street-smarts-patterns/src/field.rs and
 #     examples/dump_pipeline_seeding.rs.
 #
-# Output goes to $OUT_DIR (default: target/vibe-render/), both the
-# intermediate pipeline JSON and the rendered PNG/SVG files.
+# Output goes to $OUT_DIR (default: target/vibe-render/): the intermediate
+# pipeline JSON, the rendered PNG/SVG files, and a per-scenario .glb (real
+# 3D model, drop straight into any glTF viewer -- see render.py's own
+# docstring).
 #
 # If $PUBLISH_DIR is set, the four isometric PNGs used for the public
 # gallery (see public/vibe-render/index.html) are also copied there under
@@ -58,14 +60,16 @@ for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallc
 done
 
 echo "==> done. Renders in $OUT_DIR/"
-ls "$OUT_DIR"/*.png "$OUT_DIR"/*.svg 2>/dev/null
+ls "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb 2>/dev/null
 
 if [ -n "$PUBLISH_DIR" ]; then
-  echo "==> publishing gallery images to $PUBLISH_DIR"
+  echo "==> publishing every render.py artifact (png/svg/glb) to $PUBLISH_DIR"
   mkdir -p "$PUBLISH_DIR"
-  cp "$OUT_DIR/clean_baseline_isometric.png" "$PUBLISH_DIR/clean_baseline.png"
-  cp "$OUT_DIR/barrio_mallcore_isometric.png" "$PUBLISH_DIR/barrio_mallcore.png"
-  cp "$OUT_DIR/mallcore_seeding_stratified_isometric.png" "$PUBLISH_DIR/mallcore_seeding_stratified.png"
-  cp "$OUT_DIR/mallcore_seeding_fieldguided_isometric.png" "$PUBLISH_DIR/mallcore_seeding_fieldguided.png"
+  # Blanket copy, not a per-file allowlist: every artifact type render.py
+  # produces (isometric PNG, plan/elevation/floor-plan SVGs, .glb) for
+  # every scenario, under its own real filename -- so a future new output
+  # type is published automatically without touching this script again.
+  # index.html links against these exact filenames.
+  cp "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb "$PUBLISH_DIR/" 2>/dev/null
   ls "$PUBLISH_DIR"
 fi

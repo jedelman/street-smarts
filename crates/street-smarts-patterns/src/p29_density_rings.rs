@@ -244,6 +244,7 @@ impl PatternOperator for P29DensityRings {
             new_streets: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
+            replaced_building_ids: vec![],
             trace,
         })
     }

@@ -57,6 +57,26 @@
   figure.render figcaption h2 { font-size: 1.1rem; margin: 0 0 .35rem; font-weight: 600; }
   figure.render figcaption p { margin: 0; color: var(--muted); font-size: 0.92rem; }
 
+  .downloads {
+    margin-top: .75rem;
+    padding-top: .6rem;
+    border-top: 1px dashed var(--line);
+    font-size: 0.82rem;
+    line-height: 2;
+  }
+  .downloads .label { color: var(--muted); margin-right: .5rem; }
+  .downloads a {
+    color: var(--ink);
+    margin-right: .3rem;
+    padding: .15rem .55rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    text-decoration: none;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .downloads a:hover { background: var(--highlight); border-color: var(--ink); }
+
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
   .pair figure.render { margin: 0; }
@@ -74,25 +94,46 @@
   </header>
 
   <p class="caveat">
-    These are extruded polygon massing blocks (via cadquery/OpenCascade) — a gut check on
-    <em>scale and density</em>, not an architectural rendering. No windows, doors, roofs, or
-    real building design. See <code>tools/vibe-render/render.py</code> in the repo for the
-    full caveats and pipeline.
+    These are extruded polygon massing blocks (via cadquery/OpenCascade) — still a gut check
+    on <em>scale and density</em>, not a finished architectural rendering. Window and door
+    openings <em>are</em> now real boolean cuts, placed by a real pattern operator
+    (<code>p221_natural_doors_and_windows</code> — Alexander's Pattern 221) reading each
+    building's actual wall geometry and floor count, not decoration. Still missing: real wall
+    thickness, interior room partitions, and roof forms. See
+    <code>tools/vibe-render/render.py</code> in the repo for the full caveats and pipeline.
   </p>
 
   <figure class="render">
-    <img src="clean_baseline.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
+    <img src="clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
     <figcaption>
       <h2>Clean baseline</h2>
-      <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107).</p>
+      <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P221).</p>
+      <div class="downloads">
+        <span class="label">Downloads:</span>
+        <a href="clean_baseline.glb" download>3D model (.glb)</a>
+        <a href="clean_baseline_plan.svg" download>plan</a>
+        <a href="clean_baseline_elevation_front.svg" download>elevation (front)</a>
+        <a href="clean_baseline_elevation_side.svg" download>elevation (side)</a>
+        <a href="clean_baseline_floorplan_ground.svg" download>floor plan (ground)</a>
+        <a href="clean_baseline_floorplan_upper.svg" download>floor plan (floor 2)</a>
+      </div>
     </figcaption>
   </figure>
 
   <figure class="render">
-    <img src="barrio_mallcore.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
+    <img src="barrio_mallcore_isometric.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
     <figcaption>
       <h2>Barrio breakdown: MALL_CORE</h2>
       <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
+      <div class="downloads">
+        <span class="label">Downloads:</span>
+        <a href="barrio_mallcore.glb" download>3D model (.glb)</a>
+        <a href="barrio_mallcore_plan.svg" download>plan</a>
+        <a href="barrio_mallcore_elevation_front.svg" download>elevation (front)</a>
+        <a href="barrio_mallcore_elevation_side.svg" download>elevation (side)</a>
+        <a href="barrio_mallcore_floorplan_ground.svg" download>floor plan (ground)</a>
+        <a href="barrio_mallcore_floorplan_upper.svg" download>floor plan (floor 2)</a>
+      </div>
     </figcaption>
   </figure>
 
@@ -107,17 +148,31 @@
   </p>
   <div class="pair">
     <figure class="render">
-      <img src="mallcore_seeding_stratified.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
+      <img src="mallcore_seeding_stratified_isometric.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
       <figcaption>
         <h2>Stratified (default)</h2>
         <p>Blind jittered grid — no awareness of surrounding context.</p>
+        <div class="downloads">
+          <span class="label">Downloads:</span>
+          <a href="mallcore_seeding_stratified.glb" download>.glb</a>
+          <a href="mallcore_seeding_stratified_plan.svg" download>plan</a>
+          <a href="mallcore_seeding_stratified_elevation_front.svg" download>elevation</a>
+          <a href="mallcore_seeding_stratified_floorplan_ground.svg" download>floor plan</a>
+        </div>
       </figcaption>
     </figure>
     <figure class="render">
-      <img src="mallcore_seeding_fieldguided.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
+      <img src="mallcore_seeding_fieldguided_isometric.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
       <figcaption>
         <h2>FieldGuided (prototype)</h2>
         <p>Pulled toward real CIVIC_*-tagged parcels and streets.</p>
+        <div class="downloads">
+          <span class="label">Downloads:</span>
+          <a href="mallcore_seeding_fieldguided.glb" download>.glb</a>
+          <a href="mallcore_seeding_fieldguided_plan.svg" download>plan</a>
+          <a href="mallcore_seeding_fieldguided_elevation_front.svg" download>elevation</a>
+          <a href="mallcore_seeding_fieldguided_floorplan_ground.svg" download>floor plan</a>
+        </div>
       </figcaption>
     </figure>
   </div>

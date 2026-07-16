@@ -105,3 +105,5 @@ It will not stop the next REIT. But every coalition meeting where someone says *
 Specification: see `SPEC.md` for the v0.2 spec; v0.3 forthcoming. Earlier drafts in [jedelman/claude-memory](https://github.com/jedelman/claude-memory) `conversations/2026-05-17-*`.
 
 Reference: Salingaros, N.A. *Living geometry, AI tools, and Alexander's 15 fundamental properties.* Frontiers of Architectural Research 14(6): 1491–1515, 2025. CC BY-NC-ND. DOI [10.1016/j.foar.2025.01.002](https://doi.org/10.1016/j.foar.2025.01.002).
+
+Reference: Alexander, C., Ishikawa, S., Silverstein, M. et al. *A Pattern Language: Towns, Buildings, Construction.* Oxford University Press, 1977. Individual patterns cited in code link to their free excerpt at [patternlanguage.com/apl/aplsample](https://patternlanguage.com/apl/aplsample/). Full text (link only, not redistributed here -- still under copyright): [arl.human.cornell.edu/linked docs/Alexander_A_Pattern_Language.pdf](https://arl.human.cornell.edu/linked%20docs/Alexander_A_Pattern_Language.pdf).

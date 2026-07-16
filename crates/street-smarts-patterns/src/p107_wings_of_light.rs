@@ -271,6 +271,9 @@ impl PatternOperator for P107WingsOfLight {
                     typology: Some("p107_solid_v01".into()),
                     year_built: None,
                     parcel_id: Some(parcel.id.clone()),
+                    floors: None,
+                    openings: vec![],
+                    interior_cells: vec![],
                 });
                 n_solid += 1;
             } else {
@@ -289,6 +292,9 @@ impl PatternOperator for P107WingsOfLight {
                         typology: Some("p107_solid_fallback_v01".into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
+                        floors: None,
+                        openings: vec![],
+                        interior_cells: vec![],
                     });
                     n_solid += 1;
                 } else {
@@ -304,6 +310,9 @@ impl PatternOperator for P107WingsOfLight {
                         typology: Some("p107_courtyard_v01".into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
+                        floors: None,
+                        openings: vec![],
+                        interior_cells: vec![],
                     });
                     new_open.push(OpenSpace {
                         id: format!("{}_P107_courtyard", parcel.id),
@@ -368,6 +377,7 @@ impl PatternOperator for P107WingsOfLight {
             new_streets: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
+            replaced_building_ids: vec![],
             trace,
         })
     }
