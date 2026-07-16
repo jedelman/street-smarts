@@ -98,6 +98,50 @@ pub struct Building {
     pub year_built: Option<i32>,
     #[serde(default)]
     pub parcel_id: Option<String>,
+    /// Story count derived from `height_m`. `None` until an operator that
+    /// knows the building's floor-to-floor height (e.g.
+    /// `p221_natural_doors_and_windows`) has run.
+    #[serde(default)]
+    pub floors: Option<u32>,
+    /// Window/door openings cut into this building's exterior walls.
+    /// Empty until a window/door-placing operator has run -- every
+    /// existing fixture round-trips unchanged (defaults to `vec![]`).
+    #[serde(default)]
+    pub openings: Vec<Opening>,
+}
+
+/// A window or door opening on one of a `Building`'s exterior walls.
+/// Positioned relative to the building's own footprint ring, not in
+/// absolute coordinates, so it stays correct if the footprint is
+/// reprojected.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Opening {
+    pub kind: OpeningKind,
+    /// Index `i` of the wall edge this opening sits on: the segment from
+    /// `ring[i]` to `ring[i+1]` (wrapping), where `ring` is the building
+    /// polygon's outer ring, or its (single) hole ring when `on_hole` is
+    /// true.
+    pub ring_index: usize,
+    /// `false` = outer (street/yard-facing) ring. `true` = the courtyard
+    /// hole ring of a P107 courtyard-typology building.
+    #[serde(default)]
+    pub on_hole: bool,
+    /// Position of the opening's center along that wall edge, in `0.0..=1.0`.
+    pub t: f64,
+    pub width_m: f64,
+    /// Sill height in meters above this floor's own base elevation (not
+    /// above ground) -- add `floor * floor_to_floor_m` to get absolute Z.
+    pub sill_height_m: f64,
+    pub head_height_m: f64,
+    /// 0 = ground floor.
+    pub floor: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OpeningKind {
+    Window,
+    Door,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

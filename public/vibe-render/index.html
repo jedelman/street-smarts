@@ -74,17 +74,21 @@
   </header>
 
   <p class="caveat">
-    These are extruded polygon massing blocks (via cadquery/OpenCascade) — a gut check on
-    <em>scale and density</em>, not an architectural rendering. No windows, doors, roofs, or
-    real building design. See <code>tools/vibe-render/render.py</code> in the repo for the
-    full caveats and pipeline.
+    These are extruded polygon massing blocks (via cadquery/OpenCascade) — still a gut check
+    on <em>scale and density</em>, not a finished architectural rendering. Window and door
+    openings <em>are</em> now real boolean cuts, placed by a real pattern operator
+    (<code>p221_natural_doors_and_windows</code> — Alexander's Pattern 221) reading each
+    building's actual wall geometry and floor count, not decoration. Still missing: real wall
+    thickness, interior room partitions, and roof forms. See
+    <code>tools/vibe-render/render.py</code> in the repo for the full caveats and pipeline.
   </p>
 
   <figure class="render">
     <img src="clean_baseline.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
     <figcaption>
       <h2>Clean baseline</h2>
-      <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107).</p>
+      <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P221).</p>
+      <p><a href="clean_baseline.glb" download>Download 3D model (.glb)</a> — open directly in any glTF viewer.</p>
     </figcaption>
   </figure>
 
@@ -93,6 +97,7 @@
     <figcaption>
       <h2>Barrio breakdown: MALL_CORE</h2>
       <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
+      <p><a href="barrio_mallcore.glb" download>Download 3D model (.glb)</a> — open directly in any glTF viewer.</p>
     </figcaption>
   </figure>
 

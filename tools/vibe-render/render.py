@@ -2,10 +2,20 @@
 """Extrude a street-smarts Neighborhood JSON into real 3D solids (via
 cadquery/OpenCascade -- the same B-rep kernel FreeCAD is built on; FreeCAD
 itself isn't installable in this environment) and render wireframe plan,
-elevation, and an isometric massing view. Just a gut check on scale and
-density, not an architectural rendering -- massing blocks only, no
-windows/doors/roofs, matching this project's own "abstract polygon, not a
-real building design" caveats.
+elevation, floor-plan, and isometric views. Still a gut check on scale and
+density, not a finished architectural rendering -- but window and door
+openings ARE now real OpenCascade boolean cuts (`punch_openings`), driven
+by `p221_natural_doors_and_windows`'s pattern-derived placement, not
+decoration. What's still NOT here: real wall thickness (a punch just pierces
+solid mass -- see `punch_openings`'s own caveat), interior room partitions
+(so `render_floor_plan`'s output is a real footprint-with-openings section,
+not a room layout), and roof forms.
+
+Also exports a single `.glb` (binary glTF) per scenario, colored the same
+as the isometric render, with every building's real punched openings --
+drop it into any standard glTF viewer (web three.js/`<model-viewer>`,
+Blender, VS Code's 3D preview, an online glTF viewer) directly, without
+re-running this pipeline just to look at the model again.
 
 Input is the JSON a pattern pipeline run produces -- see
 `crates/street-smarts-patterns/examples/dump_pipeline.rs`, or
@@ -15,6 +25,7 @@ this script) across both baseline scenarios.
 import json
 import math
 import sys
+import warnings
 
 import cadquery as cq
 import matplotlib.colors as mcolors
@@ -28,6 +39,8 @@ M_PER_DEG_LNG = 111_320.0
 DEFAULT_BUILDING_HEIGHT_M = 9.0  # ~3 stories, for pads P107 didn't shape
 STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
+FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
+OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness this massing model doesn't have
 
 
 def project(lng, lat, origin_lng, origin_lat):
@@ -73,6 +86,115 @@ def extrude_polygon(outer_ring, holes, height, origin_lng, origin_lat):
         return None
 
 
+def punch_openings(solid, building, origin_lng, origin_lat):
+    """Cut `building`'s window/door openings (placed by
+    `p221_natural_doors_and_windows`) out of `solid` via a real OpenCascade
+    boolean subtraction -- this is what makes the elevation/plan exports
+    show real openings instead of a blank wall.
+
+    Each `Opening` references a wall edge by `ring_index`/`on_hole` into
+    `building["polygon"]["outer"]` or `["holes"][0]` (the SAME rings the
+    Rust operator indexed, using its own per-building local projection --
+    `ring_index` is just an array index and `t` a fraction of that edge's
+    own length, both invariant to which nearby origin the lng/lat->meters
+    projection used, so reusing this scene's shared origin here is exact,
+    not approximate).
+
+    A punch is an axis-aligned box, oriented along the wall edge's own
+    direction and centered at the opening's position, deep enough
+    (`OPENING_PUNCH_DEPTH_M`) to fully pierce the mass -- this pipeline has
+    no wall-thickness model, so "cut a hole all the way through a solid
+    block" is the honest abstraction, not a real window reveal (P223 Deep
+    Reveals, named but unverified -- see the operator's own module doc).
+
+    All punches are subtracted in ONE `Shape.cut(*toCut)` call (OCC's
+    native multi-tool boolean, not cadquery's usual single-tool
+    `Workplane.cut`) -- pre-fusing hundreds of punches via pairwise
+    `.union()` first, or cutting them one at a time, both measured multiple
+    minutes on the largest P108-merged party-wall buildings (close to a
+    thousand openings on one real, non-box extruded solid); the grouped
+    multi-tool cut does the same ~1000-opening building in single-digit
+    seconds.
+    """
+    openings = building.get("openings") or []
+    if not openings:
+        return solid
+
+    outer_ring = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    holes = building["polygon"].get("holes") or []
+    hole_ring = ring_to_xy(holes[0], origin_lng, origin_lat) if holes else None
+
+    punch_solids = []
+    for o in openings:
+        ring = hole_ring if o.get("on_hole") else outer_ring
+        if not ring:
+            continue
+        n = len(ring)
+        i = o["ring_index"]
+        if i >= n:
+            continue
+        ax, ay = ring[i]
+        bx, by = ring[(i + 1) % n]
+        edge_len = math.hypot(bx - ax, by - ay)
+        if edge_len < 1e-6:
+            continue
+        t = o["t"]
+        mx, my = ax + (bx - ax) * t, ay + (by - ay) * t
+        angle_deg = math.degrees(math.atan2(by - ay, bx - ax))
+        width = max(o["width_m"], 0.1)
+        height = max(o["head_height_m"] - o["sill_height_m"], 0.1)
+        z_bottom = o["floor"] * FLOOR_TO_FLOOR_M + o["sill_height_m"]
+        try:
+            punch = (
+                cq.Workplane("XY")
+                .box(width, OPENING_PUNCH_DEPTH_M, height)
+                .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+                .translate((mx, my, z_bottom + height / 2))
+            )
+            punch_solids.append(punch.val())
+        except Exception as e:
+            print(f"  ! opening punch build failed: {e}", file=sys.stderr)
+
+    if not punch_solids:
+        return solid
+    try:
+        result_shape = solid.val().cut(*punch_solids)
+        return cq.Workplane(obj=result_shape)
+    except Exception as e:
+        print(f"  ! opening cut failed for {building.get('id')}: {e}", file=sys.stderr)
+        return solid
+
+
+def fuse_all(solids):
+    """Combine `solids` (each a Workplane, or a `(Workplane, label)` tuple
+    -- the shape kept, the label ignored) into one shape via ONE grouped
+    OCC boolean fuse -- the same stage-everything-then-apply-once pattern
+    as `punch_openings`' multi-tool cut, instead of N pairwise
+    `.union()` calls each paying its own full boolean-op cost. Falls back
+    to the old pairwise approach (skipping any one degenerate piece rather
+    than failing the whole export) only if the grouped call itself throws
+    -- a multi-tool BOP is usually MORE robust than a chain of pairwise
+    ones, not less, but this keeps the original resilience as a backstop.
+    """
+    items = [s[0] if isinstance(s, tuple) else s for s in solids]
+    if not items:
+        return None
+    if len(items) == 1:
+        return items[0]
+    try:
+        fused_shape = items[0].val().fuse(*[s.val() for s in items[1:]])
+        return cq.Workplane(obj=fused_shape)
+    except Exception as e:
+        print(f"  ! grouped fuse failed ({e}), falling back to pairwise union", file=sys.stderr)
+        combined = items[0]
+        for s in items[1:]:
+            try:
+                combined = combined.union(s)
+            except Exception:
+                pass  # keep going even if a union fails on a degenerate piece
+        return combined
+
+
 def build_scene(nbhd):
     parcels = site_parcels(nbhd)
     if not parcels:
@@ -87,12 +209,18 @@ def build_scene(nbhd):
     building_ids_with_real_shape = set()
 
     # Real P107-shaped buildings first (real height, may have a courtyard hole).
+    # `polygon.get("parts")` is always a single element for buildings this
+    # pipeline emits (P107 never produces a multi-part Building) -- opening
+    # ring_index/on_hole reference the building's own top-level outer/holes,
+    # so punch_openings assumes that single-part case; not handled in
+    # general for a hypothetical multi-part building.
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
+                solid = punch_openings(solid, b, origin_lng, origin_lat)
                 building_solids.append((solid, "building_shaped"))
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
@@ -106,7 +234,6 @@ def build_scene(nbhd):
     # count -- and doesn't understate height variation P96 actually assigned
     # just because P107 never got around to shaping the pad into a real
     # Building.
-    FLOOR_TO_FLOOR_M = 3.5
     for p in parcels:
         if p.get("use_category") not in ("p95_building_pad", "p95_pad_with_building"):
             continue
@@ -293,12 +420,7 @@ def render_svg_projection(scene, out_path, direction, title):
     if not all_solids:
         print(f"  ! no solids for {out_path}, skipping")
         return
-    combined = all_solids[0][0]
-    for s, _ in all_solids[1:]:
-        try:
-            combined = combined.union(s)
-        except Exception:
-            pass  # keep going even if a union fails on a degenerate piece
+    combined = fuse_all(all_solids)
     try:
         cq.exporters.export(
             combined, out_path,
@@ -307,6 +429,83 @@ def render_svg_projection(scene, out_path, direction, title):
         print(f"wrote {out_path}")
     except Exception as e:
         print(f"  ! SVG export failed for {out_path}: {e}", file=sys.stderr)
+
+
+def export_glb(scene, out_path):
+    """Export the full scene -- same solids the other renders use, window/
+    door openings already cut, colored the same as `render_isometric` -- as
+    a single binary glTF (.glb). A real, colored 3D model any standard
+    viewer can open (web three.js/`<model-viewer>`, Blender, VS Code's
+    built-in 3D preview, online glTF viewers) directly, without re-running
+    the Rust pipeline or cadquery to look at it again.
+    """
+    asm = cq.Assembly()
+    n_added = 0
+    for group, alpha in (("streets", 0.55), ("plazas", 0.6), ("buildings", 0.82)):
+        for solid, kind in scene[group]:
+            r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
+            n_added += 1
+            try:
+                asm.add(solid, name=f"{group}_{n_added}_{kind}", color=cq.Color(r, g, b, alpha))
+            except Exception as e:
+                print(f"  ! glb: skipped a {group} piece: {e}", file=sys.stderr)
+    if n_added == 0:
+        print(f"  ! nothing to export for {out_path}, skipping")
+        return
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)  # cadquery 2.8's Assembly.save, not our call
+            asm.save(out_path, exportType="GLTF")
+        print(f"wrote {out_path}")
+    except Exception as e:
+        print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
+
+
+def render_floor_plan(scene, floor_z, out_path, title):
+    """Horizontal section through the (already opening-cut) building solids
+    at absolute height `floor_z` -- a real footprint-with-openings outline,
+    honestly still not a room layout: this pipeline has no interior
+    partition data anywhere, so a "floor plan" here means exactly what a
+    horizontal slice of solid mass actually shows -- the perimeter, plus
+    real gaps wherever a door or window happens to cross that height.
+    Buildings shorter than `floor_z`, or un-shaped massing boxes with no
+    openings, still contribute (the latter as a plain closed outline, since
+    a box has no gaps at any height -- not misleading, just less detailed).
+    """
+    buildings = scene["buildings"]
+    if not buildings:
+        print(f"  ! no buildings for {out_path}, skipping")
+        return
+    all_verts = np.concatenate([solid_to_triangles(s)[0] for s, _ in buildings], axis=0)
+    xmin, ymin, _ = all_verts.min(axis=0)
+    xmax, ymax, _ = all_verts.max(axis=0)
+    pad = 10.0
+    slab_w = (xmax - xmin) + 2 * pad
+    slab_d = (ymax - ymin) + 2 * pad
+    cx, cy = (xmax + xmin) / 2, (ymax + ymin) / 2
+    slab = cq.Workplane("XY").box(slab_w, slab_d, 0.05).translate((cx, cy, floor_z))
+
+    sections = []
+    for solid, _kind in buildings:
+        try:
+            piece = solid.intersect(slab)
+            if piece.val().Volume() > 1e-6:
+                sections.append(piece)
+        except Exception:
+            continue  # a building shorter than floor_z (or a degenerate cut) just contributes nothing here
+
+    if not sections:
+        print(f"  ! nothing intersects floor_z={floor_z:.1f}m for {out_path}, skipping")
+        return
+    combined = fuse_all(sections)
+    try:
+        cq.exporters.export(
+            combined, out_path,
+            opt={"projectionDir": (0, 0, 1), "showHidden": False},
+        )
+        print(f"wrote {out_path}")
+    except Exception as e:
+        print(f"  ! floor-plan SVG export failed for {out_path}: {e}", file=sys.stderr)
 
 
 def main():
@@ -323,6 +522,19 @@ def main():
     render_svg_projection(scene, f"{out_prefix}_plan.svg", (0, 0, 1), "plan")
     render_svg_projection(scene, f"{out_prefix}_elevation_front.svg", (0, -1, 0), "elevation (front)")
     render_svg_projection(scene, f"{out_prefix}_elevation_side.svg", (1, 0, 0), "elevation (side)")
+
+    # Floor-plan sections: ~1.5m up hits both the door band (sill 0) and the
+    # window band (sill ~1.2m) at p221_natural_doors_and_windows's defaults,
+    # so real door/window gaps show up in the outline. A second slice one
+    # floor up only if anything in the scene actually has a second floor.
+    render_floor_plan(scene, 1.5, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground, ~1.5m section)")
+    max_floors = max((b.get("floors") or 1) for b in nbhd.get("buildings", [])) if nbhd.get("buildings") else 1
+    if max_floors >= 2:
+        render_floor_plan(
+            scene, FLOOR_TO_FLOOR_M + 1.5, f"{out_prefix}_floorplan_upper.svg", "floor plan (floor 2, ~1.5m section)"
+        )
+
+    export_glb(scene, f"{out_prefix}.glb")
 
 
 if __name__ == "__main__":

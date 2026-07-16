@@ -47,6 +47,12 @@
 //!      regardless of which block a pad came from, and no longer applies
 //!      its own setback on top of a P95/P108 pad's own gap (see p107's
 //!      "v0.2" module doc).
+//!   9. P221 (once, site-scale): place real window/door openings on every
+//!      building P107 just produced -- floor count from real height, window
+//!      bays from real wall geometry, door on whichever wall faces the
+//!      nearest street/open space. No randomness. See
+//!      `p221_natural_doors_and_windows`'s own module doc for the pattern
+//!      graph this closes (P107 -> P159 -> P221).
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -58,6 +64,7 @@
 
 use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use crate::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
+use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
 use crate::p37_house_cluster::{P37HouseCluster, P37Params};
 use crate::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPublicSquares};
@@ -167,6 +174,10 @@ pub fn run_corrected_pipeline_with_p37(
 
     if let Ok(sub107) = P107WingsOfLight.apply(&nbhd, "*", &P107Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub107);
+    }
+
+    if let Ok(sub221) = P221NaturalDoorsAndWindows.apply(&nbhd, "*", &P221Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub221);
     }
 
     nbhd

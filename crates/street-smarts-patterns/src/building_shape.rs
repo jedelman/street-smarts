@@ -198,6 +198,8 @@ impl PatternOperator for BuildingShape {
                 typology: Some("p95_inscribed_v01".into()),
                 year_built: None,
                 parcel_id: Some(parcel.id.clone()),
+                floors: None,
+                openings: vec![],
             });
 
             // Update the parcel's use_category to indicate a building exists.
@@ -253,6 +255,7 @@ impl PatternOperator for BuildingShape {
             new_streets: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
+            replaced_building_ids: vec![],
             trace,
         })
     }

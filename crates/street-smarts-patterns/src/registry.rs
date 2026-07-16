@@ -8,6 +8,7 @@ use crate::p95_building_complex::P95BuildingComplex;
 use crate::p96_number_of_stories::P96NumberOfStories;
 use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::p108_connected_buildings::P108ConnectedBuildings;
+use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
 use crate::parameters::ParamSpec;
@@ -82,7 +83,15 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///      Reads each pad's `target_stories` (P96's assignment) to compute
 ///      real height, falling back to its own flat `assumed_height_m` for
 ///      any pad P96 didn't touch.
-/// `crate::pipeline::run_corrected_pipeline` runs all seven steps end to end
+///   8. P221 (#221) -- real window/door openings. Runs ONCE, site-scale,
+///      after every building exists (it targets `nbhd.buildings` directly,
+///      not parcels -- the first operator in this crate to do so). Reads
+///      each building's real height (-> floor count) and footprint (-> wall
+///      segments) to place openings; no randomness. See the module's own
+///      doc comment for the pattern-graph reasoning (P107 -> P159 -> P221)
+///      and the `street-smarts-opinions::pattern::p159_light_on_two_sides`
+///      opinion that scores the result.
+/// `crate::pipeline::run_corrected_pipeline` runs all eight steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -106,6 +115,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P29DensityRings),
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
+        Box::new(P221NaturalDoorsAndWindows),
     ]
 }
 

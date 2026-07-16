@@ -520,6 +520,7 @@ impl PatternOperator for P61SmallPublicSquares {
             new_streets,
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: replaced_ids,
+            replaced_building_ids: vec![],
             trace,
         })
     }
@@ -703,6 +704,7 @@ pub fn place_new_squares_n(
         new_streets,
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
+        replaced_building_ids: vec![],
         trace,
     })
 }

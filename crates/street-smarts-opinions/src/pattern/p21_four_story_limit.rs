@@ -229,6 +229,8 @@ mod tests {
             typology: None,
             year_built: None,
             parcel_id: None,
+            floors: None,
+            openings: vec![],
         }
     }
 

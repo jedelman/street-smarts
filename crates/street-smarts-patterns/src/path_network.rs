@@ -257,6 +257,7 @@ impl PatternOperator for PathNetwork {
             new_streets: streets,
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
+            replaced_building_ids: vec![],
             trace,
         })
     }

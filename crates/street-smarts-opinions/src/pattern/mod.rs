@@ -6,7 +6,9 @@
 pub mod p21_four_story_limit;
 pub mod p95_building_complex;
 pub mod p106_positive_outdoor_space;
+pub mod p159_light_on_two_sides;
 
 pub use p21_four_story_limit::P21FourStoryLimit;
 pub use p95_building_complex::P95BuildingComplexOpinion;
 pub use p106_positive_outdoor_space::P106PositiveOutdoorSpace;
+pub use p159_light_on_two_sides::P159LightOnTwoSides;
