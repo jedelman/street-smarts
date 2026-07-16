@@ -6,15 +6,19 @@ elevation, floor-plan, and isometric views. Still a gut check on scale and
 density, not a finished architectural rendering -- but window and door
 openings ARE now real OpenCascade boolean cuts (`punch_openings`), driven
 by `p221_natural_doors_and_windows`'s pattern-derived placement, not
-decoration, and so ARE interior partition walls (`build_interior_partitions`,
-material ADDED rather than subtracted): real wall slabs with a door-sized
-gap, one per connection in `p127_intimacy_gradient` / `p129_common_areas_
-at_the_heart` / `p131_the_flow_through_rooms`'s cell graph, unioned into
-the solid -- so `render_floor_plan`'s section shows real rooms, not just
-the exterior footprint with window/door gaps. Ground floor only, since no
-staircase pattern exists yet to reach an upper one. What's still NOT here:
-real wall thickness on the EXTERIOR walls (a punch just pierces solid mass
--- see `punch_openings`'s own caveat) and roof forms.
+decoration. What's still NOT here: real wall thickness on the EXTERIOR
+walls (a punch just pierces solid mass -- see `punch_openings`'s own
+caveat) and roof forms.
+
+Interior rooms are a separate, 2D concern: `render_floor_plan` draws each
+building's `interior_cells` polygons directly (`p127_intimacy_gradient` /
+`p129_common_areas_at_the_heart` / `p131_the_flow_through_rooms`'s cell
+graph) as plain line art, with a door-width gap wherever two cells
+connect -- see that function's own module doc for why this isn't built
+into the 3D solid (a first attempt unioning wall slabs into the extruded
+mass turned out to be geometrically inert: the mass has no room voids to
+divide). Ground floor only, since no staircase pattern exists yet to reach
+an upper one.
 
 Also exports a single `.glb` (binary glTF) per scenario, colored the same
 as the isometric render, with every building's real punched openings --
@@ -46,9 +50,7 @@ STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
 OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness this massing model doesn't have
-INTERIOR_WALL_THICKNESS_M = 0.12  # a light stud partition, not a structural wall
-INTERIOR_DOOR_WIDTH_M = 0.9
-INTERIOR_DOOR_HEIGHT_M = 2.1
+INTERIOR_DOOR_WIDTH_M = 0.9  # floor-plan door-gap width, drawn in-plane -- no wall thickness/height in a 2D plan
 INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
 
 
@@ -225,70 +227,6 @@ def shared_boundary(poly_a, poly_b, eps=0.05):
     return None
 
 
-def build_interior_partitions(building, solid, origin_lng, origin_lat):
-    """Add real interior partition walls -- thin slabs with a door-sized
-    gap cut out, unioned into `solid` -- for every connection in
-    `building["interior_cells"]`'s `connects_to` graph (p131's chain/loop).
-    This is what makes `render_floor_plan`'s section actually show rooms,
-    not just the exterior footprint with window/door gaps: real
-    OpenCascade material addition along each shared cell boundary, same
-    category of operation as `punch_openings`' subtraction.
-
-    Ground-floor only, matching `interior_cells` itself (floor 0 only --
-    there's no staircase pattern implemented, so nothing reaches an upper
-    floor yet).
-    """
-    cells = building.get("interior_cells") or []
-    if len(cells) < 2:
-        return solid
-
-    cell_xy = {c["id"]: ring_to_xy(c["polygon"]["outer"], origin_lng, origin_lat) for c in cells}
-    seen_pairs = set()
-    wall_solids = []
-    for c in cells:
-        for other_id in c.get("connects_to") or []:
-            pair = tuple(sorted((c["id"], other_id)))
-            if pair in seen_pairs or other_id not in cell_xy:
-                continue
-            seen_pairs.add(pair)
-            edge = shared_boundary(cell_xy[c["id"]], cell_xy[other_id])
-            if edge is None:
-                continue
-            (ax, ay), (bx, by) = edge
-            length = math.hypot(bx - ax, by - ay)
-            if length < INTERIOR_WALL_MIN_LENGTH_M:
-                continue
-            angle_deg = math.degrees(math.atan2(by - ay, bx - ax))
-            mx, my = (ax + bx) / 2, (ay + by) / 2
-            try:
-                wall = (
-                    cq.Workplane("XY")
-                    .box(length, INTERIOR_WALL_THICKNESS_M, FLOOR_TO_FLOOR_M)
-                    .rotate((0, 0, 0), (0, 0, 1), angle_deg)
-                    .translate((mx, my, FLOOR_TO_FLOOR_M / 2))
-                )
-                door = (
-                    cq.Workplane("XY")
-                    .box(INTERIOR_DOOR_WIDTH_M, INTERIOR_WALL_THICKNESS_M * 3, INTERIOR_DOOR_HEIGHT_M)
-                    .rotate((0, 0, 0), (0, 0, 1), angle_deg)
-                    .translate((mx, my, INTERIOR_DOOR_HEIGHT_M / 2))
-                )
-                wall_with_gap = wall.val().cut(door.val())
-                wall_solids.append(cq.Workplane(obj=wall_with_gap))
-            except Exception as e:
-                print(f"  ! interior wall build failed for {building.get('id')}: {e}", file=sys.stderr)
-
-    if not wall_solids:
-        return solid
-    walls_combined = fuse_all(wall_solids)
-    if walls_combined is None:
-        return solid
-    try:
-        return cq.Workplane(obj=solid.val().fuse(walls_combined.val()))
-    except Exception as e:
-        print(f"  ! interior wall union failed for {building.get('id')}: {e}", file=sys.stderr)
-        return solid
-
 
 def build_scene(nbhd):
     parcels = site_parcels(nbhd)
@@ -316,7 +254,6 @@ def build_scene(nbhd):
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 solid = punch_openings(solid, b, origin_lng, origin_lat)
-                solid = build_interior_partitions(b, solid, origin_lng, origin_lat)
                 building_solids.append((solid, "building_shaped"))
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
@@ -511,12 +448,27 @@ def render_isometric(scene, out_path, title):
     print(f"wrote {out_path}")
 
 
-def render_svg_projection(scene, out_path, direction, title):
+def build_exterior_master(scene):
+    """Fuse every solid (streets + plazas + buildings) into ONE shape,
+    ONCE. `render_svg_projection` used to redo
+    this fuse from scratch on every call -- three full-scene fuses (plan,
+    elevation front, elevation side) each paying the ~130-object BOP cost
+    independently, when the underlying geometry never changes between
+    them. Build once here, reuse for every flat projection."""
     all_solids = scene["streets"] + scene["plazas"] + scene["buildings"]
     if not all_solids:
+        return None
+    return fuse_all(all_solids)
+
+
+def render_svg_projection(combined, out_path, direction, title):
+    """Export a hidden-line SVG projection of an ALREADY-fused shape (see
+    `build_exterior_master`) along `direction`. Takes the fused shape
+    directly, not a scene, so the same master model can back every flat
+    view without re-fusing."""
+    if combined is None:
         print(f"  ! no solids for {out_path}, skipping")
         return
-    combined = fuse_all(all_solids)
     try:
         cq.exporters.export(
             combined, out_path,
@@ -528,17 +480,23 @@ def render_svg_projection(scene, out_path, direction, title):
 
 
 def export_glb(scene, out_path):
-    """Export the full scene -- same solids the other renders use, window/
-    door openings already cut, colored the same as `render_isometric` -- as
-    a single binary glTF (.glb). A real, colored 3D model any standard
-    viewer can open (web three.js/`<model-viewer>`, Blender, VS Code's
-    built-in 3D preview, online glTF viewers) directly, without re-running
-    the Rust pipeline or cadquery to look at it again.
+    """Export the full scene as a single binary glTF (.glb) -- colored the
+    same as `render_isometric`, window/door openings already cut. A real,
+    colored 3D model any standard viewer can open (web three.js/
+    `<model-viewer>`, Blender, VS Code's built-in 3D preview, online glTF
+    viewers) directly, without re-running the Rust pipeline or cadquery to
+    look at it again.
+
+    Real punched exterior openings, no interior walls -- see
+    `render_floor_plan`'s own module doc for why interior partitions are
+    drawn as a 2D plan instead of built into the 3D solid.
     """
     asm = cq.Assembly()
     n_added = 0
-    for group, alpha in (("streets", 0.55), ("plazas", 0.6), ("buildings", 0.82)):
-        for solid, kind in scene[group]:
+    for group, alpha, solids_key in (
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings")
+    ):
+        for solid, kind in scene[solids_key]:
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
             n_added += 1
             try:
@@ -557,51 +515,96 @@ def export_glb(scene, out_path):
         print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
 
 
-def render_floor_plan(scene, floor_z, out_path, title):
-    """Horizontal section through the (already opening-cut) building solids
-    at absolute height `floor_z` -- a real footprint-with-openings outline,
-    honestly still not a room layout: this pipeline has no interior
-    partition data anywhere, so a "floor plan" here means exactly what a
-    horizontal slice of solid mass actually shows -- the perimeter, plus
-    real gaps wherever a door or window happens to cross that height.
-    Buildings shorter than `floor_z`, or un-shaped massing boxes with no
-    openings, still contribute (the latter as a plain closed outline, since
-    a box has no gaps at any height -- not misleading, just less detailed).
+def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
+    """Draw a real floor plan straight from `interior_cells` polygon data --
+    plain 2D line art, no CSG.
+
+    The first version of this tried to get there by unioning thin wall
+    slabs into each building's extruded solid, then taking a horizontal
+    section through the result (same technique `punch_openings` uses for
+    exterior openings, just adding material instead of subtracting it).
+    That doesn't work: the extruded solid has no wall thickness and no
+    room voids -- it's a single filled block covering the whole footprint
+    -- so a wall slab built inside it is (almost) entirely already inside
+    existing material. Fusing it in changes essentially nothing, which is
+    exactly what a direct diagnostic showed (comparing cross-section
+    volume/face counts with and without the walls unioned in, on a real
+    4-room chain from this fixture: the "extra" geometry the union added
+    was a ~1% sliver from square-cut wall ends poking past an
+    non-perpendicular building edge, not a room-dividing void). No
+    rendering method was ever going to make that visible, because there
+    was nothing there to see.
+
+    `p127_intimacy_gradient`/`p129_common_areas_at_the_heart`/
+    `p131_the_flow_through_rooms` already computed exactly what a floor
+    plan needs -- each room's own footprint polygon, and which rooms
+    connect through a door -- as 2D data. Drawing that directly is both
+    correct (no solid-mass modeling assumption to get wrong) and, per the
+    "how are we going from submillisecond plan calculations to a 20-minute
+    render" complaint that started this detour, obviously the right
+    complexity class: 2D polygon math, not a B-rep boolean.
+
+    For each connected cell pair, the shared boundary edge
+    (`shared_boundary`, the same helper the CSG version used to find it)
+    is drawn as a wall line with a door-width gap at its midpoint. Ground
+    floor only, since `interior_cells` is ground-floor-only (no staircase
+    pattern exists yet to reach an upper one) -- a `floor` with no cells
+    anywhere just draws every building's plain footprint outline, same as
+    a massing box that never got `interior_cells` at all.
     """
-    buildings = scene["buildings"]
-    if not buildings:
+    fig, plot_ax = plt.subplots(figsize=(12, 12))
+    any_drawn = False
+    for b in nbhd.get("buildings", []):
+        outer_xy = ring_to_xy(b["polygon"]["outer"], origin_lng, origin_lat)
+        if len(outer_xy) < 3:
+            continue
+        any_drawn = True
+        loop = outer_xy + [outer_xy[0]]
+        plot_ax.plot([p[0] for p in loop], [p[1] for p in loop], color="#2b2620", linewidth=1.4, zorder=2)
+        for hole in b["polygon"].get("holes") or []:
+            hole_xy = ring_to_xy(hole, origin_lng, origin_lat)
+            if len(hole_xy) < 3:
+                continue
+            hole_loop = hole_xy + [hole_xy[0]]
+            plot_ax.plot([p[0] for p in hole_loop], [p[1] for p in hole_loop], color="#2b2620", linewidth=1.4, zorder=2)
+
+        cells = [c for c in (b.get("interior_cells") or []) if c.get("floor", 0) == floor]
+        if len(cells) < 2:
+            continue
+        cell_xy = {c["id"]: ring_to_xy(c["polygon"]["outer"], origin_lng, origin_lat) for c in cells}
+        seen_pairs = set()
+        for c in cells:
+            for other_id in c.get("connects_to") or []:
+                pair = tuple(sorted((c["id"], other_id)))
+                if pair in seen_pairs or other_id not in cell_xy:
+                    continue
+                seen_pairs.add(pair)
+                edge = shared_boundary(cell_xy[c["id"]], cell_xy[other_id])
+                if edge is None:
+                    continue
+                (ex1, ey1), (ex2, ey2) = edge
+                length = math.hypot(ex2 - ex1, ey2 - ey1)
+                if length < INTERIOR_WALL_MIN_LENGTH_M:
+                    continue
+                ux, uy = (ex2 - ex1) / length, (ey2 - ey1) / length
+                mx, my = (ex1 + ex2) / 2, (ey1 + ey2) / 2
+                half_door = min(INTERIOR_DOOR_WIDTH_M, length * 0.6) / 2
+                gx1, gy1 = mx - ux * half_door, my - uy * half_door
+                gx2, gy2 = mx + ux * half_door, my + uy * half_door
+                plot_ax.plot([ex1, gx1], [ey1, gy1], color="#8a5a44", linewidth=1.0, zorder=1)
+                plot_ax.plot([gx2, ex2], [gy2, ey2], color="#8a5a44", linewidth=1.0, zorder=1)
+
+    if not any_drawn:
         print(f"  ! no buildings for {out_path}, skipping")
+        plt.close(fig)
         return
-    all_verts = np.concatenate([solid_to_triangles(s)[0] for s, _ in buildings], axis=0)
-    xmin, ymin, _ = all_verts.min(axis=0)
-    xmax, ymax, _ = all_verts.max(axis=0)
-    pad = 10.0
-    slab_w = (xmax - xmin) + 2 * pad
-    slab_d = (ymax - ymin) + 2 * pad
-    cx, cy = (xmax + xmin) / 2, (ymax + ymin) / 2
-    slab = cq.Workplane("XY").box(slab_w, slab_d, 0.05).translate((cx, cy, floor_z))
-
-    sections = []
-    for solid, _kind in buildings:
-        try:
-            piece = solid.intersect(slab)
-            if piece.val().Volume() > 1e-6:
-                sections.append(piece)
-        except Exception:
-            continue  # a building shorter than floor_z (or a degenerate cut) just contributes nothing here
-
-    if not sections:
-        print(f"  ! nothing intersects floor_z={floor_z:.1f}m for {out_path}, skipping")
-        return
-    combined = fuse_all(sections)
-    try:
-        cq.exporters.export(
-            combined, out_path,
-            opt={"projectionDir": (0, 0, 1), "showHidden": False},
-        )
-        print(f"wrote {out_path}")
-    except Exception as e:
-        print(f"  ! floor-plan SVG export failed for {out_path}: {e}", file=sys.stderr)
+    plot_ax.set_aspect("equal")
+    plot_ax.set_title(title)
+    plot_ax.axis("off")
+    fig.tight_layout()
+    fig.savefig(out_path, format="svg")
+    plt.close(fig)
+    print(f"wrote {out_path}")
 
 
 def main():
@@ -615,19 +618,18 @@ def main():
     print(f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, streets: {len(scene['streets'])}")
 
     render_isometric(scene, f"{out_prefix}_isometric.png", nbhd_path.split("/")[-1])
-    render_svg_projection(scene, f"{out_prefix}_plan.svg", (0, 0, 1), "plan")
-    render_svg_projection(scene, f"{out_prefix}_elevation_front.svg", (0, -1, 0), "elevation (front)")
-    render_svg_projection(scene, f"{out_prefix}_elevation_side.svg", (1, 0, 0), "elevation (side)")
 
-    # Floor-plan sections: ~1.5m up hits both the door band (sill 0) and the
-    # window band (sill ~1.2m) at p221_natural_doors_and_windows's defaults,
-    # so real door/window gaps show up in the outline. A second slice one
-    # floor up only if anything in the scene actually has a second floor.
-    render_floor_plan(scene, 1.5, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground, ~1.5m section)")
+    exterior_master = build_exterior_master(scene)
+    render_svg_projection(exterior_master, f"{out_prefix}_plan.svg", (0, 0, 1), "plan")
+    render_svg_projection(exterior_master, f"{out_prefix}_elevation_front.svg", (0, -1, 0), "elevation (front)")
+    render_svg_projection(exterior_master, f"{out_prefix}_elevation_side.svg", (1, 0, 0), "elevation (side)")
+
+    origin_lng, origin_lat = scene["origin"]
+    render_floor_plan(nbhd, origin_lng, origin_lat, 0, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground)")
     max_floors = max((b.get("floors") or 1) for b in nbhd.get("buildings", [])) if nbhd.get("buildings") else 1
     if max_floors >= 2:
         render_floor_plan(
-            scene, FLOOR_TO_FLOOR_M + 1.5, f"{out_prefix}_floorplan_upper.svg", "floor plan (floor 2, ~1.5m section)"
+            nbhd, origin_lng, origin_lat, 1, f"{out_prefix}_floorplan_upper.svg", "floor plan (floor 2)"
         )
 
     export_glb(scene, f"{out_prefix}.glb")

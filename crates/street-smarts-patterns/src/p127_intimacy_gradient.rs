@@ -350,44 +350,83 @@ fn solid_bands(
     cells
 }
 
-/// Intersection of the ray from `origin` at angle `theta` with a
-/// star-shaped-from-`origin` polygon's boundary. Returns the closest
-/// (smallest positive parameter) hit. `origin` should be a point known to
-/// be interior to `ring` (its own centroid, in practice) -- courtyard
-/// rings from this pipeline (`inset_convex`-derived) are star-shaped from
-/// their centroid, so this is a safe assumption here, not a general claim.
-fn ray_ring_intersection(ring: &[Pt2], origin: Pt2, theta: f64) -> Option<Pt2> {
-    let dx = theta.cos();
-    let dy = theta.sin();
+/// Total length of `ring`'s own closed boundary.
+fn ring_perimeter(ring: &[Pt2]) -> f64 {
     let n = ring.len();
-    let mut best: Option<(f64, Pt2)> = None;
+    (0..n).map(|i| ring[i].dist(ring[(i + 1) % n])).sum()
+}
+
+/// Closest point to `p` on the segment `a`-`b`.
+fn closest_point_on_segment(a: Pt2, b: Pt2, p: Pt2) -> Pt2 {
+    let abx = b.x - a.x;
+    let aby = b.y - a.y;
+    let len2 = abx * abx + aby * aby;
+    if len2 < 1e-12 {
+        return a;
+    }
+    let t = (((p.x - a.x) * abx + (p.y - a.y) * aby) / len2).clamp(0.0, 1.0);
+    Pt2::new(a.x + t * abx, a.y + t * aby)
+}
+
+/// Closest point to `pt` lying anywhere on `ring`'s boundary (its edges,
+/// not just its vertices) and that point's cumulative arc-length from
+/// `ring[0]` walking the ring's own stored vertex order. Well-defined for
+/// ANY simple polygon, convex or not -- unlike casting a ray from a single
+/// interior point (this function's previous approach), which needs that
+/// point to see the whole ring (`star-shaped`), an assumption P108's
+/// merges can break: unioning several individually-convex courtyard
+/// buildings can bend their combined footprint AND courtyard hole into a
+/// non-convex shape no single interior point sees all of, which collapsed
+/// nearly every angular ray onto the same nearby edge instead of spreading
+/// them around the loop.
+fn nearest_point_on_ring(ring: &[Pt2], pt: Pt2) -> (Pt2, f64) {
+    let n = ring.len();
+    let mut best: Option<(f64, Pt2, f64)> = None; // (dist, point, arc-length so far)
+    let mut acc = 0.0;
     for i in 0..n {
         let a = ring[i];
         let b = ring[(i + 1) % n];
-        let ex = b.x - a.x;
-        let ey = b.y - a.y;
-        let det = ex * dy - ey * dx;
-        if det.abs() < 1e-12 {
-            continue;
+        let proj = closest_point_on_segment(a, b, pt);
+        let d = proj.dist(pt);
+        if best.map(|(bd, _, _)| d < bd).unwrap_or(true) {
+            best = Some((d, proj, acc + proj.dist(a)));
         }
-        let ax = a.x - origin.x;
-        let ay = a.y - origin.y;
-        let t = (ex * ay - ey * ax) / det;
-        let s = (dx * ay - dy * ax) / det;
-        if t > 1e-9 && (-1e-9..=1.0 + 1e-9).contains(&s) {
-            if best.map(|(bt, _)| t < bt).unwrap_or(true) {
-                best = Some((t, Pt2::new(origin.x + t * dx, origin.y + t * dy)));
-            }
-        }
+        acc += a.dist(b);
     }
-    best.map(|(_, p)| p)
+    best.map(|(_, p, s)| (p, s)).unwrap_or((ring[0], 0.0))
 }
 
-/// Slice a courtyard building's ring into bays around the loop, by angle
-/// from the footprint's own centroid -- the ring already IS a loop, so
-/// unlike the solid case there's no artificial passage to construct;
-/// consecutive bays wrap around for free (`p131_the_flow_through_rooms`
-/// wires the actual `connects_to` edges, this only builds the cells).
+/// Point at cumulative arc-length `s` (wrapped to the ring's own perimeter)
+/// walking `ring`'s edges in stored vertex order from `ring[0]`.
+fn point_at_arclength(ring: &[Pt2], s: f64) -> Pt2 {
+    let perimeter = ring_perimeter(ring);
+    if perimeter < 1e-9 {
+        return ring[0];
+    }
+    let mut s = s % perimeter;
+    if s < 0.0 {
+        s += perimeter;
+    }
+    let n = ring.len();
+    let mut acc = 0.0;
+    for i in 0..n {
+        let a = ring[i];
+        let b = ring[(i + 1) % n];
+        let seg_len = a.dist(b);
+        if acc + seg_len >= s || i == n - 1 {
+            let t = if seg_len > 1e-9 { (s - acc) / seg_len } else { 0.0 };
+            return Pt2::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
+        }
+        acc += seg_len;
+    }
+    ring[n - 1]
+}
+
+/// Slice a courtyard building's ring into bays around the loop -- the ring
+/// already IS a loop, so unlike the solid case there's no artificial
+/// passage to construct; consecutive bays wrap around for free
+/// (`p131_the_flow_through_rooms` wires the actual `connects_to` edges,
+/// this only builds the cells).
 fn courtyard_bays(
     building_id: &str,
     outer_local: &[Pt2],
@@ -396,30 +435,28 @@ fn courtyard_bays(
     params: &P127Params,
     origin: &street_smarts_core::geometry::LngLat,
 ) -> Vec<InteriorCell> {
-    let c = centroid(outer_local);
-    let perimeter: f64 = outer_local
-        .iter()
-        .enumerate()
-        .map(|(i, &p)| p.dist(outer_local[(i + 1) % outer_local.len()]))
-        .sum();
+    let perimeter = ring_perimeter(outer_local);
     if perimeter < params.min_span_m {
         return vec![];
     }
     let n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
 
-    let theta0 = target
-        .map(|t| { let d = t.sub(c); d.y.atan2(d.x) })
-        .unwrap_or(0.0);
+    // Walk the OUTER ring by arc length, starting near the entrance target
+    // (or an arbitrary vertex if there's no public realm to orient
+    // against). Each outer sample's inner-wall partner is just the closest
+    // point on the courtyard boundary to it -- both operations are plain
+    // nearest-point-on-polygon queries, valid for any simple ring, so this
+    // needs no interior "kernel" point and can't collapse the way ray
+    // casting did.
+    let entrance_target = target.unwrap_or(outer_local[0]);
+    let (_, start_s) = nearest_point_on_ring(outer_local, entrance_target);
 
     let mut boundary_pts: Vec<(Pt2, Pt2)> = Vec::with_capacity(n_bays + 1);
     for k in 0..=n_bays {
-        let theta = theta0 + (k as f64 / n_bays as f64) * std::f64::consts::TAU;
-        let outer_pt = ray_ring_intersection(outer_local, c, theta);
-        let inner_pt = ray_ring_intersection(inner_local, c, theta);
-        match (outer_pt, inner_pt) {
-            (Some(o), Some(i)) => boundary_pts.push((o, i)),
-            _ => return vec![], // non-star-shaped edge case -- bail rather than build a broken bay
-        }
+        let s = start_s + (k as f64 / n_bays as f64) * perimeter;
+        let outer_pt = point_at_arclength(outer_local, s);
+        let (inner_pt, _) = nearest_point_on_ring(inner_local, outer_pt);
+        boundary_pts.push((outer_pt, inner_pt));
     }
 
     let half = n_bays / 2;
