@@ -18,6 +18,7 @@ pub mod language_graph;
 pub mod parameters;
 pub mod path_network;
 pub mod planar;
+pub mod predicates;
 pub mod prng;
 pub mod p29_density_rings;
 pub mod p37_house_cluster;
