@@ -33,7 +33,7 @@ use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
 use street_smarts_patterns::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPublicSquares};
 use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
 use street_smarts_patterns::path_network::{PathNetwork, PathNetworkParams};
-use street_smarts_patterns::pipeline::allocate_squares_by_area;
+use street_smarts_patterns::pipeline::{allocate_squares_by_area, run_corrected_pipeline};
 use street_smarts_patterns::{apply_subdivision, Parameters, PatternOperator};
 
 #[test]
@@ -121,5 +121,52 @@ fn corrected_pipeline_runs_end_to_end_on_the_real_mall_parcel() {
     assert!(
         max_pads_in_one_block < 30,
         "no single block should have anywhere near the old flat mesh's ~100 pads -- real hierarchy means each block stays human-scaled, got {max_pads_in_one_block}"
+    );
+}
+
+/// Calls `pipeline::run_corrected_pipeline` directly -- the REAL shared
+/// orchestration function, not a reimplemented loop -- against the real
+/// MALL_CORE fixture, and checks the full interior-ontology sequence
+/// (P127 -> P130 -> P129 -> P131 -> P221 -> P133) actually lands.
+///
+/// This is the regression test for a real bug this session: P133 was
+/// first placed right after P131 (Alexander's own numbering), but
+/// `Building.floors` isn't set until P221 runs (see `p133`'s own module
+/// doc) -- every building's multi-story filter matched nothing, and the
+/// pipeline's own `if let Ok(...)` silently swallowed the resulting
+/// error. Every P133 UNIT test in `p133_staircase_as_a_stage.rs` hardcodes
+/// `floors: Some(N)` directly into its fixture, so none of them could
+/// have caught an ordering bug that only manifests when `floors` is
+/// derived by an earlier stage the way the real pipeline actually does
+/// it -- only a real, end-to-end run surfaces that.
+#[test]
+fn corrected_pipeline_places_real_interior_ontology_on_the_real_mall_parcel() {
+    let raw = std::fs::read_to_string("../../data/eastside-proposal.json").expect("fixture present");
+    let nbhd: Neighborhood = serde_json::from_str(&raw).expect("parseable");
+    let mall = nbhd.parcels.iter().find(|p| p.spec.as_deref() == Some("MALL_CORE")).expect("MALL_CORE in proposal fixture");
+
+    let result = run_corrected_pipeline(&nbhd, &mall.id, 42);
+    assert!(!result.buildings.is_empty(), "pipeline should have produced real buildings");
+
+    let n_buildings = result.buildings.len();
+    let n_with_entrance = result.buildings.iter().filter(|b| b.interior_cells.iter().any(|c| c.kind == "entrance")).count();
+    let n_with_common = result.buildings.iter().filter(|b| b.interior_cells.iter().any(|c| c.is_common)).count();
+    let n_multi_story = result.buildings.iter().filter(|b| b.floors.unwrap_or(1) >= 2).count();
+    let n_with_stair = result.buildings.iter().filter(|b| b.interior_cells.iter().any(|c| c.kind == "stair")).count();
+
+    eprintln!(
+        "Corrected pipeline interior ontology on real MALL_CORE: {n_buildings} buildings, \
+         {n_with_entrance} with an entrance cell, {n_with_common} with a common-area cell, \
+         {n_multi_story} multi-story, {n_with_stair} with a stair core."
+    );
+
+    assert_eq!(n_with_entrance, n_buildings, "P130 should tag an entrance cell on every building");
+    assert_eq!(n_with_common, n_buildings, "P129 should mark a common-area cell on every building");
+    assert!(n_multi_story > 0, "P221 should have derived floors >= 2 for at least one real building on this site");
+    assert_eq!(
+        n_with_stair, n_multi_story,
+        "P133 should place a real stair core in every multi-story building with a common area -- \
+         if this is 0 while n_multi_story > 0, P133 almost certainly regressed back to running \
+         before Building.floors is set (see this test's own doc comment)"
     );
 }

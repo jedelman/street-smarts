@@ -54,19 +54,35 @@
 //!      `p127_intimacy_gradient`'s own module doc for the full sourced
 //!      sequence Alexander's own text lays out (127 -> 128 -> 129 -> 130 ->
 //!      131 -> 132 -> 133...).
-//!   10. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!   10. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
+//!      change, see the module's own doc for why. Kept next to P127
+//!      instead of Alexander's own post-P129 position since nothing about
+//!      it depends on run order relative to P129.
+//!   11. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity.
-//!   11. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   12. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   12. P221 (once, site-scale): place real window/door openings on every
+//!   13. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
+//!   14. P133 Staircase as a Stage (once, site-scale): carves a real
+//!      stair-core strip out of the common-area cell of every multi-story
+//!      building, open to the room it interrupts. Runs AFTER P221, not
+//!      right after P131 where Alexander's own numbering would put it --
+//!      `Building.floors` (this operator's multi-story filter) isn't set
+//!      until P221 derives it from real height; running P133 earlier left
+//!      every building's `floors` at `None`, so the filter matched nothing
+//!      and the pipeline's own `if let Ok(...)` silently swallowed the
+//!      resulting error. See the module's own doc for the full story (also
+//!      covers the clip_half_plane-based strip technique, borrowed from
+//!      P131's own passage cell, and the union_pieces bug it replaced).
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -80,7 +96,9 @@ use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use crate::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use crate::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
 use crate::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
+use crate::p130_entrance_room::{P130EntranceRoom, P130Params};
 use crate::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
+use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
 use crate::p37_house_cluster::{P37HouseCluster, P37Params};
@@ -197,6 +215,10 @@ pub fn run_corrected_pipeline_with_p37(
         nbhd = apply_subdivision(&nbhd, &sub127);
     }
 
+    if let Ok(sub130) = P130EntranceRoom.apply(&nbhd, "*", &P130Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub130);
+    }
+
     if let Ok(sub129) = P129CommonAreasAtTheHeart.apply(&nbhd, "*", &P129Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub129);
     }
@@ -207,6 +229,13 @@ pub fn run_corrected_pipeline_with_p37(
 
     if let Ok(sub221) = P221NaturalDoorsAndWindows.apply(&nbhd, "*", &P221Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub221);
+    }
+
+    // AFTER P221, not right after P131 -- Building.floors isn't set until
+    // P221 derives it from real height. See p133's own module doc and
+    // this file's own doc comment (step 14) for the full story.
+    if let Ok(sub133) = P133StaircaseAsAStage.apply(&nbhd, "*", &P133Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub133);
     }
 
     nbhd

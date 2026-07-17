@@ -612,6 +612,10 @@ WINDOW_COLOR = "#4f7d96"
 COURTYARD_WINDOW_COLOR = "#7bafc4"
 DOOR_COLOR = "#b8602a"
 COMMON_AREA_MARKER_COLOR = "#2e6b4f"
+# Neutral gray, deliberately outside the warm depth-gradient palette --
+# p133_staircase_as_a_stage's stair core is circulation, not a step in the
+# public/private sequence, and shouldn't read as one.
+STAIR_FILL_COLOR = "#9a9690"
 
 # p127_intimacy_gradient's public(0.0) -> private(1.0) depth, as a fill
 # color -- cream at the public end, deep rust at the private end. Same
@@ -759,18 +763,31 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
             # other half of what these wall lines alone don't show.
             for c in cells:
                 pts = cell_xy[c["id"]]
+                kind = c.get("kind", "room")
+                # p133_staircase_as_a_stage's stair core is circulation, not
+                # a step in the public/private gradient -- its own depth
+                # value is just copied from the common cell it was carved
+                # out of, so filling it by depth would misleadingly place
+                # it somewhere on the gradient it was never part of.
+                fill_color = STAIR_FILL_COLOR if kind == "stair" else depth_to_fill_color(c.get("depth", 0.0))
                 ax.fill(
                     [p[0] for p in pts], [p[1] for p in pts],
-                    color=depth_to_fill_color(c.get("depth", 0.0)),
+                    color=fill_color,
                     edgecolor="none", zorder=0,
                 )
+                ccx = sum(p[0] for p in pts) / len(pts)
+                ccy = sum(p[1] for p in pts) / len(pts)
                 if c.get("is_common"):
-                    ccx = sum(p[0] for p in pts) / len(pts)
-                    ccy = sum(p[1] for p in pts) / len(pts)
                     ax.plot(
                         [ccx], [ccy], marker="o", markersize=5,
                         markerfacecolor=COMMON_AREA_MARKER_COLOR,
                         markeredgecolor="none", zorder=4,
+                    )
+                if kind in ("entrance", "stair"):
+                    ax.text(
+                        ccx, ccy, kind, ha="center", va="center", fontsize=6.5,
+                        color="#2b2620", zorder=5,
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.75),
                     )
 
             seen_pairs = set()
@@ -871,8 +888,9 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
             markerfacecolor=COMMON_AREA_MARKER_COLOR, markeredgecolor="none",
             label="common area (P129)",
         ),
-        Patch(facecolor=depth_to_fill_color(0.0), edgecolor="none", label="public (entrance, depth 0)"),
+        Patch(facecolor=depth_to_fill_color(0.0), edgecolor="none", label="public (depth 0, \"entrance\" cell)"),
         Patch(facecolor=depth_to_fill_color(1.0), edgecolor="none", label="private (deepest, depth 1)"),
+        Patch(facecolor=STAIR_FILL_COLOR, edgecolor="none", label="stair core (P133)"),
     ]
     fig.legend(handles=legend_handles, loc="lower center", ncol=4, fontsize=9, frameon=False)
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
