@@ -107,23 +107,12 @@ pub fn bbox(poly: &[Pt2]) -> (Pt2, Pt2) {
     (Pt2::new(min_x, min_y), Pt2::new(max_x, max_y))
 }
 
-/// Standard ray-casting point-in-polygon (works for non-convex).
+/// Standard ray-casting point-in-polygon (works for non-convex). Kept as
+/// the stable public name every existing caller uses; the actual
+/// implementation now lives in `predicates::point_in_ring` -- see
+/// HARDENING_SPEC.md §1.2 (Tier 1: centralize, don't rewrite yet).
 pub fn point_in_polygon(pt: Pt2, poly: &[Pt2]) -> bool {
-    let mut inside = false;
-    let n = poly.len();
-    if n < 3 { return false; }
-    let mut j = n - 1;
-    for i in 0..n {
-        let pi = poly[i];
-        let pj = poly[j];
-        if ((pi.y > pt.y) != (pj.y > pt.y))
-            && (pt.x < (pj.x - pi.x) * (pt.y - pi.y) / (pj.y - pi.y + 1e-12) + pi.x)
-        {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
+    crate::predicates::point_in_ring(pt, poly)
 }
 
 /// Shortest distance from a point to a line segment.
@@ -356,10 +345,11 @@ pub fn triangulate(polygon: &[Pt2]) -> Vec<[Pt2; 3]> {
     let mut indices: Vec<usize> = (0..ccw.len()).collect();
     let mut triangles: Vec<[Pt2; 3]> = Vec::with_capacity(ccw.len().saturating_sub(2));
 
-    // Cross product (B - A) × (C - A); > 0 if A→B→C is CCW.
-    let cross = |a: Pt2, b: Pt2, c: Pt2| -> f64 {
-        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-    };
+    // Cross product (B - A) × (C - A); > 0 if A→B→C is CCW. Routes through
+    // the centralized `predicates::cross2d` (HARDENING_SPEC.md §1.2, Tier
+    // 1) -- identical formula, so this is a zero-behavior-change migration,
+    // not a rewrite.
+    let cross = crate::predicates::cross2d;
     // Point-in-triangle (strict; vertex points are treated as outside).
     let in_tri = |p: Pt2, a: Pt2, b: Pt2, c: Pt2| -> bool {
         let d1 = cross(p, a, b);
