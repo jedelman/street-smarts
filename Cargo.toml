@@ -42,6 +42,7 @@ instant = { version = "0.1", features = ["wasm-bindgen"] }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+blake3 = "1"
 
 # Internal
 street-smarts-core = { path = "crates/street-smarts-core" }
