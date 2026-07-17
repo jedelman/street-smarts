@@ -141,6 +141,7 @@ impl Opinion for StrongCenters {
                 ],
                 contributing_features: vec![centers[0].source_id.clone()],
                 runtime_ms: timer.elapsed_ms(),
+                model_version: None,
             };
         }
 
@@ -236,6 +237,7 @@ impl Opinion for StrongCenters {
             ],
             contributing_features: top_features,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

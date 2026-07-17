@@ -132,6 +132,7 @@ impl Opinion for P129CommonAreasAtTheHeart {
             ],
             contributing_features: dead_ends,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

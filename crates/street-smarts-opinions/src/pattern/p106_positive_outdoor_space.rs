@@ -235,6 +235,7 @@ impl Opinion for P106PositiveOutdoorSpace {
             ],
             contributing_features: low_convexity,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

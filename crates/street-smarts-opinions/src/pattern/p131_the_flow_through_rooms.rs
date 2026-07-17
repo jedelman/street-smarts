@@ -165,6 +165,7 @@ impl Opinion for P131TheFlowThroughRooms {
             ],
             contributing_features: open_chains,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

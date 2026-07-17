@@ -175,6 +175,7 @@ impl Opinion for OwnershipPattern {
             caveats,
             contributing_features: contributing,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }
