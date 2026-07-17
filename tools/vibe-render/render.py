@@ -39,6 +39,7 @@ import warnings
 import cadquery as cq
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 
@@ -610,19 +611,72 @@ def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
 WINDOW_COLOR = "#4f7d96"
 COURTYARD_WINDOW_COLOR = "#7bafc4"
 DOOR_COLOR = "#b8602a"
+COMMON_AREA_MARKER_COLOR = "#2e6b4f"
+
+# p127_intimacy_gradient's public(0.0) -> private(1.0) depth, as a fill
+# color -- cream at the public end, deep rust at the private end. Same
+# warm family as WINDOW_COLOR/DOOR_COLOR/the interior-wall brown, so the
+# gradient reads as part of one palette instead of a bolted-on heatmap.
+DEPTH_COLOR_PUBLIC = (0.965, 0.933, 0.867)   # #f6eeDD
+DEPTH_COLOR_PRIVATE = (0.494, 0.243, 0.145)  # #7e3e25
+
+
+def depth_to_fill_color(depth):
+    d = max(0.0, min(1.0, depth))
+    r = DEPTH_COLOR_PUBLIC[0] + (DEPTH_COLOR_PRIVATE[0] - DEPTH_COLOR_PUBLIC[0]) * d
+    g = DEPTH_COLOR_PUBLIC[1] + (DEPTH_COLOR_PRIVATE[1] - DEPTH_COLOR_PUBLIC[1]) * d
+    b = DEPTH_COLOR_PUBLIC[2] + (DEPTH_COLOR_PRIVATE[2] - DEPTH_COLOR_PUBLIC[2]) * d
+    return (r, g, b)
 
 
 def polygon_area_m2(ring_xy):
-    """Shoelace area of a closed (first == last) ring already in local
-    meters -- `render_floor_plan`'s site-wide view has no need to rank
-    buildings by size, but picking "the largest building" for a
-    single-building view does."""
-    if len(ring_xy) < 3:
+    """Shoelace area of a ring already in local meters -- works whether
+    `ring_xy` is closed (first == last, the wraparound term degenerates to
+    0 and contributes nothing) or open (the convention `ring_to_xy`
+    actually returns, having dropped the duplicate closing point: without
+    explicit `% n` wraparound here, the missing closing edge silently
+    undercounts -- caught by checking a real interior-cell quad's area
+    against a hand-computed shoelace, not by the building-footprint-ranking
+    use this was first written for, where the error is proportionally
+    small enough on a many-sided polygon to not have changed which
+    building ranked largest)."""
+    n = len(ring_xy)
+    if n < 3:
         return 0.0
     total = 0.0
-    for (x1, y1), (x2, y2) in zip(ring_xy, ring_xy[1:]):
+    for i in range(n):
+        x1, y1 = ring_xy[i]
+        x2, y2 = ring_xy[(i + 1) % n]
         total += x1 * y2 - x2 * y1
     return abs(total) / 2.0
+
+
+def nice_scale_bar_length_m(span_m):
+    """Round scale-bar length (meters) close to 20% of `span_m`, from a
+    fixed set of human-legible round numbers -- there is no in-frame
+    dimension text anywhere else in this renderer, so without a scale bar
+    a room fill has no way to tell a viewer whether it's closet-sized or
+    ballroom-sized."""
+    target = max(span_m * 0.2, 0.1)
+    for candidate in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000):
+        if candidate >= target:
+            return candidate
+    return 2000
+
+
+def draw_scale_bar(ax, xlim, ylim):
+    span_m = xlim[1] - xlim[0]
+    bar_m = nice_scale_bar_length_m(span_m)
+    x0 = xlim[0] + span_m * 0.06
+    y0 = ylim[0] + (ylim[1] - ylim[0]) * 0.06
+    tick_h = (ylim[1] - ylim[0]) * 0.012
+    ax.plot([x0, x0 + bar_m], [y0, y0], color="#2b2620", linewidth=1.4, zorder=6, solid_capstyle="butt")
+    for x in (x0, x0 + bar_m):
+        ax.plot([x, x], [y0 - tick_h, y0 + tick_h], color="#2b2620", linewidth=1.4, zorder=6)
+    ax.text(
+        x0 + bar_m / 2, y0 + tick_h * 2.5, f"{bar_m} m",
+        ha="center", va="bottom", fontsize=8, color="#2b2620", zorder=6,
+    )
 
 
 def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
@@ -695,6 +749,30 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
         cells = cells_by_floor.get(floor, [])
         if len(cells) >= 2:
             cell_xy = {c["id"]: ring_to_xy(c["polygon"]["outer"], origin_lng, origin_lat) for c in cells}
+
+            # Privacy-gradient fill: p127_intimacy_gradient's own depth
+            # (0.0 = public/entrance, 1.0 = deepest/private), one solid
+            # fill per cell -- without this, room SIZE and the gradient's
+            # actual shape are invisible; only wall lines drew before.
+            # Also marks the cell p129_common_areas_at_the_heart flagged
+            # is_common, since "which room is the shared heart" is the
+            # other half of what these wall lines alone don't show.
+            for c in cells:
+                pts = cell_xy[c["id"]]
+                ax.fill(
+                    [p[0] for p in pts], [p[1] for p in pts],
+                    color=depth_to_fill_color(c.get("depth", 0.0)),
+                    edgecolor="none", zorder=0,
+                )
+                if c.get("is_common"):
+                    ccx = sum(p[0] for p in pts) / len(pts)
+                    ccy = sum(p[1] for p in pts) / len(pts)
+                    ax.plot(
+                        [ccx], [ccy], marker="o", markersize=5,
+                        markerfacecolor=COMMON_AREA_MARKER_COLOR,
+                        markeredgecolor="none", zorder=4,
+                    )
+
             seen_pairs = set()
             for c in cells:
                 for other_id in c.get("connects_to") or []:
@@ -760,10 +838,23 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
         ax.axis("off")
+        draw_scale_bar(ax, xlim, ylim)
         label = "ground floor" if floor == 0 else f"floor {floor + 1}"
         n_windows = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "window")
         n_doors = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "door")
-        ax.set_title(f"{label}\n{n_windows} windows, {n_doors} doors", fontsize=10)
+        title = f"{label}\n{n_windows} windows, {n_doors} doors"
+        if len(cells) >= 2:
+            # Real dimensions, not just a wall diagram -- band_depth_m
+            # slices by constant arc length, so these read close to a
+            # single number; that sameness IS the finding, not a display
+            # bug, and this makes it a checkable fact instead of an
+            # impression from squinting at wall spacing.
+            cell_areas = [polygon_area_m2(cell_xy[c["id"]]) for c in cells]
+            title += (
+                f"\n{len(cells)} rooms, {min(cell_areas):.0f}-{max(cell_areas):.0f} m² "
+                f"(avg {sum(cell_areas) / len(cell_areas):.0f} m²)"
+            )
+        ax.set_title(title, fontsize=10)
 
     fig.suptitle(
         f"{building['id']}  ({area_m2:.0f} m² footprint, {n_floors} floor{'s' if n_floors != 1 else ''})",
@@ -775,8 +866,15 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
         plt.Line2D([0], [0], color=WINDOW_COLOR, linewidth=1.8, label="window (street/yard-facing)"),
         plt.Line2D([0], [0], color=COURTYARD_WINDOW_COLOR, linewidth=1.8, label="window (courtyard-facing)"),
         plt.Line2D([0], [0], color=DOOR_COLOR, linewidth=2.4, label="door"),
+        plt.Line2D(
+            [0], [0], marker="o", linestyle="none", markersize=6,
+            markerfacecolor=COMMON_AREA_MARKER_COLOR, markeredgecolor="none",
+            label="common area (P129)",
+        ),
+        Patch(facecolor=depth_to_fill_color(0.0), edgecolor="none", label="public (entrance, depth 0)"),
+        Patch(facecolor=depth_to_fill_color(1.0), edgecolor="none", label="private (deepest, depth 1)"),
     ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=5, fontsize=9, frameon=False)
+    fig.legend(handles=legend_handles, loc="lower center", ncol=4, fontsize=9, frameon=False)
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
     fig.savefig(out_path, format="svg")
     plt.close(fig)
