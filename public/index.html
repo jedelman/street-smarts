@@ -522,7 +522,11 @@
     margin: 1.5rem 0;
     border-radius: 4px;
   }
-  figure.render img { display: block; width: 100%; height: auto; border-radius: 3px; background: #2a2a2e; }
+  figure.render img { display: block; width: 100%; height: auto; border-radius: 3px; }
+  /* Dark canvas for the isometric PNGs only -- must not leak onto
+     .svg-thumb img below, which needs a white background for the
+     transparent-canvas cadquery plan/elevation SVGs to be visible. */
+  figure.render img.isometric-img { background: #2a2a2e; }
   figure.render figcaption { margin-top: .75rem; }
   figure.render figcaption h3 { font-size: 1.1rem; margin: 0 0 .35rem; font-weight: 600; }
   figure.render figcaption p { margin: 0; color: var(--muted); font-size: 0.92rem; }
@@ -591,7 +595,7 @@
     </p>
 
     <figure class="render">
-      <img src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
+      <img class="isometric-img" src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
       <figcaption>
         <h3>Clean baseline</h3>
         <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133).</p>
@@ -623,7 +627,7 @@
     </figure>
 
     <figure class="render">
-      <img src="/vibe-render/barrio_mallcore_isometric.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
+      <img class="isometric-img" src="/vibe-render/barrio_mallcore_isometric.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
       <figcaption>
         <h3>Barrio breakdown: MALL_CORE</h3>
         <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
@@ -665,7 +669,7 @@
     </p>
     <div class="pair">
       <figure class="render">
-        <img src="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
+        <img class="isometric-img" src="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
         <figcaption>
           <h3>Stratified (default)</h3>
           <p>Blind jittered grid — no awareness of surrounding context.</p>
@@ -690,7 +694,7 @@
         </figcaption>
       </figure>
       <figure class="render">
-        <img src="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
+        <img class="isometric-img" src="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
         <figcaption>
           <h3>FieldGuided (prototype)</h3>
           <p>Pulled toward real CIVIC_*-tagged parcels and streets.</p>
