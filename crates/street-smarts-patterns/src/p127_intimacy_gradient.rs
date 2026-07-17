@@ -441,21 +441,31 @@ fn courtyard_bays(
     }
     let n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
 
-    // Walk the OUTER ring by arc length, starting near the entrance target
-    // (or an arbitrary vertex if there's no public realm to orient
-    // against). Each outer sample's inner-wall partner is just the closest
-    // point on the courtyard boundary to it -- both operations are plain
-    // nearest-point-on-polygon queries, valid for any simple ring, so this
-    // needs no interior "kernel" point and can't collapse the way ray
-    // casting did.
+    // Walk the OUTER and INNER rings TOGETHER, each by its own fractional
+    // arc length from its own nearest point to the entrance target -- NOT
+    // by mapping each outer sample to its nearest point on the inner ring.
+    // That nearest-point mapping was itself a fix for an earlier ray-
+    // casting collapse (see this module's own top doc), but it has the
+    // same failure mode at a convex corner of a non-circular ring: many
+    // consecutive outer samples approaching a corner all have the SAME
+    // nearest inner-ring point (the inner ring's own corresponding
+    // corner), so several consecutive quads share one inner point --
+    // a real triangle-wedge room with a zero-width courtyard-facing wall,
+    // not a rendering artifact (confirmed against real pipeline output:
+    // several bays report inner_edge = 0.00m). Sweeping both rings by
+    // proportional arc length keeps every quad's inner edge non-degenerate
+    // regardless of how sharply either ring turns, since neither ring's
+    // parametrization depends on the other's geometry.
     let entrance_target = target.unwrap_or(outer_local[0]);
     let (_, start_s) = nearest_point_on_ring(outer_local, entrance_target);
+    let inner_perimeter = ring_perimeter(inner_local);
+    let (_, start_s_inner) = nearest_point_on_ring(inner_local, entrance_target);
 
     let mut boundary_pts: Vec<(Pt2, Pt2)> = Vec::with_capacity(n_bays + 1);
     for k in 0..=n_bays {
-        let s = start_s + (k as f64 / n_bays as f64) * perimeter;
-        let outer_pt = point_at_arclength(outer_local, s);
-        let (inner_pt, _) = nearest_point_on_ring(inner_local, outer_pt);
+        let frac = k as f64 / n_bays as f64;
+        let outer_pt = point_at_arclength(outer_local, start_s + frac * perimeter);
+        let inner_pt = point_at_arclength(inner_local, start_s_inner + frac * inner_perimeter);
         boundary_pts.push((outer_pt, inner_pt));
     }
 
@@ -483,7 +493,7 @@ fn courtyard_bays(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use street_smarts_core::geometry::{LngLat, Polygon, PolygonPart};
+    use street_smarts_core::geometry::{haversine_m, LngLat, Polygon, PolygonPart};
     use street_smarts_core::nir::{NeighborhoodMeta, Street};
 
     fn nbhd(buildings: Vec<Building>, streets: Vec<Street>) -> Neighborhood {
@@ -596,6 +606,24 @@ mod tests {
         assert!(cells.len() >= 3, "a ring should produce at least a few bays, got {}", cells.len());
         assert!(cells.iter().any(|c| c.depth < 1e-9), "one bay should be the entrance bay at depth 0");
         assert!(cells.iter().any(|c| c.depth > 0.9), "one bay should be near the opposite point, depth close to 1");
+
+        // A square outer+inner ring has four sharp corners -- exactly the
+        // shape that used to collapse a bay's inner (courtyard-facing)
+        // edge to a single point near each corner (several consecutive
+        // outer arc-length samples all sharing the same NEAREST point on
+        // the inner ring). Every bay's inner edge (quad points [o0, o1,
+        // i1, i0] -> the i1-i0 edge, indices 2 and 3) must be a real,
+        // non-degenerate wall.
+        for c in cells.iter() {
+            let ring = &c.polygon.outer;
+            assert!(ring.len() >= 4, "{} should be a real quad, got {} points", c.id, ring.len());
+            let inner_edge_m = haversine_m(&ring[2], &ring[3]);
+            assert!(
+                inner_edge_m > 1.0,
+                "{}: inner (courtyard-facing) edge is only {:.3}m -- corner-collapse regression",
+                c.id, inner_edge_m
+            );
+        }
     }
 
     #[test]
