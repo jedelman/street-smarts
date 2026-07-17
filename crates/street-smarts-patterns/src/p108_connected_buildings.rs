@@ -71,6 +71,7 @@ use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,9 +153,7 @@ impl PatternOperator for P108ConnectedBuildings {
             return Err("p108_connected_buildings only supports parcel_id \"*\" -- it clusters every building pad in one pass.".into());
         }
 
-        let pads: Vec<&Parcel> = nbhd.parcels.iter()
-            .filter(|p| p.use_category.as_deref() == Some("p95_building_pad"))
-            .collect();
+        let pads: Vec<&Parcel> = nbhd.select(&Scope::BUILDING_PAD).collect();
         if pads.is_empty() {
             return Err("p108_connected_buildings: no building pads found -- run P95 Building Complex first.".into());
         }

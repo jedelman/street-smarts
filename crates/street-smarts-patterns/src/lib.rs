@@ -14,6 +14,7 @@
 pub mod block_grouping;
 pub mod building_shape;
 pub mod field;
+pub mod language_graph;
 pub mod parameters;
 pub mod path_network;
 pub mod planar;

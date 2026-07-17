@@ -61,6 +61,7 @@ use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::geometry::{LngLat, Polygon, PolygonPart};
 use street_smarts_core::nir::{Building, Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
+use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,10 +185,7 @@ impl PatternOperator for P107WingsOfLight {
         seed: u64,
     ) -> Result<Subdivision, String> {
         let targets: Vec<&Parcel> = if parcel_id == "*" {
-            nbhd.parcels
-                .iter()
-                .filter(|p| p.use_category.as_deref() == Some("p95_building_pad"))
-                .collect()
+            nbhd.select(&Scope::BUILDING_PAD).collect()
         } else {
             nbhd.parcels.iter().filter(|p| p.id == parcel_id).collect()
         };
@@ -233,7 +231,7 @@ impl PatternOperator for P107WingsOfLight {
             // don't inset it again for a "yard" that's already there. Only
             // apply setback_m to a pad this operator has no other reason to
             // believe already has room around it.
-            let from_p95_pad = parcel.use_category.as_deref() == Some("p95_building_pad");
+            let from_p95_pad = Scope::BUILDING_PAD.matches_parcel(parcel);
             let envelope = if from_p95_pad {
                 local.clone()
             } else {
