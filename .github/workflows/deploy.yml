@@ -77,7 +77,6 @@ jobs:
           test -f public/pkg/street_smarts_web_bg.wasm
           test -f public/data/eastside-baseline.json
           test -f public/data/eastside-proposal.json
-          test -f public/vibe-render/index.html
           test -f public/vibe-render/clean_baseline_isometric.png
           test -f public/vibe-render/barrio_mallcore_isometric.png
           test -f public/vibe-render/mallcore_seeding_stratified_isometric.png

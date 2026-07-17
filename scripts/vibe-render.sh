@@ -20,9 +20,10 @@
 # 3D model, drop straight into any glTF viewer -- see render.py's own
 # docstring).
 #
-# If $PUBLISH_DIR is set, the four isometric PNGs used for the public
-# gallery (see public/vibe-render/index.html) are also copied there under
-# fixed filenames, ready to ship as static site assets.
+# If $PUBLISH_DIR is set, every render (isometric PNGs, plan/elevation/
+# floor-plan SVGs, .glb) is also copied there under fixed filenames, ready
+# to ship as static site assets -- the gallery embedding them lives at the
+# TOP of public/index.html (section#vibe-gallery), not a separate page.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
