@@ -182,7 +182,7 @@ impl Opinion for StrongCenters {
         // Aim for nearest-neighbor distance roughly 0.05–0.15 of the diagonal.
         // Too close → centers blur; too far → isolated.
         let nn_ratio = if diag_m > 0.0 { mean_nn / diag_m } else { 0.0 };
-        let distribution_score = if nn_ratio >= 0.05 && nn_ratio <= 0.15 {
+        let distribution_score = if (0.05..=0.15).contains(&nn_ratio) {
             1.0
         } else if nn_ratio < 0.05 {
             (nn_ratio / 0.05).clamp(0.0, 1.0)
