@@ -66,9 +66,7 @@ impl Opinion for OwnershipPattern {
                 let spec = p.spec.as_deref().unwrap_or("");
                 if spec.starts_with("CLT_") {
                     commons_area += a; clt_count += 1; clt_area += a; tagged_count += 1;
-                } else if spec.starts_with("CIVIC_") || spec.starts_with("MAIN_ST_") || spec.starts_with("HOUSING_") || spec.starts_with("SPONGE_") {
-                    commons_area += a; public_count += 1; public_area += a; tagged_count += 1;
-                } else if spec.starts_with("MALL_") {
+                } else if spec.starts_with("CIVIC_") || spec.starts_with("MAIN_ST_") || spec.starts_with("HOUSING_") || spec.starts_with("SPONGE_") || spec.starts_with("MALL_") {
                     commons_area += a; public_count += 1; public_area += a; tagged_count += 1;
                 } else {
                     commons_area += a; tagged_count += 1;

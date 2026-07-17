@@ -39,6 +39,7 @@ import warnings
 import cadquery as cq
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 
@@ -607,6 +608,297 @@ def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
     print(f"wrote {out_path}")
 
 
+WINDOW_COLOR = "#4f7d96"
+COURTYARD_WINDOW_COLOR = "#7bafc4"
+DOOR_COLOR = "#b8602a"
+COMMON_AREA_MARKER_COLOR = "#2e6b4f"
+# Neutral gray, deliberately outside the warm depth-gradient palette --
+# p133_staircase_as_a_stage's stair core is circulation, not a step in the
+# public/private sequence, and shouldn't read as one.
+STAIR_FILL_COLOR = "#9a9690"
+
+# p127_intimacy_gradient's public(0.0) -> private(1.0) depth, as a fill
+# color -- cream at the public end, deep rust at the private end. Same
+# warm family as WINDOW_COLOR/DOOR_COLOR/the interior-wall brown, so the
+# gradient reads as part of one palette instead of a bolted-on heatmap.
+DEPTH_COLOR_PUBLIC = (0.965, 0.933, 0.867)   # #f6eeDD
+DEPTH_COLOR_PRIVATE = (0.494, 0.243, 0.145)  # #7e3e25
+
+
+def depth_to_fill_color(depth):
+    d = max(0.0, min(1.0, depth))
+    r = DEPTH_COLOR_PUBLIC[0] + (DEPTH_COLOR_PRIVATE[0] - DEPTH_COLOR_PUBLIC[0]) * d
+    g = DEPTH_COLOR_PUBLIC[1] + (DEPTH_COLOR_PRIVATE[1] - DEPTH_COLOR_PUBLIC[1]) * d
+    b = DEPTH_COLOR_PUBLIC[2] + (DEPTH_COLOR_PRIVATE[2] - DEPTH_COLOR_PUBLIC[2]) * d
+    return (r, g, b)
+
+
+def polygon_area_m2(ring_xy):
+    """Shoelace area of a ring already in local meters -- works whether
+    `ring_xy` is closed (first == last, the wraparound term degenerates to
+    0 and contributes nothing) or open (the convention `ring_to_xy`
+    actually returns, having dropped the duplicate closing point: without
+    explicit `% n` wraparound here, the missing closing edge silently
+    undercounts -- caught by checking a real interior-cell quad's area
+    against a hand-computed shoelace, not by the building-footprint-ranking
+    use this was first written for, where the error is proportionally
+    small enough on a many-sided polygon to not have changed which
+    building ranked largest)."""
+    n = len(ring_xy)
+    if n < 3:
+        return 0.0
+    total = 0.0
+    for i in range(n):
+        x1, y1 = ring_xy[i]
+        x2, y2 = ring_xy[(i + 1) % n]
+        total += x1 * y2 - x2 * y1
+    return abs(total) / 2.0
+
+
+def nice_scale_bar_length_m(span_m):
+    """Round scale-bar length (meters) close to 20% of `span_m`, from a
+    fixed set of human-legible round numbers -- there is no in-frame
+    dimension text anywhere else in this renderer, so without a scale bar
+    a room fill has no way to tell a viewer whether it's closet-sized or
+    ballroom-sized."""
+    target = max(span_m * 0.2, 0.1)
+    for candidate in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000):
+        if candidate >= target:
+            return candidate
+    return 2000
+
+
+def draw_scale_bar(ax, xlim, ylim):
+    span_m = xlim[1] - xlim[0]
+    bar_m = nice_scale_bar_length_m(span_m)
+    x0 = xlim[0] + span_m * 0.06
+    y0 = ylim[0] + (ylim[1] - ylim[0]) * 0.06
+    tick_h = (ylim[1] - ylim[0]) * 0.012
+    ax.plot([x0, x0 + bar_m], [y0, y0], color="#2b2620", linewidth=1.4, zorder=6, solid_capstyle="butt")
+    for x in (x0, x0 + bar_m):
+        ax.plot([x, x], [y0 - tick_h, y0 + tick_h], color="#2b2620", linewidth=1.4, zorder=6)
+    ax.text(
+        x0 + bar_m / 2, y0 + tick_h * 2.5, f"{bar_m} m",
+        ha="center", va="bottom", fontsize=8, color="#2b2620", zorder=6,
+    )
+
+
+def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
+    """Zoom into ONE building -- the largest footprint on the site -- and
+    draw each of its floors as its own panel, side by side, all sharing one
+    fixed extent so the panels are directly comparable.
+
+    `render_floor_plan` draws every building's ground floor at once, at
+    whole-site scale -- correct data, but at that zoom a building with
+    several rooms reads as an illegible tangle of short wall segments (see
+    that function's own module doc and the caveats already logged there).
+    This is the zoomed-in complement: one building, filling the frame.
+
+    Ground floor (floor 0) is the only one with real interior_cells data
+    (no vertical-circulation pattern exists yet to place a staircase, so
+    partitioning an upper floor would be fiction -- see
+    `p127_intimacy_gradient`'s own module doc) -- its panel draws the real
+    room graph the same way `render_floor_plan` does. Upper floors have no
+    interior partition to draw, but DO have their own real, P221-placed
+    window/door data (openings shrink with `size_falloff_per_floor` per
+    floor) -- their panels draw the footprint outline plus that floor's own
+    openings, so the comparison across floors is honest about what's real
+    (the facade) and what isn't modeled yet (the upper-floor room layout),
+    rather than just repeating the ground floor's partition upward.
+    """
+    buildings = nbhd.get("buildings", [])
+    if not buildings:
+        print(f"  ! no buildings for {out_path}, skipping")
+        return
+
+    def footprint_area(b):
+        return polygon_area_m2(ring_to_xy(b["polygon"]["outer"], origin_lng, origin_lat))
+
+    building = max(buildings, key=footprint_area)
+    area_m2 = footprint_area(building)
+    n_floors = max(building.get("floors") or 1, 1)
+
+    outer_xy = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    if len(outer_xy) < 3:
+        print(f"  ! largest building has a degenerate footprint, skipping {out_path}")
+        return
+    holes_xy = [ring_to_xy(h, origin_lng, origin_lat) for h in (building["polygon"].get("holes") or [])]
+
+    xs = [p[0] for p in outer_xy]
+    ys = [p[1] for p in outer_xy]
+    pad = 3.0
+    xlim = (min(xs) - pad, max(xs) + pad)
+    ylim = (min(ys) - pad, max(ys) + pad)
+
+    cells_by_floor = {}
+    for c in building.get("interior_cells") or []:
+        cells_by_floor.setdefault(c.get("floor", 0), []).append(c)
+    openings_by_floor = {}
+    for o in building.get("openings") or []:
+        openings_by_floor.setdefault(o.get("floor", 0), []).append(o)
+
+    fig, axes = plt.subplots(1, n_floors, figsize=(5.0 * n_floors, 5.5), squeeze=False)
+    axes = axes[0]
+
+    for floor in range(n_floors):
+        ax = axes[floor]
+        loop = outer_xy + [outer_xy[0]]
+        ax.plot([p[0] for p in loop], [p[1] for p in loop], color="#2b2620", linewidth=1.6, zorder=2)
+        for hole_xy in holes_xy:
+            if len(hole_xy) < 3:
+                continue
+            hloop = hole_xy + [hole_xy[0]]
+            ax.plot([p[0] for p in hloop], [p[1] for p in hloop], color="#2b2620", linewidth=1.6, zorder=2)
+
+        cells = cells_by_floor.get(floor, [])
+        if len(cells) >= 2:
+            cell_xy = {c["id"]: ring_to_xy(c["polygon"]["outer"], origin_lng, origin_lat) for c in cells}
+
+            # Privacy-gradient fill: p127_intimacy_gradient's own depth
+            # (0.0 = public/entrance, 1.0 = deepest/private), one solid
+            # fill per cell -- without this, room SIZE and the gradient's
+            # actual shape are invisible; only wall lines drew before.
+            # Also marks the cell p129_common_areas_at_the_heart flagged
+            # is_common, since "which room is the shared heart" is the
+            # other half of what these wall lines alone don't show.
+            for c in cells:
+                pts = cell_xy[c["id"]]
+                kind = c.get("kind", "room")
+                # p133_staircase_as_a_stage's stair core is circulation, not
+                # a step in the public/private gradient -- its own depth
+                # value is just copied from the common cell it was carved
+                # out of, so filling it by depth would misleadingly place
+                # it somewhere on the gradient it was never part of.
+                fill_color = STAIR_FILL_COLOR if kind == "stair" else depth_to_fill_color(c.get("depth", 0.0))
+                ax.fill(
+                    [p[0] for p in pts], [p[1] for p in pts],
+                    color=fill_color,
+                    edgecolor="none", zorder=0,
+                )
+                ccx = sum(p[0] for p in pts) / len(pts)
+                ccy = sum(p[1] for p in pts) / len(pts)
+                if c.get("is_common"):
+                    ax.plot(
+                        [ccx], [ccy], marker="o", markersize=5,
+                        markerfacecolor=COMMON_AREA_MARKER_COLOR,
+                        markeredgecolor="none", zorder=4,
+                    )
+                if kind in ("entrance", "stair"):
+                    ax.text(
+                        ccx, ccy, kind, ha="center", va="center", fontsize=6.5,
+                        color="#2b2620", zorder=5,
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.75),
+                    )
+
+            seen_pairs = set()
+            for c in cells:
+                for other_id in c.get("connects_to") or []:
+                    pair = tuple(sorted((c["id"], other_id)))
+                    if pair in seen_pairs or other_id not in cell_xy:
+                        continue
+                    seen_pairs.add(pair)
+                    edge = shared_boundary(cell_xy[c["id"]], cell_xy[other_id])
+                    if edge is None:
+                        continue
+                    (ex1, ey1), (ex2, ey2) = edge
+                    length = math.hypot(ex2 - ex1, ey2 - ey1)
+                    if length < INTERIOR_WALL_MIN_LENGTH_M:
+                        continue
+                    ux, uy = (ex2 - ex1) / length, (ey2 - ey1) / length
+                    mx, my = (ex1 + ex2) / 2, (ey1 + ey2) / 2
+                    half_door = min(INTERIOR_DOOR_WIDTH_M, length * 0.6) / 2
+                    gx1, gy1 = mx - ux * half_door, my - uy * half_door
+                    gx2, gy2 = mx + ux * half_door, my + uy * half_door
+                    ax.plot([ex1, gx1], [ey1, gy1], color="#8a5a44", linewidth=1.2, zorder=1)
+                    ax.plot([gx2, ex2], [gy2, ey2], color="#8a5a44", linewidth=1.2, zorder=1)
+
+        for o in openings_by_floor.get(floor, []):
+            ring = holes_xy[0] if (o.get("on_hole") and holes_xy) else outer_xy
+            n = len(ring)
+            i = o["ring_index"]
+            if n < 2 or i >= n:
+                continue
+            ax1, ay1 = ring[i]
+            bx1, by1 = ring[(i + 1) % n]
+            edge_len = math.hypot(bx1 - ax1, by1 - ay1)
+            if edge_len < 1e-6:
+                continue
+            t = o["t"]
+            mx, my = ax1 + (bx1 - ax1) * t, ay1 + (by1 - ay1) * t
+            ux, uy = (bx1 - ax1) / edge_len, (by1 - ay1) / edge_len
+            half_w = max(o["width_m"], 0.3) / 2
+            p1 = (mx - ux * half_w, my - uy * half_w)
+            p2 = (mx + ux * half_w, my + uy * half_w)
+            is_door = o["kind"] == "door"
+            if is_door:
+                color = DOOR_COLOR
+            else:
+                # Distinct from WINDOW_COLOR by more than just meaning:
+                # matplotlib/Agg silently drops some paths when very many
+                # same-colored thin Line2D artists are interspersed with a
+                # different color on one axes (confirmed by bisection --
+                # street-facing and courtyard-facing windows painted the
+                # SAME hex color made roughly half of a dense ring's
+                # windows vanish from the render, even in a direct PNG
+                # save with no SVG involved; splitting the color fixed it
+                # outright). Real bug, real fix, and also a real
+                # distinction worth drawing: which wall a window faces.
+                color = COURTYARD_WINDOW_COLOR if o.get("on_hole") else WINDOW_COLOR
+            ax.plot(
+                [p1[0], p2[0]], [p1[1], p2[1]],
+                color=color,
+                linewidth=2.4 if is_door else 1.8,
+                solid_capstyle="butt", zorder=3,
+            )
+
+        ax.set_aspect("equal")
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.axis("off")
+        draw_scale_bar(ax, xlim, ylim)
+        label = "ground floor" if floor == 0 else f"floor {floor + 1}"
+        n_windows = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "window")
+        n_doors = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "door")
+        title = f"{label}\n{n_windows} windows, {n_doors} doors"
+        if len(cells) >= 2:
+            # Real dimensions, not just a wall diagram -- band_depth_m
+            # slices by constant arc length, so these read close to a
+            # single number; that sameness IS the finding, not a display
+            # bug, and this makes it a checkable fact instead of an
+            # impression from squinting at wall spacing.
+            cell_areas = [polygon_area_m2(cell_xy[c["id"]]) for c in cells]
+            title += (
+                f"\n{len(cells)} rooms, {min(cell_areas):.0f}-{max(cell_areas):.0f} m² "
+                f"(avg {sum(cell_areas) / len(cell_areas):.0f} m²)"
+            )
+        ax.set_title(title, fontsize=10)
+
+    fig.suptitle(
+        f"{building['id']}  ({area_m2:.0f} m² footprint, {n_floors} floor{'s' if n_floors != 1 else ''})",
+        fontsize=12,
+    )
+    legend_handles = [
+        plt.Line2D([0], [0], color="#2b2620", linewidth=1.6, label="exterior wall"),
+        plt.Line2D([0], [0], color="#8a5a44", linewidth=1.2, label="interior partition (ground floor only)"),
+        plt.Line2D([0], [0], color=WINDOW_COLOR, linewidth=1.8, label="window (street/yard-facing)"),
+        plt.Line2D([0], [0], color=COURTYARD_WINDOW_COLOR, linewidth=1.8, label="window (courtyard-facing)"),
+        plt.Line2D([0], [0], color=DOOR_COLOR, linewidth=2.4, label="door"),
+        plt.Line2D(
+            [0], [0], marker="o", linestyle="none", markersize=6,
+            markerfacecolor=COMMON_AREA_MARKER_COLOR, markeredgecolor="none",
+            label="common area (P129)",
+        ),
+        Patch(facecolor=depth_to_fill_color(0.0), edgecolor="none", label="public (depth 0, \"entrance\" cell)"),
+        Patch(facecolor=depth_to_fill_color(1.0), edgecolor="none", label="private (deepest, depth 1)"),
+        Patch(facecolor=STAIR_FILL_COLOR, edgecolor="none", label="stair core (P133)"),
+    ]
+    fig.legend(handles=legend_handles, loc="lower center", ncol=4, fontsize=9, frameon=False)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    fig.savefig(out_path, format="svg")
+    plt.close(fig)
+    print(f"wrote {out_path}")
+
+
 ELEVATION_FRONTAGE_DIST_M = 60.0  # how close a building's centroid must be to a street to count as facing it
 
 
@@ -728,6 +1020,7 @@ def main():
         render_floor_plan(
             nbhd, origin_lng, origin_lat, 1, f"{out_prefix}_floorplan_upper.svg", "floor plan (floor 2)"
         )
+    render_largest_building_floors(nbhd, origin_lng, origin_lat, f"{out_prefix}_floorplan_largest_building.svg")
 
     export_glb(scene, f"{out_prefix}.glb")
 

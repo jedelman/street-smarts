@@ -77,7 +77,6 @@ jobs:
           test -f public/pkg/street_smarts_web_bg.wasm
           test -f public/data/eastside-baseline.json
           test -f public/data/eastside-proposal.json
-          test -f public/vibe-render/index.html
           test -f public/vibe-render/clean_baseline_isometric.png
           test -f public/vibe-render/barrio_mallcore_isometric.png
           test -f public/vibe-render/mallcore_seeding_stratified_isometric.png
@@ -86,6 +85,7 @@ jobs:
           test -f public/vibe-render/barrio_mallcore.glb
           test -f public/vibe-render/clean_baseline_elevation_front.svg
           test -f public/vibe-render/clean_baseline_floorplan_ground.svg
+          test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
           echo "All required outputs present."
 
       - name: Bundle size

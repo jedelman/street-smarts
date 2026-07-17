@@ -503,6 +503,68 @@
 
   .loading { padding: 2rem 0; text-align: center; color: var(--muted); font-style: italic; }
   .error { color: var(--warn); padding: 1rem; border: 1px solid var(--warn); border-radius: 4px; }
+
+  /* 3D vibe-render gallery -- leads the page, see section#vibe-gallery */
+  .caveat {
+    font-size: 1.0rem;
+    color: var(--ink);
+    margin: 0 0 1.5rem;
+    padding: .75rem 1rem;
+    border-left: 3px solid var(--line);
+    background: white;
+  }
+  .caveat em { color: var(--muted); }
+
+  figure.render {
+    background: white;
+    border: 1px solid var(--line);
+    padding: 1.25rem 1.4rem;
+    margin: 1.5rem 0;
+    border-radius: 4px;
+  }
+  figure.render img { display: block; width: 100%; height: auto; border-radius: 3px; }
+  /* Dark canvas for the isometric PNGs only -- must not leak onto
+     .svg-thumb img below, which needs a white background for the
+     transparent-canvas cadquery plan/elevation SVGs to be visible. */
+  figure.render img.isometric-img { background: #2a2a2e; }
+  figure.render figcaption { margin-top: .75rem; }
+  figure.render figcaption h3 { font-size: 1.1rem; margin: 0 0 .35rem; font-weight: 600; }
+  figure.render figcaption p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+  /* Real SVGs embedded inline (not download links) -- each thumbnail IS
+     the rendered plan/elevation/floor-plan, click-through to full size. */
+  .svg-grid { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .9rem; }
+  .svg-thumb { display: block; width: 150px; text-decoration: none; color: var(--ink); font-size: 0.78rem; text-align: center; }
+  .svg-thumb img {
+    display: block; width: 100%; height: 110px; object-fit: contain;
+    background: white; border: 1px solid var(--line); border-radius: 3px; margin-bottom: .3rem;
+  }
+  .svg-thumb:hover img { border-color: var(--ink); background: var(--highlight); }
+  .svg-thumb span { color: var(--muted); }
+
+  .downloads {
+    margin-top: .75rem;
+    padding-top: .6rem;
+    border-top: 1px dashed var(--line);
+    font-size: 0.82rem;
+    line-height: 2;
+  }
+  .downloads .label { color: var(--muted); margin-right: .5rem; }
+  .downloads a {
+    color: var(--ink);
+    margin-right: .3rem;
+    padding: .15rem .55rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    text-decoration: none;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .downloads a:hover { background: var(--highlight); border-color: var(--ink); }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
+  .pair figure.render { margin: 0; }
 </style>
 </head>
 <body>
@@ -516,6 +578,149 @@
       <button data-fixture="baseline">Eastside Commons — Baseline (current)</button>
     </nav>
   </header>
+
+  <section id="vibe-gallery">
+    <h2 style="margin:0 0 .5rem;font-size:1.3rem;">3D vibe-render gallery</h2>
+    <p class="caveat">
+      Massing renders regenerated on every deploy, straight from the corrected pattern pipeline —
+      extruded polygon massing blocks (via cadquery/OpenCascade), still a gut check on <em>scale and
+      density</em>, not a finished architectural rendering. Window and door openings <em>are</em> real
+      boolean cuts, placed by a real pattern operator (<code>p221_natural_doors_and_windows</code> —
+      Alexander's Pattern 221) reading each building's actual wall geometry and floor count, not
+      decoration. Ground-floor interiors (<code>p127</code>/<code>p129</code>/<code>p130</code>/
+      <code>p131</code>/<code>p133</code>) are real too — public-to-private depth gradient, common
+      area, entrance room, room connectivity, stair core — but upper floors still show wall/window
+      data only, no interior partition (see the largest-building floor plan below, and
+      <code>tools/vibe-render/render.py</code> in the repo for the full caveats).
+    </p>
+
+    <figure class="render">
+      <img class="isometric-img" src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
+      <figcaption>
+        <h3>Clean baseline</h3>
+        <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133).</p>
+        <div class="svg-grid">
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_plan.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_plan.svg" alt="Clean baseline plan" loading="lazy"><span>plan</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_elevation_front.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_elevation_front.svg" alt="Clean baseline elevation, front" loading="lazy"><span>elevation (front)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_elevation_side.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_elevation_side.svg" alt="Clean baseline elevation, side" loading="lazy"><span>elevation (side)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_upper.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_floorplan_upper.svg" alt="Clean baseline floor plan, floor 2" loading="lazy"><span>floor plan (floor 2)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_largest_building.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/clean_baseline_floorplan_largest_building.svg" alt="Clean baseline floor plan, largest building, all floors" loading="lazy"><span>largest building, all floors</span>
+          </a>
+        </div>
+        <div class="downloads">
+          <span class="label">3D model:</span>
+          <a href="/vibe-render/clean_baseline.glb" download>.glb</a>
+        </div>
+      </figcaption>
+    </figure>
+
+    <figure class="render">
+      <img class="isometric-img" src="/vibe-render/barrio_mallcore_isometric.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
+      <figcaption>
+        <h3>Barrio breakdown: MALL_CORE</h3>
+        <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
+        <div class="svg-grid">
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_plan.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_plan.svg" alt="MALL_CORE plan" loading="lazy"><span>plan</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_elevation_front.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_elevation_front.svg" alt="MALL_CORE elevation, front" loading="lazy"><span>elevation (front)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_elevation_side.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_elevation_side.svg" alt="MALL_CORE elevation, side" loading="lazy"><span>elevation (side)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_ground.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_floorplan_ground.svg" alt="MALL_CORE floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_upper.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_floorplan_upper.svg" alt="MALL_CORE floor plan, floor 2" loading="lazy"><span>floor plan (floor 2)</span>
+          </a>
+          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_largest_building.svg" target="_blank" rel="noopener">
+            <img src="/vibe-render/barrio_mallcore_floorplan_largest_building.svg" alt="MALL_CORE floor plan, largest building, all floors" loading="lazy"><span>largest building, all floors</span>
+          </a>
+        </div>
+        <div class="downloads">
+          <span class="label">3D model:</span>
+          <a href="/vibe-render/barrio_mallcore.glb" download>.glb</a>
+        </div>
+      </figcaption>
+    </figure>
+
+    <h3 style="margin-top:2rem;">Seeding-mode comparison</h3>
+    <p class="caveat">
+      P37 House Cluster's block-seeding strategy is opt-in configurable. <strong>Stratified</strong> is
+      the shipped default (a blind jittered grid). <strong>FieldGuided</strong> is a prototype ported
+      from the sibling <a href="https://jason-edelman.org/eastside-commons/" target="_blank" rel="noopener">eastside-commons</a>
+      project's pressure-field solver — it pulls block seeds toward real civic-anchor parcels and street
+      centerlines already in the neighborhood instead of scattering blindly. Same fixture, same seed, only
+      the seeding strategy differs.
+    </p>
+    <div class="pair">
+      <figure class="render">
+        <img class="isometric-img" src="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
+        <figcaption>
+          <h3>Stratified (default)</h3>
+          <p>Blind jittered grid — no awareness of surrounding context.</p>
+          <div class="svg-grid">
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_plan.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_stratified_plan.svg" alt="Stratified plan" loading="lazy"><span>plan</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_elevation_front.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_stratified_elevation_front.svg" alt="Stratified elevation" loading="lazy"><span>elevation</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" alt="Stratified floor plan" loading="lazy"><span>floor plan</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_floorplan_largest_building.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_stratified_floorplan_largest_building.svg" alt="Stratified floor plan, largest building" loading="lazy"><span>largest building</span>
+            </a>
+          </div>
+          <div class="downloads">
+            <span class="label">3D model:</span>
+            <a href="/vibe-render/mallcore_seeding_stratified.glb" download>.glb</a>
+          </div>
+        </figcaption>
+      </figure>
+      <figure class="render">
+        <img class="isometric-img" src="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
+        <figcaption>
+          <h3>FieldGuided (prototype)</h3>
+          <p>Pulled toward real CIVIC_*-tagged parcels and streets.</p>
+          <div class="svg-grid">
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_plan.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_fieldguided_plan.svg" alt="FieldGuided plan" loading="lazy"><span>plan</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_elevation_front.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_fieldguided_elevation_front.svg" alt="FieldGuided elevation" loading="lazy"><span>elevation</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" alt="FieldGuided floor plan" loading="lazy"><span>floor plan</span>
+            </a>
+            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_floorplan_largest_building.svg" target="_blank" rel="noopener">
+              <img src="/vibe-render/mallcore_seeding_fieldguided_floorplan_largest_building.svg" alt="FieldGuided floor plan, largest building" loading="lazy"><span>largest building</span>
+            </a>
+          </div>
+          <div class="downloads">
+            <span class="label">3D model:</span>
+            <a href="/vibe-render/mallcore_seeding_fieldguided.glb" download>.glb</a>
+          </div>
+        </figcaption>
+      </figure>
+    </div>
+    <p style="color:var(--muted);font-size:0.85rem;margin-top:1rem;">Generated by <code>scripts/vibe-render.sh</code> during CI deploy.</p>
+  </section>
 
   <p class="lede">
     This tool does <em>not</em> measure your neighborhood. Aliveness is what Alexander called the
@@ -586,7 +791,7 @@
       Parcel data: Norfolk City GIS, public records.
     </p>
     <p>
-      <a href="/vibe-render/">3D massing renders</a> — a build-time gut check on scale and density, not an architectural rendering.
+      <a href="#vibe-gallery">↑ 3D massing renders</a> — a build-time gut check on scale and density, not an architectural rendering.
     </p>
     <p>
       <em>v0.1 is diagnostic only. v0.2 adds direct manipulation, pattern operators,

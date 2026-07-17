@@ -367,11 +367,11 @@ mod tests {
         let m = 1.0 / 111_320.0;
         let plus = vec![
             LngLat::new(1.0 * m, 5.0 * m), LngLat::new(1.0 * m, 1.0 * m),
-            LngLat::new(5.0 * m, 1.0 * m), LngLat::new(5.0 * m, -1.0 * m),
-            LngLat::new(1.0 * m, -1.0 * m), LngLat::new(1.0 * m, -5.0 * m),
-            LngLat::new(-1.0 * m, -5.0 * m), LngLat::new(-1.0 * m, -1.0 * m),
-            LngLat::new(-5.0 * m, -1.0 * m), LngLat::new(-5.0 * m, 1.0 * m),
-            LngLat::new(-1.0 * m, 1.0 * m), LngLat::new(-1.0 * m, 5.0 * m),
+            LngLat::new(5.0 * m, 1.0 * m), LngLat::new(5.0 * m, -m),
+            LngLat::new(1.0 * m, -m), LngLat::new(1.0 * m, -5.0 * m),
+            LngLat::new(-m, -5.0 * m), LngLat::new(-m, -m),
+            LngLat::new(-5.0 * m, -m), LngLat::new(-5.0 * m, 1.0 * m),
+            LngLat::new(-m, 1.0 * m), LngLat::new(-m, 5.0 * m),
             LngLat::new(1.0 * m, 5.0 * m),
         ];
         let n = nbhd(vec![OpenSpace {

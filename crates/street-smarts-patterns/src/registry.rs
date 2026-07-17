@@ -10,7 +10,9 @@ use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::p108_connected_buildings::P108ConnectedBuildings;
 use crate::p127_intimacy_gradient::P127IntimacyGradient;
 use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
+use crate::p130_entrance_room::P130EntranceRoom;
 use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
+use crate::p133_staircase_as_a_stage::P133StaircaseAsAStage;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
@@ -95,23 +97,48 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///      reordering here, unlike P29/P108 above). See the module's own doc
 ///      comment for the sourced sequence (Alexander's own transition text
 ///      lists 127 -> 128 -> 129 -> 130 -> 131 -> 132 -> 133 explicitly).
-///   9. P129 Common Areas at the Heart (#129) -- marks which of P127's
+///   9. P130 Entrance Room (#130) -- tags the cell P127 built at depth 0.0
+///      as `kind: "entrance"`. Alexander's own cited sequence (127 -> 128
+///      -> 129 -> 130 -> 131...) actually puts this AFTER P129, but this
+///      operator never touches cell geometry or count, so nothing about
+///      P129's center-of-gravity computation depends on run order here --
+///      kept next to P127 (whose output it reads) instead of splitting a
+///      tightly-coupled pair across P129. See the module's own doc for why
+///      this is a label only, not a resize (P130's primary-source text
+///      couldn't be reverified this session -- patternlanguage.com 404s
+///      for this pattern).
+///   10. P129 Common Areas at the Heart (#129) -- marks which of P127's
 ///      cells sits nearest the plan's center of gravity. Runs ONCE,
-///      site-scale, right after P127.
-///   10. P131 The Flow Through Rooms (#131) -- connects P127's cells into a
+///      site-scale, right after P130.
+///   11. P131 The Flow Through Rooms (#131) -- connects P127's cells into a
 ///      chain (solid buildings) or a closed loop (courtyard buildings get
 ///      one for free from their ring shape; solid buildings get a
 ///      loop-closing passage cell only when short and wide enough, per
 ///      Pattern 132's own cited length threshold -- folded into this
 ///      operator rather than a separate P132 one, see its module doc).
-///   11. P221 (#221) -- real window/door openings. Runs ONCE, site-scale,
+///   12. P221 (#221) -- real window/door openings. Runs ONCE, site-scale,
 ///      after every building exists. Reads each building's real height
 ///      (-> floor count) and footprint (-> wall segments) to place
-///      openings; no randomness. See the module's own doc comment for the
-///      pattern-graph reasoning (P107 -> P159 -> P221) and the
+///      openings; no randomness. Also the FIRST operator to populate
+///      `Building.floors` itself (derived from real height) -- see the
+///      struct field's own doc comment. See the module's own doc comment
+///      for the pattern-graph reasoning (P107 -> P159 -> P221) and the
 ///      `street-smarts-opinions::pattern::p159_light_on_two_sides` opinion
 ///      that scores the result.
-/// `crate::pipeline::run_corrected_pipeline` runs all eleven steps end to end
+///   13. P133 Staircase as a Stage (#133) -- carves a real stair-core strip
+///      out of the common-area cell of every multi-story building. Runs
+///      AFTER P221, not right after P131 where Alexander's own numbering
+///      would put it -- this operator's own multi-story filter reads
+///      `Building.floors`, which stays `None` until P221 sets it (see
+///      step 12 just above); running P133 earlier left every building
+///      unmatched and the resulting error silently swallowed by the
+///      pipeline's own `if let Ok(...)`, confirmed against real fixture
+///      data. See the module's own doc for the full story, plus the
+///      union_pieces bug a first, rejected implementation hit and the
+///      clip_half_plane-based strip technique (borrowed from P131's own
+///      passage cell) that replaced it -- and for why this pattern's
+///      primary-source text also couldn't be reverified this session.
+/// `crate::pipeline::run_corrected_pipeline` runs all thirteen steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -136,9 +163,11 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
         Box::new(P127IntimacyGradient),
+        Box::new(P130EntranceRoom),
         Box::new(P129CommonAreasAtTheHeart),
         Box::new(P131TheFlowThroughRooms),
         Box::new(P221NaturalDoorsAndWindows),
+        Box::new(P133StaircaseAsAStage),
     ]
 }
 
