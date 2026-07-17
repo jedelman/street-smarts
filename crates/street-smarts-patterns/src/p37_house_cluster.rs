@@ -85,7 +85,8 @@
 
 use crate::field::Field;
 use crate::p95_building_complex::stratified_seeds;
-use crate::parameters::{ParamSpec, Parameters};
+use crate::parameters::Parameters;
+use street_smarts_patterns_derive::Parameters;
 use crate::planar::{
     area, average_centroid, bbox, clip_to_polygon, inset_convex, lnglat_to_local, local_to_ring,
     ring_to_local, scale_toward_centroid, union_pieces, voronoi_cell, Pt2,
@@ -97,134 +98,57 @@ use street_smarts_core::geometry::{LngLat, Polygon};
 use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
 use street_smarts_core::opinion::SourceCitation;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Migrated to `#[derive(Parameters)]` (PATTERN_LANGUAGE_SIMULATION.md
+/// §3.3) as the proof-of-concept for the macro -- the other 13 `P*Params`
+/// structs in this crate stay hand-written for now; this one demonstrates
+/// the derive produces the identical `schema`/`defaults`/`as_vector`/
+/// `from_vector` shape (see `street-smarts-patterns-derive`'s own doc
+/// comment and `tests/p37_params_derive_matches_hand_written.rs`).
+#[derive(Debug, Clone, Serialize, Deserialize, Parameters)]
 pub struct P37Params {
     /// Target block area in m². Alexander's own House Cluster examples run
     /// roughly 8-12 households sharing common land; at redevelopment scale
     /// (~500m² per eventual building pad, per P95's own default) that's
     /// very roughly 0.6-1 hectare (1.5-2.5 acres) per cluster. Default
     /// splits the difference.
+    #[param(min = 2000.0, max = 20000.0, default = 7000.0, unit = "m²", desc = "Target land area per house-cluster block.")]
     pub target_block_area_m2: f64,
     /// Minimum block count regardless of area (a tiny parcel still gets
     /// split into at least this many, if it can).
+    #[param(min = 1.0, max = 10.0, default = 2.0, unit = "blocks", integer, desc = "Minimum block count regardless of area.")]
     pub min_blocks: f64,
     /// Maximum block count regardless of area.
+    #[param(min = 1.0, max = 30.0, default = 12.0, unit = "blocks", integer, desc = "Maximum block count regardless of area.")]
     pub max_blocks: f64,
     /// Gap between blocks in metres -- real streets, wider than P95's
     /// pad_inset_m (alleys between buildings within one complex). This is
     /// the right-of-way PathNetwork's connectors will run through.
+    #[param(min = 4.0, max = 20.0, default = 10.0, unit = "m", desc = "Right-of-way between blocks -- real streets, wider than pad-to-pad alleys.")]
     pub block_inset_m: f64,
     /// Stratified-random jitter strength, same meaning as P95's seed_jitter.
+    #[param(min = 0.0, max = 1.0, default = 0.5, desc = "How randomized block seed placement is. 0=grid-like, 1=pure random.")]
     pub seed_jitter: f64,
     /// Minimum block area in m² after inset. Blocks smaller than this are
     /// discarded as slivers.
+    #[param(min = 500.0, max = 5000.0, default = 1500.0, unit = "m²", desc = "Drop blocks smaller than this after inset.")]
     pub min_block_area_m2: f64,
     /// Fraction of each block's own area reserved as informal common land
     /// (Alexander's "common land" that identifies the cluster) -- scaled
     /// inward from the block's footprint toward its centroid. 0 disables
     /// common-land generation entirely.
+    #[param(min = 0.0, max = 0.4, default = 0.12, desc = "Fraction of each block reserved as informal common land (0 disables it).")]
     pub common_land_fraction: f64,
     /// Skip common-land generation for a block if the resulting patch
     /// would be smaller than this -- not worth reserving land nobody could
     /// use as shared space.
+    #[param(min = 50.0, max = 1000.0, default = 150.0, unit = "m²", desc = "Skip common-land generation for a block if the patch would be smaller than this.")]
     pub min_common_land_area_m2: f64,
     /// Block-seeding strategy, float-encoded like P95's `courtyard_mode`:
     /// 0=Stratified (blind jittered grid, the v0.2 default), 1=FieldGuided
     /// (prototype -- seeds pulled toward CIVIC-tagged parcels and street
     /// centerlines already in the neighborhood; see the v0.3 module doc).
+    #[param(min = 0.0, max = 1.0, default = 0.0, desc = "Block-seeding strategy: 0=Stratified (blind jittered grid), 1=FieldGuided (prototype -- seeds pulled toward civic anchors and streets).")]
     pub seeding_mode: f64,
-}
-
-impl Parameters for P37Params {
-    fn schema() -> Vec<ParamSpec> {
-        vec![
-            ParamSpec::float(
-                "target_block_area_m2",
-                "Target land area per house-cluster block.",
-                2000.0, 20000.0, 7000.0,
-            ).with_unit("m²"),
-            ParamSpec::integer(
-                "min_blocks",
-                "Minimum block count regardless of area.",
-                1.0, 10.0, 2.0,
-            ).with_unit("blocks"),
-            ParamSpec::integer(
-                "max_blocks",
-                "Maximum block count regardless of area.",
-                1.0, 30.0, 12.0,
-            ).with_unit("blocks"),
-            ParamSpec::float(
-                "block_inset_m",
-                "Right-of-way between blocks -- real streets, wider than pad-to-pad alleys.",
-                4.0, 20.0, 10.0,
-            ).with_unit("m"),
-            ParamSpec::float(
-                "seed_jitter",
-                "How randomized block seed placement is. 0=grid-like, 1=pure random.",
-                0.0, 1.0, 0.5,
-            ),
-            ParamSpec::float(
-                "min_block_area_m2",
-                "Drop blocks smaller than this after inset.",
-                500.0, 5000.0, 1500.0,
-            ).with_unit("m²"),
-            ParamSpec::float(
-                "common_land_fraction",
-                "Fraction of each block reserved as informal common land (0 disables it).",
-                0.0, 0.4, 0.12,
-            ),
-            ParamSpec::float(
-                "min_common_land_area_m2",
-                "Skip common-land generation for a block if the patch would be smaller than this.",
-                50.0, 1000.0, 150.0,
-            ).with_unit("m²"),
-            ParamSpec::float(
-                "seeding_mode",
-                "Block-seeding strategy: 0=Stratified (blind jittered grid), 1=FieldGuided (prototype -- seeds pulled toward civic anchors and streets).",
-                0.0, 1.0, 0.0,
-            ),
-        ]
-    }
-    fn defaults() -> Self {
-        Self {
-            target_block_area_m2: 7000.0,
-            min_blocks: 2.0,
-            max_blocks: 12.0,
-            block_inset_m: 10.0,
-            seed_jitter: 0.5,
-            min_block_area_m2: 1500.0,
-            common_land_fraction: 0.12,
-            min_common_land_area_m2: 150.0,
-            seeding_mode: 0.0,
-        }
-    }
-    fn as_vector(&self) -> Vec<f64> {
-        vec![
-            self.target_block_area_m2,
-            self.min_blocks,
-            self.max_blocks,
-            self.block_inset_m,
-            self.seed_jitter,
-            self.min_block_area_m2,
-            self.common_land_fraction,
-            self.min_common_land_area_m2,
-            self.seeding_mode,
-        ]
-    }
-    fn from_vector(v: &[f64]) -> Self {
-        let schema = Self::schema();
-        let mut p = Self::defaults();
-        if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.target_block_area_m2 = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.min_blocks = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.max_blocks = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.block_inset_m = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.seed_jitter = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(5), v.get(5)) { p.min_block_area_m2 = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(6), v.get(6)) { p.common_land_fraction = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(7), v.get(7)) { p.min_common_land_area_m2 = s.clamp(*x); }
-        if let (Some(s), Some(x)) = (schema.get(8), v.get(8)) { p.seeding_mode = s.clamp(*x); }
-        p
-    }
 }
 
 pub struct P37HouseCluster;

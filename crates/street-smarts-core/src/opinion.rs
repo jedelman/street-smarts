@@ -91,6 +91,21 @@ impl OpinionOutput {
     }
 }
 
+/// What an opinion needs in order to function, beyond a `Neighborhood` to
+/// evaluate. Declared so the activist-facing build can be checked --
+/// structurally, not by policy alone -- to never link an opinion that
+/// needs a network call or a credential. See HARDENING_SPEC.md §3: nothing
+/// in this codebase violates this today (no VLM opinion exists yet), this
+/// exists to protect the constraint SPEC.md §6.3 states in prose ("No API
+/// keys required... no third-party telemetry") once one is built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    /// Calls an external API (a VLM opinion, once that family exists).
+    Network,
+    /// Requires a credential to function.
+    ApiKey,
+}
+
 /// The `Opinion` trait. Implementors live in `street-smarts-opinions`.
 ///
 /// Not a single global trait object — each opinion family has its own implementations
@@ -102,6 +117,14 @@ pub trait Opinion {
     fn value_range(&self) -> (f64, f64);
 
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput;
+
+    /// What this opinion needs to function. Empty by default -- every
+    /// existing opinion satisfies this with zero code changes. Only an
+    /// opinion backed by a frontier model (the VLM family, not yet built)
+    /// should ever override it.
+    fn capabilities(&self) -> &'static [Capability] {
+        &[]
+    }
 
     fn as_ref(&self) -> OpinionRef {
         OpinionRef {

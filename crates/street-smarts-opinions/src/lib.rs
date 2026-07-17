@@ -22,5 +22,7 @@ pub mod geometric;
 pub mod activist;
 pub mod pattern;
 pub mod registry;
+#[cfg(feature = "vlm")]
+pub mod vlm;
 
 pub use registry::{all_opinions_v01, evaluate_all};

@@ -51,6 +51,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,9 +163,7 @@ impl PatternOperator for P96NumberOfStories {
             return Err("p96_number_of_stories only supports parcel_id \"*\" -- it assigns every building pad in one pass.".into());
         }
 
-        let pads: Vec<&Parcel> = nbhd.parcels.iter()
-            .filter(|p| matches!(p.use_category.as_deref(), Some("p95_building_pad") | Some("p95_pad_with_building")))
-            .collect();
+        let pads: Vec<&Parcel> = nbhd.select(&Scope::BUILDING_PAD).collect();
         if pads.is_empty() {
             return Err("p96_number_of_stories: no building pads found -- run P95 Building Complex first.".into());
         }

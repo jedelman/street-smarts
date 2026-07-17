@@ -106,8 +106,57 @@ use crate::p61_small_public_squares::{place_new_squares_n, P61Params, P61SmallPu
 use crate::p95_building_complex::{P95BuildingComplex, P95Params};
 use crate::p96_number_of_stories::{P96NumberOfStories, P96Params};
 use crate::path_network::{PathNetwork, PathNetworkParams};
-use crate::{apply_subdivision, Parameters, PatternOperator};
+use crate::{apply_subdivision, Parameters, PatternOperator, Subdivision};
 use street_smarts_core::nir::Neighborhood;
+use street_smarts_core::Scope;
+
+/// Run `f` once per block in `block_ids`, in declared order. `f` receives
+/// the neighborhood state as of the start of that block's turn and this
+/// block's own derived seed (`base_seed + index + 1` -- the exact
+/// convention the P61/P95 per-block loop below already used by hand), and
+/// returns an ORDERED sequence of steps for that block (e.g. `[p61_result,
+/// p95_result]`), since later steps within one block routinely depend on
+/// earlier ones already being applied -- P95 must see the block parcel
+/// AFTER P61 has carved a square out of it, not before. `f` is expected to
+/// fold its own steps internally (starting from a clone of the state it
+/// was given) purely to compute each step correctly against the one
+/// before it; `run_per_block` then re-applies that same ordered sequence
+/// to its own running state, which is deterministic and produces an
+/// identical result without `f` needing write access to the outer loop's
+/// state directly. This is that loop's shape, extracted so the next
+/// block-scale pattern doesn't have to re-derive it. See
+/// PATTERN_LANGUAGE_SIMULATION.md §3.2.
+///
+/// A step that returns `Err` is skipped, not aborted -- same tolerance the
+/// original loop and the web UI's per-block loop apply, since a real
+/// rejection (a block too small to be worthwhile) is expected often enough
+/// not to be a hard failure. Unlike the original loop, the skip reason is
+/// collected rather than silently dropped -- see HARDENING_SPEC.md §1.3,
+/// which wanted exactly this so a future check can tell "too small" apart
+/// from "geometry op produced garbage" instead of both looking identical
+/// after the fact.
+pub fn run_per_block<F>(
+    nbhd: &Neighborhood,
+    block_ids: &[String],
+    base_seed: u64,
+    mut f: F,
+) -> (Neighborhood, Vec<(String, String)>)
+where
+    F: FnMut(&Neighborhood, &str, u64) -> Vec<Result<Subdivision, String>>,
+{
+    let mut out = nbhd.clone();
+    let mut skipped = Vec::new();
+    for (i, block_id) in block_ids.iter().enumerate() {
+        let block_seed = base_seed + i as u64 + 1;
+        for step in f(&out, block_id, block_seed) {
+            match step {
+                Ok(sub) => out = apply_subdivision(&out, &sub),
+                Err(reason) => skipped.push((block_id.clone(), reason)),
+            }
+        }
+    }
+    (out, skipped)
+}
 
 /// Split a total square budget across blocks proportional to block area,
 /// using largest-remainder rounding so the sum of the returned counts is
@@ -172,32 +221,32 @@ pub fn run_corrected_pipeline_with_p37(
         nbhd = apply_subdivision(&nbhd, &sub29);
     }
 
-    let block_ids: Vec<String> = nbhd.parcels.iter()
-        .filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_"))
-        .map(|p| p.id.clone())
-        .collect();
+    let block_ids: Vec<String> = nbhd.select_ids(&Scope::Block);
     let block_areas: Vec<f64> = block_ids.iter()
         .map(|id| nbhd.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
         .collect();
     let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
     let square_counts = allocate_squares_by_area(&block_areas, total_squares);
 
-    for (i, block_id) in block_ids.iter().enumerate() {
-        let block_seed = seed + i as u64 + 1;
-        let n_squares = square_counts[i];
+    let (folded, _skipped) = run_per_block(&nbhd, &block_ids, seed, |state, block_id, block_seed| {
+        let mut steps = Vec::new();
+        let mut local = state.clone();
+        let n_squares = square_counts[block_ids.iter().position(|b| b == block_id).unwrap()];
         if n_squares > 0 {
-            if let Some(block_parcel) = nbhd.parcels.iter().find(|p| &p.id == block_id).cloned() {
-                if let Ok(sub61) = place_new_squares_n(
-                    &nbhd, &block_parcel, n_squares, &P61Params::defaults(), block_seed, P61SmallPublicSquares.source(),
-                ) {
-                    nbhd = apply_subdivision(&nbhd, &sub61);
+            if let Some(block_parcel) = local.parcels.iter().find(|p| &p.id == block_id).cloned() {
+                let sub61 = place_new_squares_n(
+                    &local, &block_parcel, n_squares, &P61Params::defaults(), block_seed, P61SmallPublicSquares.source(),
+                );
+                if let Ok(sub) = &sub61 {
+                    local = apply_subdivision(&local, sub);
                 }
+                steps.push(sub61);
             }
         }
-        if let Ok(sub95) = P95BuildingComplex.apply(&nbhd, block_id, &P95Params::defaults(), block_seed) {
-            nbhd = apply_subdivision(&nbhd, &sub95);
-        }
-    }
+        steps.push(P95BuildingComplex.apply(&local, block_id, &P95Params::defaults(), block_seed));
+        steps
+    });
+    nbhd = folded;
 
     if let Ok(sub108) = P108ConnectedBuildings.apply(&nbhd, "*", &P108Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub108);

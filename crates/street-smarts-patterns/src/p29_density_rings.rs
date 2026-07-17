@@ -57,6 +57,7 @@ use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,9 +139,7 @@ impl PatternOperator for P29DensityRings {
             return Err("p29_density_rings only supports parcel_id \"*\" -- it tags every BLOCK_n parcel in one pass, same convention as PathNetwork.".into());
         }
 
-        let blocks: Vec<&Parcel> = nbhd.parcels.iter()
-            .filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_"))
-            .collect();
+        let blocks: Vec<&Parcel> = nbhd.select(&Scope::Block).collect();
         if blocks.is_empty() {
             return Err("p29_density_rings: no BLOCK_n parcels found -- run P37 House Cluster first.".into());
         }

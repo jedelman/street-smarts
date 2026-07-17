@@ -20,6 +20,7 @@ members = [
     "crates/street-smarts-ledger",
     "crates/street-smarts-generator",
     "crates/street-smarts-patterns",
+    "crates/street-smarts-patterns-derive",
     "crates/street-smarts-web",
 ]
 
@@ -38,6 +39,9 @@ js-sys = "0.3"
 web-sys = "0.3"
 console_error_panic_hook = "0.1"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
 
 # Internal
 street-smarts-core = { path = "crates/street-smarts-core" }
@@ -46,6 +50,7 @@ street-smarts-conflict = { path = "crates/street-smarts-conflict" }
 street-smarts-ledger = { path = "crates/street-smarts-ledger" }
 street-smarts-generator = { path = "crates/street-smarts-generator" }
 street-smarts-patterns = { path = "crates/street-smarts-patterns" }
+street-smarts-patterns-derive = { path = "crates/street-smarts-patterns-derive" }
 
 [profile.release]
 opt-level = "z"     # optimize for size, WASM bundle constraint

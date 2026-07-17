@@ -8,3 +8,13 @@ license.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 street-smarts-core = { workspace = true }
+
+[features]
+default = []
+# Gates the not-yet-built VLM opinion family (Opinion::capabilities()
+# returning Capability::Network). street-smarts-web's build never enables
+# this -- see HARDENING_SPEC.md §3. Established now, ahead of that family
+# existing, specifically so the activist-facing WASM bundle is structurally
+# incapable of linking a network-capable opinion rather than depending on
+# someone remembering not to enable it.
+vlm = []

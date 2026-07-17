@@ -224,6 +224,16 @@ dependencies = [
  "street-smarts-conflict",
  "street-smarts-core",
  "street-smarts-opinions",
+ "street-smarts-patterns-derive",
+]
+
+[[package]]
+name = "street-smarts-patterns-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
