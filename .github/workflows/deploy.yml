@@ -86,6 +86,7 @@ jobs:
           test -f public/vibe-render/barrio_mallcore.glb
           test -f public/vibe-render/clean_baseline_elevation_front.svg
           test -f public/vibe-render/clean_baseline_floorplan_ground.svg
+          test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
           echo "All required outputs present."
 
       - name: Bundle size
