@@ -5,6 +5,20 @@ edition.workspace = true
 license.workspace = true
 
 [package.metadata.wasm-pack.profile.release]
+# Measured, not assumed (see IMPLEMENTATION_PLAN.md Phase 0 / HARDENING_SPEC.md
+# "if you only do one thing"): with the toolchain available when this was
+# tested (rustc from a wasm32-unknown-unknown build emitting bulk-memory +
+# nontrapping-float-to-int by default, binaryen 108's `wasm-opt`), running
+# wasm-opt shrinks the RAW binary (609,319 -> 552,608 bytes at `-O`, 534,829
+# at `-Oz`, both requiring `--all-features` just to validate) but makes the
+# GZIP-compressed size -- the number SPEC.md actually budgets and this
+# project's CI measures -- WORSE, not better (199,599 -> 217,674 at `-O`,
+# 220,457 at `-Oz`). Left off deliberately, with numbers, rather than left
+# off as an undocumented leftover from initial bootstrapping. All three
+# variants are trivially within the 5MB compressed budget regardless: this
+# is a real but small effect (~18-20KB), not a load-bearing decision.
+# Revisit if a newer binaryen becomes available -- older wasm-opt releases
+# are known to sometimes produce less gzip-friendly output than they used to.
 wasm-opt = false
 
 [lib]

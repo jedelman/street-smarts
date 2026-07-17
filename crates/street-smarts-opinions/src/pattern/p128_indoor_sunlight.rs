@@ -212,6 +212,7 @@ impl Opinion for P128IndoorSunlight {
             ],
             contributing_features: shaded,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

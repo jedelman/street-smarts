@@ -169,6 +169,7 @@ impl Opinion for P95BuildingComplexOpinion {
             ],
             contributing_features,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

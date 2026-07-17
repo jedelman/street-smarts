@@ -242,6 +242,7 @@ impl Opinion for P159LightOnTwoSides {
             ],
             contributing_features: low_light_buildings,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

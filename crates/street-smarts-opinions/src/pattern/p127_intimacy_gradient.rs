@@ -197,6 +197,7 @@ impl Opinion for P127IntimacyGradient {
             ],
             contributing_features: misaligned,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

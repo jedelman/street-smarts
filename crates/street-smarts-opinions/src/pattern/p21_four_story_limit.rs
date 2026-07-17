@@ -186,6 +186,7 @@ impl Opinion for P21FourStoryLimit {
             ],
             contributing_features: exceptions.iter().map(|b| b.id.clone()).collect(),
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

@@ -97,6 +97,7 @@ impl Opinion for LevelsOfScale {
                 ],
                 contributing_features: vec![],
                 runtime_ms: timer.elapsed_ms(),
+                model_version: None,
             };
         }
 
@@ -197,6 +198,7 @@ impl Opinion for LevelsOfScale {
             ],
             contributing_features: exemplar_ids,
             runtime_ms: timer.elapsed_ms(),
+            model_version: None,
         }
     }
 }

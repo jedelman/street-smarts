@@ -75,6 +75,15 @@ pub enum OpinionOutput {
         contributing_features: Vec<String>,
         /// How long the opinion took to evaluate, milliseconds.
         runtime_ms: u32,
+        /// Pinned model identifier for opinions backed by a frontier model
+        /// (the VLM family, once it exists) -- e.g. "claude-opus-4-8-2026xxxx".
+        /// `None` for every non-VLM opinion; reserved now, ahead of that
+        /// family being built, so a drift-calibration check (comparing this
+        /// same opinion's score on a fixed reference site over time) has
+        /// something to key on from day one instead of a schema retrofit
+        /// later. See HARDENING_SPEC.md #6.
+        #[serde(default)]
+        model_version: Option<String>,
     },
     NoView {
         reason: String,
