@@ -3,14 +3,14 @@
 //! Generalizes the existing pattern of "hand-write one assertion against
 //! one hardcoded seed" (see `tests/p37_house_cluster.rs`'s
 //! `carves_a_large_parcel_into_several_blocks`, seed 7 only) into running
-//! the same invariant across many seeds. Alexander's own bar (ch. 15 of
-//! *The Timeless Way of Building*, paraphrased -- not quoted -- in
-//! PATTERN_LANGUAGE_SIMULATION.md's framing) is real across many cases,
-//! not one; a single hardcoded seed structurally can't test that. This
-//! module only generalizes the SEED axis. The SHAPE axis (varying the
-//! input fixture, not just the RNG) is `HARDENING_SPEC.md` §5's synthetic
-//! fixture generator -- a separate, larger piece of follow-up work, not
-//! done here.
+//! the same invariant across many seeds. A pattern only earns real status
+//! by holding across many real cases, not one -- a single hardcoded seed
+//! structurally can't test that (see PATTERN_LANGUAGE_SIMULATION.md §4.4's
+//! own framing). This module covers the SEED axis directly; the SHAPE
+//! axis (varying the input fixture, not just the RNG) is
+//! `synthetic_fixtures` below, per `HARDENING_SPEC.md` §5.
+
+pub mod synthetic_fixtures;
 
 /// Run `f` once per seed in `seeds`, collecting every seed that fails
 /// (returns `Err`) rather than panicking on the first one -- a caller
