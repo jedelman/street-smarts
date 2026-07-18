@@ -25,6 +25,8 @@ pub mod p130_entrance_room;
 pub mod p131_the_flow_through_rooms;
 pub mod p133_staircase_as_a_stage;
 pub mod p159_light_on_two_sides;
+pub mod p163_outdoor_room;
+pub mod p192_windows_overlooking_life;
 pub mod p221_natural_doors_and_windows;
 
 pub use p21_four_story_limit::P21FourStoryLimit;
@@ -49,4 +51,6 @@ pub use p130_entrance_room::P130EntranceRoom;
 pub use p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 pub use p133_staircase_as_a_stage::P133StaircaseAsAStage;
 pub use p159_light_on_two_sides::P159LightOnTwoSides;
+pub use p163_outdoor_room::P163OutdoorRoom;
+pub use p192_windows_overlooking_life::P192WindowsOverlookingLife;
 pub use p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
