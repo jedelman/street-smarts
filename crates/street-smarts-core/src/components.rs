@@ -26,6 +26,57 @@
 //! the exact record; `Middle` is "somewhere between," which is what every
 //! current consumer (including the `p29_density_rings` opinion's own
 //! variance check) actually needs to ask.
+//!
+//! # Investigated and deliberately NOT built: `BlockMembership`
+//!
+//! `PRIMITIVES_SPEC.md` §1.2 names `BlockMembership` as an example
+//! component alongside `DensityTier`. Investigated as the natural next
+//! pilot after `DensityTier` and stopped before writing it, because the
+//! parse-from-existing-data approach that worked for `DensityTier`
+//! doesn't hold here, for a reason worth recording precisely:
+//!
+//! `p95_building_complex` pad ids DO encode their source block as a
+//! prefix (`format!("{block_id}_P95_courtyard_p{label}")` /
+//! `format!("{block_id}_P95_cell_{idx}")`), so parsing block membership
+//! from a pad id looks viable at first. But `p108_connected_buildings`
+//! -- which runs on every building pad, site-wide, immediately after P95
+//! in the real pipeline -- replaces merged pads with a BRAND NEW
+//! synthetic id (`format!("p108_merged_{merged_idx}")`) that discards
+//! that prefix entirely. By the time the full pipeline finishes, most
+//! pads have been through this merge step (see `pipeline.rs`'s own
+//! ordering), so a membership map built by parsing ids would be reliably
+//! WRONG -- not merely incomplete -- for exactly the pads that matter
+//! most, with no signal that anything was lost. That's a worse failure
+//! mode than `p29_density_rings`'/`p37_house_cluster`'s own detector
+//! opinions hitting `NoView` on final pipeline state (see
+//! `check_detector_impact.rs`'s findings) -- `NoView` is an honest "I
+//! don't know"; a silently-wrong parsed map is not.
+//!
+//! There's a deeper reason this can't just be fixed by parsing harder:
+//! `p108_connected_buildings` clusters pads by GEOMETRIC ADJACENCY
+//! (touching footprints), not by block membership -- nothing stops it
+//! from merging two pads that originated from different blocks across a
+//! boundary. For a merged pad, "which block does this belong to" may not
+//! be a single well-defined value at all, not just a hard-to-recover one.
+//!
+//! Two real paths forward, neither attempted here:
+//! - Track membership FORWARD from creation (P95 already knows its own
+//!   `block_id` -- it's the `parcel_id` argument it's invoked with per
+//!   block in the pipeline's own loop) and propagate it THROUGH P108's
+//!   merge as a `Vec<String>` (a merged pad can trace back to more than
+//!   one source block), rather than reconstructing it backward from ids
+//!   after the fact. Real work: touches P95's and P108's actual output
+//!   shapes, not just a read-only sidecar.
+//! - Answer the question from Phase 4's content-addressed history
+//!   instead of NIR data at all -- a commit's real parent/operator
+//!   lineage already records which block-scoped `P95` call produced a
+//!   given pad, and unioning lineages is exactly what a merge should do.
+//!   Not available yet either: Phase 4's history store isn't wired into
+//!   the real pipeline's per-block loop.
+//!
+//! Recorded here, not silently dropped, so the next person who reaches
+//! for `BlockMembership` doesn't have to rediscover this by hitting the
+//! same silent-wrong-answer bug in production.
 
 use serde::{Deserialize, Serialize};
 
