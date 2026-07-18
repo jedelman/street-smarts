@@ -107,11 +107,13 @@ use crate::planar::{
     voronoi_cell, MstResult, Pt2,
 };
 use crate::prng::Prng;
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
+use street_smarts_core::world::World;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P61Params {
@@ -425,7 +427,7 @@ impl PatternOperator for P61SmallPublicSquares {
                     new_streets.push(Street {
                         id: format!("{plaza_id}_p61_link_{i}_{j}"),
                         centerline: vec![centers_wgs[*i], centers_wgs[*j]],
-                        classification: Some("pedestrian".into()),
+                        classification: Some(StreetClassification::Pedestrian.to_label().into()),
                         row_width_m: Some(params.connector_width_m),
                     });
                 }
@@ -658,7 +660,7 @@ pub fn place_new_squares_n(
             new_streets.push(Street {
                 id: format!("{}_p61_new_link_{i}_{j}", target_parcel.id),
                 centerline: vec![centers_wgs[*i], centers_wgs[*j]],
-                classification: Some("pedestrian".into()),
+                classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.connector_width_m),
             });
         }
@@ -709,4 +711,34 @@ pub fn place_new_squares_n(
         entity_provenance: std::collections::BTreeMap::new(),
         trace,
     })
+}
+
+/// Native `System` port of `place_new_squares_n` -- the real corrected
+/// pipeline's actual P61 call site (`pipeline.rs`'s per-block loop calls
+/// this free function directly, not `PatternOperator::apply`; see this
+/// module's own "v0.6" doc section). Not a method on
+/// `P61SmallPublicSquares` since `place_new_squares_n` itself isn't one --
+/// same free-function shape, extended the same way `System`'s other native
+/// ports are (see `system.rs`'s own module doc). Every street this
+/// function emits gets the same constant `StreetClassification::Pedestrian`
+/// -- no per-street branching to preserve, so (unlike `PathNetwork`'s two-
+/// class MST/loop split) dual-write here is just: run the computation
+/// unchanged, then tag every NEW street id with that one constant.
+pub fn place_new_squares_n_native(
+    world: &World,
+    target_parcel: &Parcel,
+    n_target: usize,
+    params: &P61Params,
+    seed: u64,
+    source: SourceCitation,
+) -> Result<World, String> {
+    let nbhd = world.to_neighborhood();
+    let sub = place_new_squares_n(&nbhd, target_parcel, n_target, params, seed, source)?;
+    let new_street_ids: Vec<String> = sub.new_streets.iter().map(|s| s.id.clone()).collect();
+    let new_nbhd = apply_subdivision(&nbhd, &sub);
+    let mut new_world = World::from_neighborhood(&new_nbhd);
+    for id in new_street_ids {
+        new_world.street_classifications.insert(id, StreetClassification::Pedestrian);
+    }
+    Ok(new_world)
 }
