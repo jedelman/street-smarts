@@ -542,6 +542,20 @@
   .svg-thumb:hover img { border-color: var(--ink); background: var(--highlight); }
   .svg-thumb span { color: var(--muted); }
 
+  /* The lineage animation is a real self-contained SVG (SMIL, no JS) --
+     <object> gives it its own document context, unlike <img>, which most
+     browsers silently disable SMIL inside (a static first-frame image,
+     not an animation). */
+  .lineage-animation {
+    margin-top: .9rem;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .6rem;
+  }
+  .lineage-animation object { display: block; width: 100%; height: 480px; }
+  .lineage-animation p.note { margin: .5rem 0 0; color: var(--muted); font-size: 0.82rem; }
+
   .downloads {
     margin-top: .75rem;
     padding-top: .6rem;
@@ -595,10 +609,16 @@
     </p>
 
     <figure class="render">
-      <img class="isometric-img" src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario" loading="lazy">
+      <img class="isometric-img" src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario (Military Circle, Norfolk VA)" loading="lazy">
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>A 47.7-acre pre-redevelopment mega-parcel with no existing entitlements, run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133).</p>
+        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133). Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ: the faint gray massing around it is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration.</p>
+        <div class="lineage-animation">
+          <object data="/vibe-render/clean_baseline_lineage.svg" type="image/svg+xml" aria-label="Animation of the pattern pipeline building the site step by step, in real geometry">
+            <a href="/vibe-render/clean_baseline_lineage.svg">clean_baseline_lineage.svg</a>
+          </object>
+          <p class="note">Real parcel/pad footprints, not a diagram -- the site unfolding commit by commit (P37 → per-block P95 → P108), the same <code>HistoryStore</code> chain <code>block_membership</code> answers lineage questions from. Loops automatically.</p>
+        </div>
         <div class="svg-grid">
           <a class="svg-thumb" href="/vibe-render/clean_baseline_plan.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_plan.svg" alt="Clean baseline plan" loading="lazy"><span>plan</span>

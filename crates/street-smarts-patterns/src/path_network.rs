@@ -258,6 +258,7 @@ impl PatternOperator for PathNetwork {
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
+            entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
     }

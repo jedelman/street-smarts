@@ -5,8 +5,10 @@
 # architectural rendering -- see tools/vibe-render/render.py for caveats.
 #
 # Runs three scenarios:
-#   - clean_baseline: eastside-baseline.json, parcel 00001129 (47.7-acre
-#     pre-redevelopment mega-parcel, no EDA tags)
+#   - clean_baseline: eastside-baseline.json, parcel MILITARY_CIRCLE_ASSEMBLED
+#     (the real Military Circle site, Norfolk VA -- a 97.7-acre union of
+#     25 real Norfolk GIS parcels, no EDA tags; see the parcel's own `spec`
+#     field for the real tax-parcel ids it was assembled from)
 #   - barrio_mallcore: eastside-proposal.json, parcel 13279568 (MALL_CORE,
 #     27.8 acres, the fragmentation stress case -- see task #7)
 #   - mallcore_seeding: MALL_CORE again, rendered twice -- once with P37's
@@ -16,9 +18,16 @@
 #     examples/dump_pipeline_seeding.rs.
 #
 # Output goes to $OUT_DIR (default: target/vibe-render/): the intermediate
-# pipeline JSON, the rendered PNG/SVG files, and a per-scenario .glb (real
+# pipeline JSON, the rendered PNG/SVG files, a per-scenario .glb (real
 # 3D model, drop straight into any glTF viewer -- see render.py's own
-# docstring).
+# docstring), and clean_baseline_lineage.svg -- a self-contained animated
+# SVG (SMIL, no JS) of the same P37 -> per-block P95 -> P108 commit chain
+# unfolding in real geometry, from
+# street-smarts-ledger/examples/dump_lineage_animation.rs. Deliberately
+# the NON-satellite variant (dump_lineage_map.rs's combined satellite+graph
+# version is ~30x heavier, a base64-embedded raster tile) -- this repo
+# already gates its WASM bundle to a 300KB gzip budget, so a multi-MB
+# inline SVG isn't something to ship on the public page by default.
 #
 # If $PUBLISH_DIR is set, every render (isometric PNGs, plan/elevation/
 # floor-plan SVGs, .glb) is also copied there under fixed filenames, ready
@@ -35,13 +44,18 @@ PUBLISH_DIR="${PUBLISH_DIR:-}"
 
 mkdir -p "$OUT_DIR"
 
-echo "==> building dump_pipeline + dump_pipeline_seeding examples"
+echo "==> building dump_pipeline + dump_pipeline_seeding + dump_lineage_animation examples"
 cargo build --release -p street-smarts-patterns --example dump_pipeline --example dump_pipeline_seeding
+cargo build --release -p street-smarts-ledger --example dump_lineage_animation
 DUMP_BIN="target/release/examples/dump_pipeline"
 DUMP_SEEDING_BIN="target/release/examples/dump_pipeline_seeding"
+DUMP_LINEAGE_ANIMATION_BIN="target/release/examples/dump_lineage_animation"
 
 echo "==> running corrected pipeline: clean_baseline"
-"$DUMP_BIN" data/eastside-baseline.json 00001129 "$SEED" "$OUT_DIR/clean_baseline.json"
+"$DUMP_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline.json"
+
+echo "==> rendering: clean_baseline lineage animation (real geometry, no satellite -- see dump_lineage_animation.rs)"
+"$DUMP_LINEAGE_ANIMATION_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline_lineage.svg" 1.2
 
 echo "==> running corrected pipeline: barrio_mallcore"
 "$DUMP_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/barrio_mallcore.json"
@@ -57,7 +71,17 @@ fi
 
 for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
   echo "==> rendering: $scenario"
-  "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
+  if [ "$scenario" = "clean_baseline" ]; then
+    # Real surrounding-building massing (Overture Maps, pre-filtered to
+    # exclude our own site -- see the file's own _provenance field) --
+    # only for clean_baseline, the scenario with real, geolocated site
+    # data. The other scenarios' fixtures aren't real single addresses in
+    # the same way, so there's no honest "surrounding context" to fetch.
+    "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario" \
+      data/military-circle-context-buildings.geojson
+  else
+    "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
+  fi
 done
 
 echo "==> done. Renders in $OUT_DIR/"

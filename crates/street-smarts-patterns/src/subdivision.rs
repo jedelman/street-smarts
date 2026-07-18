@@ -62,6 +62,26 @@ pub struct Subdivision {
     /// being able to append duplicates.
     #[serde(default)]
     pub replaced_building_ids: Vec<String>,
+    /// For a new entity id (a key here, matching an id in `new_parcels`/
+    /// `new_open_space`/`new_buildings`), the source entity id(s) it was
+    /// derived from -- either the `target` this operator ran on (P95: a
+    /// new pad's source is the block it was built within) or, for an
+    /// operator that merges several existing entities into one (P108:
+    /// `p108_merged_N`'s sources are every pad clustered into it), the
+    /// full list. Empty for operators that don't derive new entities from
+    /// existing ones (most of them) -- this is deliberately narrow, not a
+    /// general "everything's provenance" field.
+    ///
+    /// Exists so `street-smarts-ledger`'s `HistoryStore` can answer real
+    /// lineage questions ("which block did this pad ultimately come
+    /// from") by walking `Commit`s, instead of the alternative that was
+    /// tried and rejected: parsing it back out of entity id NAMING
+    /// CONVENTIONS after the fact, which breaks the moment an operator
+    /// (P108) assigns a brand-new synthetic id that discards the
+    /// convention entirely -- see `components.rs`'s own doc comment on
+    /// why that approach was abandoned.
+    #[serde(default)]
+    pub entity_provenance: std::collections::BTreeMap<String, Vec<String>>,
     /// Human-readable narrative.
     pub trace: SubdivisionTrace,
 }

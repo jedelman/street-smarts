@@ -385,6 +385,7 @@ impl PatternOperator for P37HouseCluster {
             replaced_parcel_ids: vec![parcel_id.to_string()],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
+            entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
     }

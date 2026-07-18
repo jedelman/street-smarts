@@ -358,6 +358,7 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,
+            entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
     }

@@ -26,6 +26,70 @@
 //! the exact record; `Middle` is "somewhere between," which is what every
 //! current consumer (including the `p29_density_rings` opinion's own
 //! variance check) actually needs to ask.
+//!
+//! # `BlockMembership`: answered via history lineage, not a NIR sidecar
+//!
+//! `PRIMITIVES_SPEC.md` §1.2 names `BlockMembership` as an example
+//! component alongside `DensityTier`. Investigated as the natural next
+//! pilot after `DensityTier` and NOT built as a parse-from-existing-data
+//! sidecar the way `DensityTier` was, for a reason worth recording
+//! precisely:
+//!
+//! `p95_building_complex` pad ids DO encode their source block as a
+//! prefix (`format!("{block_id}_P95_courtyard_p{label}")` /
+//! `format!("{block_id}_P95_cell_{idx}")`), so parsing block membership
+//! from a pad id looks viable at first. But `p108_connected_buildings`
+//! -- which runs on every building pad, site-wide, immediately after P95
+//! in the real pipeline -- replaces merged pads with a BRAND NEW
+//! synthetic id (`format!("p108_merged_{merged_idx}")`) that discards
+//! that prefix entirely. By the time the full pipeline finishes, most
+//! pads have been through this merge step (see `pipeline.rs`'s own
+//! ordering), so a membership map built by parsing ids would be reliably
+//! WRONG -- not merely incomplete -- for exactly the pads that matter
+//! most, with no signal that anything was lost. That's a worse failure
+//! mode than `p29_density_rings`'/`p37_house_cluster`'s own detector
+//! opinions hitting `NoView` on final pipeline state (see
+//! `check_detector_impact.rs`'s findings) -- `NoView` is an honest "I
+//! don't know"; a silently-wrong parsed map is not.
+//!
+//! There's a deeper reason this can't just be fixed by parsing harder:
+//! `p108_connected_buildings` clusters pads by GEOMETRIC ADJACENCY
+//! (touching footprints), not by block membership -- nothing stops it
+//! from merging two pads that originated from different blocks across a
+//! boundary. For a merged pad, "which block does this belong to" may not
+//! be a single well-defined value at all, not just a hard-to-recover one.
+//!
+//! Of the two real paths forward this doc comment originally named
+//! (propagate membership FORWARD through P95/P108's own output shapes, or
+//! answer it from Phase 4's content-addressed history instead), the
+//! history path is what got built: `Subdivision::entity_provenance`
+//! records, per new entity id, the source entity id(s) it was derived
+//! from (P95: a pad's source is the block it was carved from; P108: a
+//! merged pad's sources are every pad clustered into it), `Commit` in
+//! `street-smarts-ledger` carries that forward, and
+//! `street_smarts_ledger::history::block_membership` walks the commit
+//! chain resolving an entity id back to its base source(s) recursively.
+//! A pad merged across a block boundary correctly resolves to BOTH source
+//! blocks -- not a bug, the honest answer for exactly the case this doc
+//! comment flagged as not single-valued. See
+//! `street-smarts-ledger/src/history.rs`'s own tests
+//! (`block_membership_resolves_a_single_hop_p95_pad_to_its_source_block`,
+//! `block_membership_resolves_a_p108_merged_pad_back_through_two_hops`)
+//! for this proven end to end against the real P95/P108 operators.
+//!
+//! Not done as part of this: wiring `street-smarts-patterns::pipeline`'s
+//! real 14-step `run_corrected_pipeline_with_p37` through `HistoryStore`.
+//! `street-smarts-ledger` already depends on `street-smarts-patterns` (for
+//! `DynOperator`/`Subdivision`/`apply_subdivision`), so that orchestration
+//! can't live in `pipeline.rs` itself without a dependency cycle -- it
+//! would need its own home in `street-smarts-ledger`, and P61's per-block
+//! call goes through the free function `place_new_squares_n`, not the
+//! `PatternOperator`/`DynOperator` trait `get_or_compute` calls through,
+//! so it isn't a drop-in swap of `apply_subdivision` for
+//! `get_or_compute`. Real follow-up work, not silently dropped -- the
+//! `block_membership` mechanism itself works for any `HistoryStore`-backed
+//! commit chain today, it just isn't the one the production pipeline
+//! currently builds.
 
 use serde::{Deserialize, Serialize};
 

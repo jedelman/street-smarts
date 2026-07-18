@@ -53,6 +53,8 @@ FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own defaul
 OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness this massing model doesn't have
 INTERIOR_DOOR_WIDTH_M = 0.9  # floor-plan door-gap width, drawn in-plane -- no wall thickness/height in a 2D plan
 INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
+DEFAULT_CONTEXT_HEIGHT_M = 6.0  # ~2 stories, for context buildings Overture has no height for
+CONTEXT_MIN_AREA_M2 = 8.0  # drop slivers/artifacts smaller than a garden shed
 
 
 def project(lng, lat, origin_lng, origin_lat):
@@ -229,7 +231,45 @@ def shared_boundary(poly_a, poly_b, eps=0.05):
 
 
 
-def build_scene(nbhd):
+def load_context_buildings(path, origin_lng, origin_lat):
+    """Real surrounding-building massing from a pre-filtered Overture Maps
+    GeoJSON extract (see `data/military-circle-context-buildings.geojson`'s
+    own `_provenance` field) -- simple flat boxes at each footprint's real
+    height (or `DEFAULT_CONTEXT_HEIGHT_M` where Overture has none), no
+    window/door punching, no per-building fusion. These exist to place the
+    generated site in its real neighborhood, not to be looked at closely --
+    keeping them cheap matters: this codebase's own buildings already cost
+    real cadquery/OpenCascade time per solid, and there are hundreds of
+    these versus a few dozen of ours.
+
+    The source file is expected to already exclude anything overlapping our
+    own site (done once at data-prep time with shapely, not here -- see the
+    file's own `_provenance.filtered` note) so this function does no
+    intersection testing of its own.
+    """
+    with open(path) as f:
+        geojson = json.load(f)
+    solids = []
+    for feat in geojson.get("features", []):
+        geom = feat.get("geometry") or {}
+        rings = []
+        if geom.get("type") == "Polygon":
+            rings = [geom["coordinates"][0]]
+        elif geom.get("type") == "MultiPolygon":
+            rings = [part[0] for part in geom["coordinates"]]
+        for ring in rings:
+            outer = [{"lng": lng, "lat": lat} for lng, lat in ring]
+            area_m2 = polygon_area_m2(ring_to_xy(outer, origin_lng, origin_lat))
+            if area_m2 < CONTEXT_MIN_AREA_M2:
+                continue
+            height = feat["properties"].get("height") or DEFAULT_CONTEXT_HEIGHT_M
+            solid = extrude_polygon(outer, [], height, origin_lng, origin_lat)
+            if solid is not None:
+                solids.append((solid, "context"))
+    return solids
+
+
+def build_scene(nbhd, context_path=None):
     parcels = site_parcels(nbhd)
     if not parcels:
         raise SystemExit("no site parcels found -- check spec filtering")
@@ -317,10 +357,13 @@ def build_scene(nbhd):
             except Exception:
                 pass
 
+    context_solids = load_context_buildings(context_path, origin_lng, origin_lat) if context_path else []
+
     return {
         "buildings": building_solids,
         "plazas": plaza_solids,
         "streets": street_solids,
+        "context": context_solids,
         "origin": (origin_lng, origin_lat),
     }
 
@@ -338,6 +381,9 @@ COLORS = {
     "local": "#6b6259",
     "pedestrian": "#9b8f7a",
     "street": "#6b6259",
+    "context": "#5a5a5e",  # flat neutral gray -- deliberately duller than every
+    # generated-site color so real Overture context reads as backdrop, not
+    # competes with the pattern-language buildings it's surrounding.
 }
 
 # Two-light setup, not one. A single directional light leaves every face
@@ -407,6 +453,14 @@ def render_isometric(scene, out_path, title):
             rgba = shade_faces(face_verts, base_hex, alpha)
             poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
             ax.add_collection3d(poly)
+
+    # Real surrounding buildings first, most translucent of anything in the
+    # scene -- backdrop, not subject. Camera framing below is deliberately
+    # NOT widened to fit context (see load_context_buildings' own docstring):
+    # it renders within whatever's already visible around the generated
+    # site, cropped at the edges, rather than shrinking our own buildings to
+    # fit a wider radius every time this scenario's baseline is compared.
+    add_group(scene.get("context", []), alpha=0.45)
 
     # Translucent enough to read overlapping massing/depth, not so
     # translucent the scene turns to fog -- streets/plazas thinnest (they're
@@ -495,9 +549,9 @@ def export_glb(scene, out_path):
     asm = cq.Assembly()
     n_added = 0
     for group, alpha, solids_key in (
-        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings")
+        ("context", 0.45, "context"), ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings")
     ):
-        for solid, kind in scene[solids_key]:
+        for solid, kind in scene.get(solids_key, []):
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
             n_added += 1
             try:
@@ -995,14 +1049,18 @@ def choose_elevation_directions(nbhd, origin_lng, origin_lat):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("usage: render.py <neighborhood.json> <output_prefix>")
+    if len(sys.argv) not in (3, 4):
+        print("usage: render.py <neighborhood.json> <output_prefix> [context_buildings.geojson]")
         sys.exit(1)
     nbhd_path, out_prefix = sys.argv[1], sys.argv[2]
+    context_path = sys.argv[3] if len(sys.argv) == 4 else None
     nbhd = load(nbhd_path)
     print(f"=== {nbhd_path} ===")
-    scene = build_scene(nbhd)
-    print(f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, streets: {len(scene['streets'])}")
+    scene = build_scene(nbhd, context_path=context_path)
+    print(
+        f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
+        f"streets: {len(scene['streets'])}, context: {len(scene['context'])}"
+    )
 
     render_isometric(scene, f"{out_prefix}_isometric.png", nbhd_path.split("/")[-1])
 

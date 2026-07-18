@@ -293,6 +293,12 @@ impl PatternOperator for P95BuildingComplex {
         let mut all_new_open: Vec<OpenSpace> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut prng = Prng::new(seed);
+        // Every pad and courtyard this call produces traces back to the one
+        // block (`parcel_id`) it was carved from -- see `Subdivision::entity_provenance`'s
+        // own doc comment for why this needs to be structured, not just
+        // recoverable from the id's `{parcel_id}_P95_...` prefix.
+        let mut entity_provenance: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
 
         let mut global_cell_idx = 0;
         let mut n_skipped_slivers = 0;
@@ -474,8 +480,10 @@ impl PatternOperator for P95BuildingComplex {
 
                 // Emit courtyard as open space (no inset — courtyards fill their cell).
                 let courtyard_ring = local_to_ring(&courtyard.1, &origin);
+                let courtyard_id = format!("{}_P95_courtyard_p{}", parcel_id, label);
+                entity_provenance.insert(courtyard_id.clone(), vec![parcel_id.to_string()]);
                 all_new_open.push(OpenSpace {
-                    id: format!("{}_P95_courtyard_p{}", parcel_id, label),
+                    id: courtyard_id,
                     polygon: Polygon::from_ring(courtyard_ring),
                     kind: OpenSpaceKind::Plaza,
                 });
@@ -506,8 +514,10 @@ impl PatternOperator for P95BuildingComplex {
                     let pad_area_m2 = area(&inset_cell);
                     let pad_area_ac = pad_area_m2 / 4046.86;
                     global_cell_idx += 1;
+                    let pad_id = format!("{}_P95_cell_{}", parcel_id, global_cell_idx);
+                    entity_provenance.insert(pad_id.clone(), vec![parcel_id.to_string()]);
                     all_new_parcels.push(Parcel {
-                        id: format!("{}_P95_cell_{}", parcel_id, global_cell_idx),
+                        id: pad_id,
                         polygon: Polygon::from_ring(pad_ring),
                         area_acres: pad_area_ac,
                         use_category: Some("p95_building_pad".into()),
@@ -588,6 +598,7 @@ impl PatternOperator for P95BuildingComplex {
             replaced_parcel_ids: vec![parcel_id.to_string()],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
+            entity_provenance,
             trace,
         })
     }
