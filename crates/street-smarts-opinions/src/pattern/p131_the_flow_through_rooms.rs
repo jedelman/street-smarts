@@ -34,6 +34,7 @@
 //! free case from the earned one.
 
 use std::collections::BTreeMap;
+use street_smarts_core::components::BuildingTypology;
 use street_smarts_core::nir::{Building, Neighborhood};
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
 use street_smarts_core::timer::Timer;
@@ -100,7 +101,7 @@ impl Opinion for P131TheFlowThroughRooms {
         let mut open_chains: Vec<String> = Vec::new();
 
         for b in &candidates {
-            let is_courtyard = b.typology.as_deref() == Some("p107_courtyard_v01");
+            let is_courtyard = BuildingTypology::label_is_courtyard(b.typology.as_deref());
             let looped = achieves_loop(b);
             if looped {
                 n_loop += 1;

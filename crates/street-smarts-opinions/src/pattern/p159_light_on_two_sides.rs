@@ -50,6 +50,7 @@
 //! own length, not a meters distance.
 
 use std::collections::{BTreeMap, HashSet};
+use street_smarts_core::components::BuildingTypology;
 use street_smarts_core::nir::{Building, Neighborhood, Opening, OpeningKind};
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
 use street_smarts_core::timer::Timer;
@@ -128,7 +129,7 @@ impl Opinion for P159LightOnTwoSides {
         let mut low_light_buildings: Vec<String> = Vec::new();
 
         for b in &with_openings {
-            let is_courtyard = b.typology.as_deref() == Some("p107_courtyard_v01");
+            let is_courtyard = BuildingTypology::label_is_courtyard(b.typology.as_deref());
             let windows = unique_window_bays(b);
             if windows.is_empty() {
                 continue;

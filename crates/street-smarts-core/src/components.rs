@@ -105,14 +105,17 @@
 //! operator actually writes (confirmed by grep across
 //! `street-smarts-patterns/src`, not assumed):
 //! - `PadRole`: `p37_house_cluster` ("house_cluster_block"),
-//!   `p95_building_complex` ("p95_building_pad"), and the legacy
-//!   `building_shape` stub kept for backward compatibility with the OLD,
-//!   pre-corrected pipeline order ("p95_pad_with_building" -- see
-//!   `registry.rs`'s own note that this stub isn't part of the real
-//!   pipeline).
+//!   `p95_building_complex` ("p95_building_pad"), AND `p107_wings_of_light`
+//!   -- once it shapes a pad into a real building, it re-tags the source
+//!   parcel "p95_pad_with_building" (originally assumed to be
+//!   legacy-`building_shape`-only; grepping the real corrected-pipeline
+//!   loop found P107 sets it too, on every pad it successfully shapes).
+//!   The legacy `building_shape` stub also writes both `"house_cluster_block"`-
+//!   adjacent `"p95_inscribed_v01"` labels (see `BuildingTypology` below) --
+//!   it isn't a *third* origin for `PadRole` specifically.
 //! - `BuildingTypology`: `p107_wings_of_light`, the real pipeline's
 //!   origin site ("p107_solid_v01" / "p107_solid_fallback_v01" /
-//!   "p107_courtyard_v01"), and again the legacy `building_shape` stub
+//!   "p107_courtyard_v01"), and the legacy `building_shape` stub
 //!   ("p95_inscribed_v01").
 //! - `StreetClassification`: `path_network` ("local" / "pedestrian") and
 //!   `p61_small_public_squares` ("pedestrian") are the only two real
@@ -125,14 +128,15 @@
 //! `System`-native dual-write (component computed directly during
 //! generation, not re-derived from the string after the fact) is built
 //! for each field's real origin operator in the corrected pipeline --
-//! P29 (`DensityTier`), P37 and P95 (`PadRole`), P107
-//! (`BuildingTypology`), PathNetwork and P61 (`StreetClassification`) --
-//! see each operator's own module for its `impl System` block. The legacy
-//! `building_shape` stub is covered only by the generic `System` blanket
-//! wrapper (it derives its component correctly via
-//! `World::from_neighborhood`, same as every other non-native-ported
-//! operator), matching its own de-prioritized status everywhere else in
-//! this codebase.
+//! P29 (`DensityTier`), P37 and P95 (`PadRole`), P107 (`BuildingTypology`
+//! AND `PadRole` -- it originates both), PathNetwork and P61
+//! (`StreetClassification`) -- see each operator's own module for its
+//! `run_native` inherent method (not a second `impl System` -- see
+//! `system.rs`'s own module doc for why). The legacy `building_shape` stub
+//! is covered only by the generic `System` blanket wrapper (it derives its
+//! components correctly via `World::from_neighborhood`, same as every
+//! other non-native-ported operator), matching its own de-prioritized
+//! status everywhere else in this codebase.
 
 use serde::{Deserialize, Serialize};
 
@@ -199,8 +203,8 @@ pub fn ring_tier_label(ring_idx: usize, n_rings: usize) -> String {
 }
 
 /// `Parcel.use_category`'s typed vocabulary -- see this module's own top
-/// doc comment for the real origin sites and why `PadWithBuilding` is
-/// legacy-only.
+/// doc comment for the real origin sites (`PadWithBuilding` is real-pipeline,
+/// written by `p107_wings_of_light`, not legacy-only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PadRole {
@@ -278,6 +282,18 @@ impl BuildingTypology {
     /// doc comment), but new code should prefer this.
     pub fn is_courtyard(self) -> bool {
         matches!(self, Self::CourtyardV01)
+    }
+
+    /// Convenience for the common call-site shape
+    /// (`building.typology.as_deref()`) -- replaces the raw string
+    /// comparison (`typology.as_deref() == Some("p107_courtyard_v01")`)
+    /// that was duplicated across 5+ call sites in
+    /// `street-smarts-patterns`/`street-smarts-opinions` before this
+    /// component existed. An unrecognized or absent label is not a
+    /// courtyard (matches every existing call site's own `== Some(...)`
+    /// behavior on `None`/an unrelated typology).
+    pub fn label_is_courtyard(label: Option<&str>) -> bool {
+        label.and_then(Self::from_label).map(Self::is_courtyard).unwrap_or(false)
     }
 }
 
@@ -430,6 +446,14 @@ mod tests {
         assert!(!BuildingTypology::SolidV01.is_courtyard());
         assert!(!BuildingTypology::SolidFallbackV01.is_courtyard());
         assert!(!BuildingTypology::InscribedV01.is_courtyard());
+    }
+
+    #[test]
+    fn label_is_courtyard_matches_the_raw_string_comparison_it_replaces() {
+        assert!(BuildingTypology::label_is_courtyard(Some("p107_courtyard_v01")));
+        assert!(!BuildingTypology::label_is_courtyard(Some("p107_solid_v01")));
+        assert!(!BuildingTypology::label_is_courtyard(Some("bogus")));
+        assert!(!BuildingTypology::label_is_courtyard(None));
     }
 
     #[test]

@@ -61,6 +61,7 @@ use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{centroid, clip_half_plane, lnglat_to_local, local_to_ring, ring_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::BuildingTypology;
 use street_smarts_core::nir::{Building, InteriorCell, Neighborhood};
 use street_smarts_core::opinion::SourceCitation;
 
@@ -156,7 +157,7 @@ impl PatternOperator for P127IntimacyGradient {
             let origin = b.polygon.centroid();
             let target = nearest_public_realm_point(nbhd, b).map(|t| lnglat_to_local(&t, &origin));
 
-            let is_courtyard = b.typology.as_deref() == Some("p107_courtyard_v01")
+            let is_courtyard = BuildingTypology::label_is_courtyard(b.typology.as_deref())
                 && !b.polygon.holes.is_empty();
 
             let cells = if is_courtyard {

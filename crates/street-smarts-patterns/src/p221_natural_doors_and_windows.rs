@@ -83,6 +83,7 @@ use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{centroid, lnglat_to_local, ring_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::BuildingTypology;
 use street_smarts_core::nir::{Building, Neighborhood, Opening, OpeningKind};
 use street_smarts_core::opinion::SourceCitation;
 
@@ -274,7 +275,7 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
             let mut openings: Vec<Opening> = Vec::new();
             place_wall_openings(&outer_local, false, door_edge, floors, params, &mut openings);
 
-            if b.typology.as_deref() == Some("p107_courtyard_v01") {
+            if BuildingTypology::label_is_courtyard(b.typology.as_deref()) {
                 if let Some(part) = b.polygon.parts_view().first() {
                     if let Some(hole) = part.holes.first() {
                         let hole_local = ring_to_local(hole, &origin);
