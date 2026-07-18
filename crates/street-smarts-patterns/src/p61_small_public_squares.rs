@@ -521,6 +521,7 @@ impl PatternOperator for P61SmallPublicSquares {
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: replaced_ids,
             replaced_building_ids: vec![],
+            entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
     }
@@ -705,6 +706,7 @@ pub fn place_new_squares_n(
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],
+        entity_provenance: std::collections::BTreeMap::new(),
         trace,
     })
 }

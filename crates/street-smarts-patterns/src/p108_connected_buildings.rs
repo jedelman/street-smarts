@@ -208,6 +208,14 @@ impl PatternOperator for P108ConnectedBuildings {
         let mut n_merged_clusters = 0;
         let mut n_pads_merged = 0;
         let mut merged_idx = 0;
+        // Each `p108_merged_N`'s source pad ids -- the structured record a
+        // lineage walk needs, since the merged id itself discards the
+        // `{block_id}_P95_...` naming convention entirely. See
+        // `Subdivision::entity_provenance`'s own doc comment and
+        // `components.rs`'s `BlockMembership` investigation for why this
+        // can't be recovered after the fact from ids alone.
+        let mut entity_provenance: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
 
         for cluster in &clusters {
             if cluster.len() < 2 {
@@ -239,6 +247,7 @@ impl PatternOperator for P108ConnectedBuildings {
                 density_tier: first.density_tier.clone(),
                 target_stories: first.target_stories,
             });
+            entity_provenance.insert(format!("p108_merged_{merged_idx}"), source_ids.clone());
             replaced.extend(source_ids.iter().cloned());
             n_merged_clusters += 1;
             n_pads_merged += cluster.len();
@@ -297,6 +306,7 @@ impl PatternOperator for P108ConnectedBuildings {
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
+            entity_provenance,
             trace,
         })
     }

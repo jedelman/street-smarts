@@ -313,6 +313,7 @@ impl PatternOperator for P133StaircaseAsAStage {
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,
+            entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
     }
