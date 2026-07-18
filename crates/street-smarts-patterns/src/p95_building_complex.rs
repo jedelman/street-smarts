@@ -49,11 +49,13 @@ use crate::planar::{
     Pt2,
 };
 use crate::prng::Prng;
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::PadRole;
 use street_smarts_core::geometry::{LngLat, Polygon};
 use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
 use street_smarts_core::opinion::SourceCitation;
+use street_smarts_core::world::World;
 
 /// Tunable parameters for P95 Building Complex.
 ///
@@ -520,7 +522,9 @@ impl PatternOperator for P95BuildingComplex {
                         id: pad_id,
                         polygon: Polygon::from_ring(pad_ring),
                         area_acres: pad_area_ac,
-                        use_category: Some("p95_building_pad".into()),
+                        // Derived from the component, not the other way
+                        // around -- see run_native below.
+                        use_category: Some(PadRole::BuildingPad.to_label().into()),
                         ownership: None,
                         is_eda: true,
                         spec: Some(format!("P95_CELL_{}", global_cell_idx)),
@@ -601,6 +605,25 @@ impl PatternOperator for P95BuildingComplex {
             entity_provenance,
             trace,
         })
+    }
+}
+
+impl P95BuildingComplex {
+    /// Native `System` port (inherent method -- see `system.rs`'s own
+    /// module doc). Every pad this operator emits gets the SAME
+    /// `PadRole::BuildingPad`, so dual-write is the same constant-tagging
+    /// shape as `P37HouseCluster::run_native`: run `apply()` unchanged,
+    /// then tag every NEW parcel id it reported in the resulting `World`.
+    pub fn run_native(&self, world: &World, params: &P95Params, parcel_id: &str, seed: u64) -> Result<World, String> {
+        let nbhd = world.to_neighborhood();
+        let sub = self.apply(&nbhd, parcel_id, params, seed)?;
+        let new_ids: Vec<String> = sub.new_parcels.iter().map(|p| p.id.clone()).collect();
+        let new_nbhd = apply_subdivision(&nbhd, &sub);
+        let mut new_world = World::from_neighborhood(&new_nbhd);
+        for id in new_ids {
+            new_world.pad_roles.insert(id, PadRole::BuildingPad);
+        }
+        Ok(new_world)
     }
 }
 

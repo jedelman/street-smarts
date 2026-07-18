@@ -40,12 +40,14 @@
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{average_centroid, kruskal_mst, lnglat_to_local, Pt2};
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
+use street_smarts_core::world::World;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathNetworkParams {
@@ -113,8 +115,24 @@ impl PatternOperator for PathNetwork {
         nbhd: &Neighborhood,
         parcel_id: &str,
         params: &Self::Params,
-        _seed: u64,
+        seed: u64,
     ) -> Result<Subdivision, String> {
+        self.apply_with_assignments(nbhd, parcel_id, params, seed).map(|(sub, _)| sub)
+    }
+}
+
+impl PathNetwork {
+    /// The real computation, extended to also return each new street's
+    /// `StreetClassification` as it's decided -- see `p107_wings_of_light`'s
+    /// own `apply_with_assignments` for the same shape and rationale.
+    /// `apply()` above is a thin wrapper that discards the extra vec.
+    fn apply_with_assignments(
+        &self,
+        nbhd: &Neighborhood,
+        parcel_id: &str,
+        params: &PathNetworkParams,
+        _seed: u64,
+    ) -> Result<(Subdivision, Vec<(String, StreetClassification)>), String> {
         if parcel_id != "*" {
             return Err("path_network requires parcel_id='*' (operates on the block graph)".into());
         }
@@ -193,21 +211,26 @@ impl PatternOperator for PathNetwork {
         // supplementary shortcuts ("pedestrian"). Real topological
         // distinction, not a parity hack.
         let mut streets: Vec<Street> = Vec::new();
+        let mut classification_assignments: Vec<(String, StreetClassification)> = Vec::new();
         for &(i, j, _d) in mst_edges.iter() {
+            let id = format!("path_{}_to_{}", block_ids[i], block_ids[j]);
             streets.push(Street {
-                id: format!("path_{}_to_{}", block_ids[i], block_ids[j]),
+                id: id.clone(),
                 centerline: vec![centers_wgs[i], centers_wgs[j]],
-                classification: Some("local".into()),
+                classification: Some(StreetClassification::Local.to_label().into()),
                 row_width_m: Some(params.path_width_m),
             });
+            classification_assignments.push((id, StreetClassification::Local));
         }
         for &(i, j, _d) in loop_edges.iter() {
+            let id = format!("loop_{}_to_{}", block_ids[i], block_ids[j]);
             streets.push(Street {
-                id: format!("loop_{}_to_{}", block_ids[i], block_ids[j]),
+                id: id.clone(),
                 centerline: vec![centers_wgs[i], centers_wgs[j]],
-                classification: Some("pedestrian".into()),
+                classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.path_width_m),
             });
+            classification_assignments.push((id, StreetClassification::Pedestrian));
         }
 
         if streets.is_empty() {
@@ -250,7 +273,7 @@ impl PatternOperator for PathNetwork {
             params: params.as_map(),
         };
 
-        Ok(Subdivision {
+        let sub = Subdivision {
             new_parcels: vec![],
             new_open_space: vec![],
             new_buildings: vec![],
@@ -260,6 +283,22 @@ impl PatternOperator for PathNetwork {
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
-        })
+        };
+        Ok((sub, classification_assignments))
+    }
+
+    /// Native `System` port (inherent method -- see `system.rs`'s own
+    /// module doc). Runs the same computation `apply()` does, then writes
+    /// `StreetClassification` directly into the resulting `World` from the
+    /// assignments that computation already produced.
+    pub fn run_native(&self, world: &World, params: &PathNetworkParams, parcel_id: &str, seed: u64) -> Result<World, String> {
+        let nbhd = world.to_neighborhood();
+        let (sub, assignments) = self.apply_with_assignments(&nbhd, parcel_id, params, seed)?;
+        let new_nbhd = apply_subdivision(&nbhd, &sub);
+        let mut new_world = World::from_neighborhood(&new_nbhd);
+        for (id, classification) in assignments {
+            new_world.street_classifications.insert(id, classification);
+        }
+        Ok(new_world)
     }
 }

@@ -51,7 +51,7 @@
 //!   P37/P61/P95/etc., and becomes a real question the moment Phase B
 //!   routes an actual operator through `World` instead of a `Vec`.
 
-use crate::components::DensityTier;
+use crate::components::{BuildingTypology, DensityTier, PadRole, StreetClassification};
 use crate::nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, OpenSpace, Parcel, Street};
 use std::collections::BTreeMap;
 
@@ -81,6 +81,14 @@ pub struct World {
     pub activity_nodes: BTreeMap<String, ActivityNode>,
     pub metadata: NeighborhoodMeta,
     pub density_tiers: BTreeMap<String, DensityTier>,
+    /// Derived from each parcel's `use_category` -- same read-only,
+    /// query-layer treatment as `density_tiers`. See `components.rs`'s own
+    /// doc comment.
+    pub pad_roles: BTreeMap<String, PadRole>,
+    /// Derived from each building's `typology`.
+    pub building_typologies: BTreeMap<String, BuildingTypology>,
+    /// Derived from each street's `classification`.
+    pub street_classifications: BTreeMap<String, StreetClassification>,
 }
 
 impl World {
@@ -94,6 +102,33 @@ impl World {
                 Some((p.id.clone(), tier))
             })
             .collect();
+        let pad_roles = n
+            .parcels
+            .iter()
+            .filter_map(|p| {
+                let label = p.use_category.as_deref()?;
+                let role = PadRole::from_label(label)?;
+                Some((p.id.clone(), role))
+            })
+            .collect();
+        let building_typologies = n
+            .buildings
+            .iter()
+            .filter_map(|b| {
+                let label = b.typology.as_deref()?;
+                let typology = BuildingTypology::from_label(label)?;
+                Some((b.id.clone(), typology))
+            })
+            .collect();
+        let street_classifications = n
+            .streets
+            .iter()
+            .filter_map(|s| {
+                let label = s.classification.as_deref()?;
+                let classification = StreetClassification::from_label(label)?;
+                Some((s.id.clone(), classification))
+            })
+            .collect();
         Self {
             id: n.id.clone(),
             bbox_wgs84: n.bbox_wgs84,
@@ -105,6 +140,9 @@ impl World {
             activity_nodes: n.activity_nodes.iter().map(|a| (a.id.clone(), a.clone())).collect(),
             metadata: n.metadata.clone(),
             density_tiers,
+            pad_roles,
+            building_typologies,
+            street_classifications,
         }
     }
 
@@ -203,6 +241,38 @@ mod tests {
         let out = world.to_neighborhood();
         let ids: Vec<&str> = out.parcels.iter().map(|p| p.id.as_str()).collect();
         assert_eq!(ids, vec!["P1", "P2"], "World-backed output is sorted-by-id, not insertion order");
+    }
+
+    #[test]
+    fn pad_role_building_typology_street_classification_sidecars_are_populated() {
+        use crate::components::{BuildingTypology, PadRole, StreetClassification};
+        use crate::nir::{Building, Opening, Street};
+
+        let mut n = sample_neighborhood();
+        n.parcels[0].use_category = Some("p95_building_pad".into()); // P2
+        n.buildings.push(Building {
+            id: "B1".into(),
+            polygon: Polygon::from_ring(vec![]),
+            height_m: Some(12.0),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: None,
+            openings: Vec::<Opening>::new(),
+            interior_cells: Vec::new(),
+        });
+        n.streets.push(Street {
+            id: "S1".into(),
+            centerline: vec![],
+            classification: Some("pedestrian".into()),
+            row_width_m: None,
+        });
+
+        let world = World::from_neighborhood(&n);
+        assert_eq!(world.pad_roles.get("P2"), Some(&PadRole::BuildingPad));
+        assert_eq!(world.pad_roles.get("P1"), None, "P1 has no use_category, so no sidecar entry");
+        assert_eq!(world.building_typologies.get("B1"), Some(&BuildingTypology::CourtyardV01));
+        assert_eq!(world.street_classifications.get("S1"), Some(&StreetClassification::Pedestrian));
     }
 
     #[test]

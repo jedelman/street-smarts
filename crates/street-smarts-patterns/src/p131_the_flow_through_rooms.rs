@@ -61,6 +61,7 @@ use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{centroid, clip_half_plane, lnglat_to_local, local_to_ring, ring_to_local, Pt2};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::BuildingTypology;
 use street_smarts_core::geometry::haversine_m;
 use street_smarts_core::nir::{Building, InteriorCell, Neighborhood};
 use street_smarts_core::opinion::SourceCitation;
@@ -157,7 +158,7 @@ impl PatternOperator for P131TheFlowThroughRooms {
 
         for b in &candidates {
             let mut updated = (*b).clone();
-            let is_courtyard = b.typology.as_deref() == Some("p107_courtyard_v01");
+            let is_courtyard = BuildingTypology::label_is_courtyard(b.typology.as_deref());
 
             if updated.interior_cells.len() < 2 {
                 n_single_cell += 1;

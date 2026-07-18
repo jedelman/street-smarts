@@ -37,7 +37,9 @@ pub mod orientation;
 pub mod pipeline;
 pub mod registry;
 pub mod subdivision;
+pub mod system;
 
 pub use parameters::{NoParams, ParamSpec, Parameters};
 pub use registry::{available_operators, run_operator, OperatorInfo};
 pub use subdivision::{apply_subdivision, DynOperator, PatternOperator, Subdivision, SubdivisionTrace};
+pub use system::System;

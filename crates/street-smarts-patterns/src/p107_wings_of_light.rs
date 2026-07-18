@@ -57,10 +57,12 @@ use crate::planar::{
     area, bbox, inset_convex, local_to_ring, ring_to_local,
 };
 use crate::prng::Prng;
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::{BuildingTypology, PadRole};
 use street_smarts_core::geometry::{LngLat, Polygon, PolygonPart};
 use street_smarts_core::nir::{Building, Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
+use street_smarts_core::world::World;
 use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
@@ -184,6 +186,29 @@ impl PatternOperator for P107WingsOfLight {
         params: &Self::Params,
         seed: u64,
     ) -> Result<Subdivision, String> {
+        self.apply_with_assignments(nbhd, parcel_id, params, seed).map(|(sub, _, _)| sub)
+    }
+}
+
+/// `apply_with_assignments`'s native-port return shape.
+type NativeAssignments = (Subdivision, Vec<(String, BuildingTypology)>, Vec<(String, PadRole)>);
+
+impl P107WingsOfLight {
+    /// The real computation, extended to also return each new building's
+    /// `BuildingTypology` and each shaped pad's `PadRole` as they're
+    /// decided -- not re-derived from the `Subdivision`'s strings
+    /// afterward. `apply()` above is a thin wrapper that discards the two
+    /// extra vecs, so its behavior (and its existing test file) is
+    /// unchanged; `run_native` below is what actually uses them. Same
+    /// `_traced`-sibling shape `pipeline.rs::run_corrected_pipeline_with_p37`
+    /// already uses for the same reason (see `language_graph.rs`).
+    fn apply_with_assignments(
+        &self,
+        nbhd: &Neighborhood,
+        parcel_id: &str,
+        params: &P107Params,
+        seed: u64,
+    ) -> Result<NativeAssignments, String> {
         let targets: Vec<&Parcel> = if parcel_id == "*" {
             nbhd.select(&Scope::BUILDING_PAD).collect()
         } else {
@@ -207,6 +232,8 @@ impl PatternOperator for P107WingsOfLight {
         let mut n_courtyard = 0;
         let mut skipped_small = 0;
         let mut skipped_other = 0;
+        let mut building_typology_assignments: Vec<(String, BuildingTypology)> = Vec::new();
+        let mut pad_role_assignments: Vec<(String, PadRole)> = Vec::new();
 
         for parcel in &targets {
             let pad_area_m2 = if parcel.area_acres > 0.0 {
@@ -258,21 +285,23 @@ impl PatternOperator for P107WingsOfLight {
                 (params.assumed_height_m + height_jitter).max(2.5)
             };
 
+            let building_id = format!("{}_building", parcel.id);
             if short_side <= params.max_wing_width_m {
                 // Already narrow enough -- fill solid, P107 is satisfied
                 // without needing to carve anything.
                 let ring = local_to_ring(&envelope, &origin);
                 buildings.push(Building {
-                    id: format!("{}_building", parcel.id),
+                    id: building_id.clone(),
                     polygon: Polygon::from_ring(ring),
                     height_m: Some(height_m),
-                    typology: Some("p107_solid_v01".into()),
+                    typology: Some(BuildingTypology::SolidV01.to_label().into()),
                     year_built: None,
                     parcel_id: Some(parcel.id.clone()),
                     floors: None,
                     openings: vec![],
                     interior_cells: vec![],
                 });
+                building_typology_assignments.push((building_id, BuildingTypology::SolidV01));
                 n_solid += 1;
             } else {
                 // Too deep for single-sided daylight -- carve a courtyard.
@@ -284,28 +313,29 @@ impl PatternOperator for P107WingsOfLight {
                     // fall back to solid rather than carve a token slit.
                     let ring = local_to_ring(&envelope, &origin);
                     buildings.push(Building {
-                        id: format!("{}_building", parcel.id),
+                        id: building_id.clone(),
                         polygon: Polygon::from_ring(ring),
                         height_m: Some(height_m),
-                        typology: Some("p107_solid_fallback_v01".into()),
+                        typology: Some(BuildingTypology::SolidFallbackV01.to_label().into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
                         floors: None,
                         openings: vec![],
                         interior_cells: vec![],
                     });
+                    building_typology_assignments.push((building_id, BuildingTypology::SolidFallbackV01));
                     n_solid += 1;
                 } else {
                     let outer_ring = local_to_ring(&envelope, &origin);
                     let inner_ring = local_to_ring(&inner, &origin);
                     buildings.push(Building {
-                        id: format!("{}_building", parcel.id),
+                        id: building_id.clone(),
                         polygon: Polygon::from_parts(vec![PolygonPart {
                             outer: outer_ring,
                             holes: vec![inner_ring.clone()],
                         }]),
                         height_m: Some(height_m),
-                        typology: Some("p107_courtyard_v01".into()),
+                        typology: Some(BuildingTypology::CourtyardV01.to_label().into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
                         floors: None,
@@ -317,14 +347,16 @@ impl PatternOperator for P107WingsOfLight {
                         polygon: Polygon::from_ring(inner_ring),
                         kind: OpenSpaceKind::Plaza,
                     });
+                    building_typology_assignments.push((building_id, BuildingTypology::CourtyardV01));
                     n_courtyard += 1;
                 }
             }
 
             let mut updated = (*parcel).clone();
-            updated.use_category = Some("p95_pad_with_building".into());
+            updated.use_category = Some(PadRole::PadWithBuilding.to_label().into());
             new_parcels.push(updated);
             replaced.push(parcel.id.clone());
+            pad_role_assignments.push((parcel.id.clone(), PadRole::PadWithBuilding));
         }
 
         if n_solid == 0 && n_courtyard == 0 {
@@ -368,7 +400,7 @@ impl PatternOperator for P107WingsOfLight {
             params: params.as_map(),
         };
 
-        Ok(Subdivision {
+        let sub = Subdivision {
             new_parcels,
             new_open_space: new_open,
             new_buildings: buildings,
@@ -378,6 +410,29 @@ impl PatternOperator for P107WingsOfLight {
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
-        })
+        };
+        Ok((sub, building_typology_assignments, pad_role_assignments))
+    }
+
+    /// Native `System` port (inherent method -- see `system.rs`'s own
+    /// module doc for why this isn't a second `impl System`). Runs the
+    /// same computation `apply()` does (via `apply_with_assignments`, not
+    /// a reimplementation), then writes `BuildingTypology` and `PadRole`
+    /// directly into the resulting `World` from the assignments that
+    /// computation already produced -- not by parsing the `Subdivision`'s
+    /// strings back out afterward.
+    pub fn run_native(&self, world: &World, params: &P107Params, parcel_id: &str, seed: u64) -> Result<World, String> {
+        let nbhd = world.to_neighborhood();
+        let (sub, typology_assignments, pad_role_assignments) =
+            self.apply_with_assignments(&nbhd, parcel_id, params, seed)?;
+        let new_nbhd = apply_subdivision(&nbhd, &sub);
+        let mut new_world = World::from_neighborhood(&new_nbhd);
+        for (id, typology) in typology_assignments {
+            new_world.building_typologies.insert(id, typology);
+        }
+        for (id, role) in pad_role_assignments {
+            new_world.pad_roles.insert(id, role);
+        }
+        Ok(new_world)
     }
 }

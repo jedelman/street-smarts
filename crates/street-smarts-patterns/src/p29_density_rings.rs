@@ -53,10 +53,12 @@
 //!   same circular rings as a compact one).
 
 use crate::parameters::{ParamSpec, Parameters};
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::DensityTier;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::world::World;
 use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
@@ -139,69 +141,25 @@ impl PatternOperator for P29DensityRings {
             return Err("p29_density_rings only supports parcel_id \"*\" -- it tags every BLOCK_n parcel in one pass, same convention as PathNetwork.".into());
         }
 
-        let blocks: Vec<&Parcel> = nbhd.select(&Scope::Block).collect();
-        if blocks.is_empty() {
-            return Err("p29_density_rings: no BLOCK_n parcels found -- run P37 House Cluster first.".into());
-        }
-
-        // Area-weighted centroid of the blocks as a proxy for the site's
-        // "density center" -- see the module doc's caveat on this.
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        let mut total_area = 0.0;
-        let mut block_centroids: Vec<(LngLat, f64)> = Vec::with_capacity(blocks.len());
-        for b in &blocks {
-            let a = b.polygon.area_m2().max(1.0);
-            let c = LngLat::new(
-                b.polygon.outer.iter().map(|q| q.lng).sum::<f64>() / b.polygon.outer.len() as f64,
-                b.polygon.outer.iter().map(|q| q.lat).sum::<f64>() / b.polygon.outer.len() as f64,
-            );
-            cx += c.lng * a;
-            cy += c.lat * a;
-            total_area += a;
-            block_centroids.push((c, a));
-        }
-        let center = LngLat::new(cx / total_area, cy / total_area);
-
-        // Local-meter distance from center for each block (reuses the same
-        // lng/lat-specific meter conversion `planar` uses elsewhere).
-        let m_per_deg_lat = 110_540.0;
-        let m_per_deg_lng = 111_320.0 * (center.lat.to_radians().cos());
-        let dist_m = |p: LngLat| -> f64 {
-            let dx = (p.lng - center.lng) * m_per_deg_lng;
-            let dy = (p.lat - center.lat) * m_per_deg_lat;
-            (dx * dx + dy * dy).sqrt()
-        };
-        let max_dist = block_centroids.iter()
-            .map(|(c, _)| dist_m(*c))
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+        let assignments = compute_ring_assignments(nbhd, params)?;
 
         let n_rings = params.n_rings.round().max(1.0) as usize;
-        let mut new_parcels: Vec<Parcel> = Vec::with_capacity(blocks.len());
-        let mut replaced: Vec<String> = Vec::with_capacity(blocks.len());
-        let mut steps: Vec<String> = Vec::new();
+        let mut new_parcels: Vec<Parcel> = Vec::with_capacity(assignments.len());
+        let mut replaced: Vec<String> = Vec::with_capacity(assignments.len());
         let mut tier_counts: Vec<usize> = vec![0; n_rings];
 
-        for (b, (c, _)) in blocks.iter().zip(block_centroids.iter()) {
-            let normalized = (dist_m(*c) / max_dist).clamp(0.0, 1.0);
-            let ring_idx = ((normalized * n_rings as f64) as usize).min(n_rings - 1);
-            tier_counts[ring_idx] += 1;
+        for a in &assignments {
+            tier_counts[a.ring_idx] += 1;
+            let tier = street_smarts_core::ring_tier_label(a.ring_idx, a.n_rings);
 
-            let tier = street_smarts_core::ring_tier_label(ring_idx, n_rings);
-            // Linear interpolation between core and edge targets across
-            // the ring index -- ring 0 gets exactly core_target_stories,
-            // the last ring gets exactly edge_target_stories.
-            let t = if n_rings > 1 { ring_idx as f64 / (n_rings - 1) as f64 } else { 0.0 };
-            let target_stories = params.core_target_stories + t * (params.edge_target_stories - params.core_target_stories);
-
-            let mut updated = (*b).clone();
+            let mut updated = a.block.clone();
             updated.density_tier = Some(tier);
-            updated.target_stories = Some(target_stories);
+            updated.target_stories = Some(a.target_stories);
             new_parcels.push(updated);
-            replaced.push(b.id.clone());
+            replaced.push(a.block.id.clone());
         }
 
+        let mut steps: Vec<String> = Vec::new();
         for (i, count) in tier_counts.iter().enumerate() {
             let label = street_smarts_core::ring_tier_label(i, n_rings);
             steps.push(format!("{label}: {count} block(s)"));
@@ -241,5 +199,109 @@ impl PatternOperator for P29DensityRings {
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
+    }
+}
+
+/// One block's real assignment: the exact `(ring_idx, n_rings)` pair and
+/// derived `target_stories` this operator computes for it. Shared by
+/// `apply()` (which projects `ring_idx`/`n_rings` into the string label via
+/// `ring_tier_label`) and `run_native()` (which projects the SAME
+/// `ring_idx`/`n_rings` into `DensityTier` via `DensityTier::from_ring`) --
+/// extracted so both are genuinely two views of one computation, not one
+/// parsed from the other. See `system.rs`'s own module doc for why this
+/// distinction is what "native" dual-write means here.
+struct RingAssignment<'a> {
+    block: &'a Parcel,
+    ring_idx: usize,
+    n_rings: usize,
+    target_stories: f64,
+}
+
+fn compute_ring_assignments<'a>(
+    nbhd: &'a Neighborhood,
+    params: &P29Params,
+) -> Result<Vec<RingAssignment<'a>>, String> {
+    let blocks: Vec<&Parcel> = nbhd.select(&Scope::Block).collect();
+    if blocks.is_empty() {
+        return Err("p29_density_rings: no BLOCK_n parcels found -- run P37 House Cluster first.".into());
+    }
+
+    // Area-weighted centroid of the blocks as a proxy for the site's
+    // "density center" -- see the module doc's caveat on this.
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    let mut total_area = 0.0;
+    let mut block_centroids: Vec<(LngLat, f64)> = Vec::with_capacity(blocks.len());
+    for b in &blocks {
+        let a = b.polygon.area_m2().max(1.0);
+        let c = LngLat::new(
+            b.polygon.outer.iter().map(|q| q.lng).sum::<f64>() / b.polygon.outer.len() as f64,
+            b.polygon.outer.iter().map(|q| q.lat).sum::<f64>() / b.polygon.outer.len() as f64,
+        );
+        cx += c.lng * a;
+        cy += c.lat * a;
+        total_area += a;
+        block_centroids.push((c, a));
+    }
+    let center = LngLat::new(cx / total_area, cy / total_area);
+
+    // Local-meter distance from center for each block (reuses the same
+    // lng/lat-specific meter conversion `planar` uses elsewhere).
+    let m_per_deg_lat = 110_540.0;
+    let m_per_deg_lng = 111_320.0 * (center.lat.to_radians().cos());
+    let dist_m = |p: LngLat| -> f64 {
+        let dx = (p.lng - center.lng) * m_per_deg_lng;
+        let dy = (p.lat - center.lat) * m_per_deg_lat;
+        (dx * dx + dy * dy).sqrt()
+    };
+    let max_dist = block_centroids.iter()
+        .map(|(c, _)| dist_m(*c))
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
+
+    let n_rings = params.n_rings.round().max(1.0) as usize;
+    let mut out = Vec::with_capacity(blocks.len());
+    for (b, (c, _)) in blocks.iter().zip(block_centroids.iter()) {
+        let normalized = (dist_m(*c) / max_dist).clamp(0.0, 1.0);
+        let ring_idx = ((normalized * n_rings as f64) as usize).min(n_rings - 1);
+        // Linear interpolation between core and edge targets across the
+        // ring index -- ring 0 gets exactly core_target_stories, the last
+        // ring gets exactly edge_target_stories.
+        let t = if n_rings > 1 { ring_idx as f64 / (n_rings - 1) as f64 } else { 0.0 };
+        let target_stories = params.core_target_stories + t * (params.edge_target_stories - params.core_target_stories);
+        out.push(RingAssignment { block: b, ring_idx, n_rings, target_stories });
+    }
+    Ok(out)
+}
+
+impl P29DensityRings {
+    /// The native `System` port -- see `system.rs`'s own module doc for
+    /// why this is an inherent method, not a second `impl System`,  and
+    /// PRIMITIVES_SPEC.md §1.5's milestone this satisfies literally
+    /// ("one real pattern... is ported to System... without changing its
+    /// own test file's assertions" -- `apply()`'s own test file is
+    /// untouched by this addition).
+    ///
+    /// Builds the same `Subdivision`/string output `apply()` does (via the
+    /// same shared `compute_ring_assignments` helper -- not a second,
+    /// possibly-drifting reimplementation), applies it, and ALSO writes
+    /// `DensityTier::from_ring` directly into the resulting `World`'s
+    /// `density_tiers` map from the same `ring_idx`/`n_rings` pair used to
+    /// build the string -- not by parsing the string back out afterward.
+    pub fn run_native(&self, world: &World, params: &P29Params, seed: u64) -> Result<World, String> {
+        let nbhd = world.to_neighborhood();
+        let assignments = compute_ring_assignments(&nbhd, params)?;
+
+        let sub = self.apply(&nbhd, "*", params, seed)?;
+        let new_nbhd = apply_subdivision(&nbhd, &sub);
+        let mut new_world = World::from_neighborhood(&new_nbhd);
+
+        for a in &assignments {
+            new_world.density_tiers.insert(
+                a.block.id.clone(),
+                DensityTier::from_ring(a.ring_idx, a.n_rings),
+            );
+        }
+        Ok(new_world)
     }
 }

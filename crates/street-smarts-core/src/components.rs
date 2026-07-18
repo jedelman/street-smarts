@@ -91,6 +91,53 @@
 //! commit chain today, it just isn't the one the production pipeline
 //! currently builds.
 
+//! # `PadRole`, `BuildingTypology`, `StreetClassification`: the rest of
+//! `Parcel.use_category`/`Building.typology`/`Street.classification`
+//!
+//! Same shape as `DensityTier` above (an `Option<Self>`-returning
+//! `from_label`, read-derived by `World::from_neighborhood` from whatever
+//! string an operator already wrote -- see `world.rs`), covering the
+//! other three of PRIMITIVES_SPEC.md §1.1's five named stringly fields
+//! (`Parcel.spec` is the fifth; already served by `Scope`, a Phase 1
+//! primitive -- see `scope.rs` -- so it doesn't need a component here).
+//!
+//! Each vocabulary is the REAL, exhaustive set of values any current
+//! operator actually writes (confirmed by grep across
+//! `street-smarts-patterns/src`, not assumed):
+//! - `PadRole`: `p37_house_cluster` ("house_cluster_block"),
+//!   `p95_building_complex` ("p95_building_pad"), AND `p107_wings_of_light`
+//!   -- once it shapes a pad into a real building, it re-tags the source
+//!   parcel "p95_pad_with_building" (originally assumed to be
+//!   legacy-`building_shape`-only; grepping the real corrected-pipeline
+//!   loop found P107 sets it too, on every pad it successfully shapes).
+//!   The legacy `building_shape` stub also writes both `"house_cluster_block"`-
+//!   adjacent `"p95_inscribed_v01"` labels (see `BuildingTypology` below) --
+//!   it isn't a *third* origin for `PadRole` specifically.
+//! - `BuildingTypology`: `p107_wings_of_light`, the real pipeline's
+//!   origin site ("p107_solid_v01" / "p107_solid_fallback_v01" /
+//!   "p107_courtyard_v01"), and the legacy `building_shape` stub
+//!   ("p95_inscribed_v01").
+//! - `StreetClassification`: `path_network` ("local" / "pedestrian") and
+//!   `p61_small_public_squares` ("pedestrian") are the only two real
+//!   origin sites today. `Arterial`/`Alley` are included because
+//!   `nir.rs`'s own field doc comment names them as the intended full
+//!   vocabulary ("arterial", "local", "alley", "pedestrian"), even though
+//!   no operator produces them yet -- `from_label` already handles them
+//!   correctly the day one does, without a second change here.
+//!
+//! `System`-native dual-write (component computed directly during
+//! generation, not re-derived from the string after the fact) is built
+//! for each field's real origin operator in the corrected pipeline --
+//! P29 (`DensityTier`), P37 and P95 (`PadRole`), P107 (`BuildingTypology`
+//! AND `PadRole` -- it originates both), PathNetwork and P61
+//! (`StreetClassification`) -- see each operator's own module for its
+//! `run_native` inherent method (not a second `impl System` -- see
+//! `system.rs`'s own module doc for why). The legacy `building_shape` stub
+//! is covered only by the generic `System` blanket wrapper (it derives its
+//! components correctly via `World::from_neighborhood`, same as every
+//! other non-native-ported operator), matching its own de-prioritized
+//! status everywhere else in this codebase.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +149,25 @@ pub enum DensityTier {
 }
 
 impl DensityTier {
+    /// Classify a ring index directly, without going through a string at
+    /// all -- the SAME branch structure as `ring_tier_label` below (ring 0
+    /// -> `Core`, the last ring -> `Edge`, anything between -> `Middle`),
+    /// used by `p29_density_rings`'s `run_native` so the component and the
+    /// string label are two projections of the one `(ring_idx, n_rings)`
+    /// value it already computes per block, not one parsed from the other.
+    /// `every_ring_classification_agrees_with_the_string_label_path` below
+    /// is the property test proving these two independent branch chains
+    /// never disagree.
+    pub fn from_ring(ring_idx: usize, n_rings: usize) -> Self {
+        if ring_idx == 0 {
+            Self::Core
+        } else if n_rings > 0 && ring_idx == n_rings - 1 {
+            Self::Edge
+        } else {
+            Self::Middle
+        }
+    }
+
     /// Parse `p29_density_rings`'s own label convention. `None` for any
     /// value that isn't `"core"`, `"edge"`, or `"ring_N"` (including the
     /// field simply being absent -- P29 hasn't run, or a fixture predates
@@ -133,6 +199,137 @@ pub fn ring_tier_label(ring_idx: usize, n_rings: usize) -> String {
         "edge".to_string()
     } else {
         format!("ring_{ring_idx}")
+    }
+}
+
+/// `Parcel.use_category`'s typed vocabulary -- see this module's own top
+/// doc comment for the real origin sites (`PadWithBuilding` is real-pipeline,
+/// written by `p107_wings_of_light`, not legacy-only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PadRole {
+    HouseClusterBlock,
+    BuildingPad,
+    PadWithBuilding,
+}
+
+impl PadRole {
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "house_cluster_block" => Some(Self::HouseClusterBlock),
+            "p95_building_pad" => Some(Self::BuildingPad),
+            "p95_pad_with_building" => Some(Self::PadWithBuilding),
+            _ => None,
+        }
+    }
+
+    /// The exact string label this variant round-trips to -- `p37_house_cluster`,
+    /// `p95_building_complex`'s own convention, used by their native
+    /// `System` ports (see each operator's own module) to produce the
+    /// component and the string from one shared computation instead of
+    /// parsing the string back out after writing it.
+    pub fn to_label(self) -> &'static str {
+        match self {
+            Self::HouseClusterBlock => "house_cluster_block",
+            Self::BuildingPad => "p95_building_pad",
+            Self::PadWithBuilding => "p95_pad_with_building",
+        }
+    }
+}
+
+/// `Building.typology`'s typed vocabulary -- see this module's own top doc
+/// comment for the real origin sites and why `InscribedV01` is legacy-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildingTypology {
+    InscribedV01,
+    SolidV01,
+    SolidFallbackV01,
+    CourtyardV01,
+}
+
+impl BuildingTypology {
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "p95_inscribed_v01" => Some(Self::InscribedV01),
+            "p107_solid_v01" => Some(Self::SolidV01),
+            "p107_solid_fallback_v01" => Some(Self::SolidFallbackV01),
+            "p107_courtyard_v01" => Some(Self::CourtyardV01),
+            _ => None,
+        }
+    }
+
+    /// The exact string label this variant round-trips to --
+    /// `p107_wings_of_light`'s own convention, used by its native `System`
+    /// port to produce the component and the string from one shared
+    /// computation.
+    pub fn to_label(self) -> &'static str {
+        match self {
+            Self::InscribedV01 => "p95_inscribed_v01",
+            Self::SolidV01 => "p107_solid_v01",
+            Self::SolidFallbackV01 => "p107_solid_fallback_v01",
+            Self::CourtyardV01 => "p107_courtyard_v01",
+        }
+    }
+
+    /// Whether this typology is a courtyard (ring) building -- the one
+    /// predicate repeated as a raw string comparison
+    /// (`typology.as_deref() == Some("p107_courtyard_v01")`) across eight+
+    /// call sites in `street-smarts-patterns`/`street-smarts-opinions`
+    /// before this component existed. Those call sites still compare the
+    /// raw `Option<String>` field (this component is additive, not a
+    /// replacement for existing read-sites -- see this module's own top
+    /// doc comment), but new code should prefer this.
+    pub fn is_courtyard(self) -> bool {
+        matches!(self, Self::CourtyardV01)
+    }
+
+    /// Convenience for the common call-site shape
+    /// (`building.typology.as_deref()`) -- replaces the raw string
+    /// comparison (`typology.as_deref() == Some("p107_courtyard_v01")`)
+    /// that was duplicated across 5+ call sites in
+    /// `street-smarts-patterns`/`street-smarts-opinions` before this
+    /// component existed. An unrecognized or absent label is not a
+    /// courtyard (matches every existing call site's own `== Some(...)`
+    /// behavior on `None`/an unrelated typology).
+    pub fn label_is_courtyard(label: Option<&str>) -> bool {
+        label.and_then(Self::from_label).map(Self::is_courtyard).unwrap_or(false)
+    }
+}
+
+/// `Street.classification`'s typed vocabulary -- see this module's own top
+/// doc comment for why `Arterial`/`Alley` have no real origin site yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreetClassification {
+    Arterial,
+    Local,
+    Alley,
+    Pedestrian,
+}
+
+impl StreetClassification {
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "arterial" => Some(Self::Arterial),
+            "local" => Some(Self::Local),
+            "alley" => Some(Self::Alley),
+            "pedestrian" => Some(Self::Pedestrian),
+            _ => None,
+        }
+    }
+
+    /// The exact string label this variant round-trips to --
+    /// `path_network`/`p61_small_public_squares`'s own convention, used by
+    /// their native `System` ports to produce the component and the
+    /// string from one shared computation.
+    pub fn to_label(self) -> &'static str {
+        match self {
+            Self::Arterial => "arterial",
+            Self::Local => "local",
+            Self::Alley => "alley",
+            Self::Pedestrian => "pedestrian",
+        }
     }
 }
 
@@ -182,6 +379,101 @@ mod tests {
                 let parsed = DensityTier::from_label(&label);
                 assert!(parsed.is_some(), "label {label:?} (ring {ring_idx}/{n_rings}) should parse");
             }
+        }
+    }
+
+    #[test]
+    fn every_ring_classification_agrees_with_the_string_label_path() {
+        // from_ring (component-native) and from_label(ring_tier_label(...))
+        // (string-derived) are two independently-written branch chains
+        // over the same (ring_idx, n_rings) input -- this is what makes
+        // p29_density_rings's run_native a genuine second computation
+        // rather than a trivial wrapper. If they ever disagreed, the
+        // component and the string this operator produces would silently
+        // mean different things.
+        for n_rings in [1usize, 2, 3, 6] {
+            for ring_idx in 0..n_rings {
+                let native = DensityTier::from_ring(ring_idx, n_rings);
+                let via_label = DensityTier::from_label(&ring_tier_label(ring_idx, n_rings));
+                assert_eq!(
+                    Some(native), via_label,
+                    "ring {ring_idx}/{n_rings}: from_ring={native:?} but from_label(ring_tier_label(...))={via_label:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pad_role_classifies_the_real_generator_vocabulary() {
+        assert_eq!(PadRole::from_label("house_cluster_block"), Some(PadRole::HouseClusterBlock));
+        assert_eq!(PadRole::from_label("p95_building_pad"), Some(PadRole::BuildingPad));
+        assert_eq!(PadRole::from_label("p95_pad_with_building"), Some(PadRole::PadWithBuilding));
+        assert_eq!(PadRole::from_label("bogus"), None);
+        assert_eq!(PadRole::from_label(""), None);
+    }
+
+    #[test]
+    fn pad_role_round_trips_through_to_label() {
+        for variant in [PadRole::HouseClusterBlock, PadRole::BuildingPad, PadRole::PadWithBuilding] {
+            assert_eq!(PadRole::from_label(variant.to_label()), Some(variant));
+        }
+    }
+
+    #[test]
+    fn building_typology_classifies_the_real_generator_vocabulary() {
+        assert_eq!(BuildingTypology::from_label("p95_inscribed_v01"), Some(BuildingTypology::InscribedV01));
+        assert_eq!(BuildingTypology::from_label("p107_solid_v01"), Some(BuildingTypology::SolidV01));
+        assert_eq!(BuildingTypology::from_label("p107_solid_fallback_v01"), Some(BuildingTypology::SolidFallbackV01));
+        assert_eq!(BuildingTypology::from_label("p107_courtyard_v01"), Some(BuildingTypology::CourtyardV01));
+        assert_eq!(BuildingTypology::from_label("bogus"), None);
+    }
+
+    #[test]
+    fn building_typology_round_trips_through_to_label() {
+        for variant in [
+            BuildingTypology::InscribedV01,
+            BuildingTypology::SolidV01,
+            BuildingTypology::SolidFallbackV01,
+            BuildingTypology::CourtyardV01,
+        ] {
+            assert_eq!(BuildingTypology::from_label(variant.to_label()), Some(variant));
+        }
+    }
+
+    #[test]
+    fn building_typology_is_courtyard_matches_only_the_courtyard_variant() {
+        assert!(BuildingTypology::CourtyardV01.is_courtyard());
+        assert!(!BuildingTypology::SolidV01.is_courtyard());
+        assert!(!BuildingTypology::SolidFallbackV01.is_courtyard());
+        assert!(!BuildingTypology::InscribedV01.is_courtyard());
+    }
+
+    #[test]
+    fn label_is_courtyard_matches_the_raw_string_comparison_it_replaces() {
+        assert!(BuildingTypology::label_is_courtyard(Some("p107_courtyard_v01")));
+        assert!(!BuildingTypology::label_is_courtyard(Some("p107_solid_v01")));
+        assert!(!BuildingTypology::label_is_courtyard(Some("bogus")));
+        assert!(!BuildingTypology::label_is_courtyard(None));
+    }
+
+    #[test]
+    fn street_classification_classifies_the_real_generator_vocabulary() {
+        assert_eq!(StreetClassification::from_label("arterial"), Some(StreetClassification::Arterial));
+        assert_eq!(StreetClassification::from_label("local"), Some(StreetClassification::Local));
+        assert_eq!(StreetClassification::from_label("alley"), Some(StreetClassification::Alley));
+        assert_eq!(StreetClassification::from_label("pedestrian"), Some(StreetClassification::Pedestrian));
+        assert_eq!(StreetClassification::from_label("bogus"), None);
+    }
+
+    #[test]
+    fn street_classification_round_trips_through_to_label() {
+        for variant in [
+            StreetClassification::Arterial,
+            StreetClassification::Local,
+            StreetClassification::Alley,
+            StreetClassification::Pedestrian,
+        ] {
+            assert_eq!(StreetClassification::from_label(variant.to_label()), Some(variant));
         }
     }
 }
