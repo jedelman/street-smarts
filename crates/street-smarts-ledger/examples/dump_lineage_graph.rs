@@ -68,7 +68,12 @@ fn entity_kind(id: &str) -> (&'static str, &'static str) {
         ("#4fb3a9", "courtyard")
     } else if id.contains("_P95_cell_") {
         ("#5b9bd5", "pad")
-    } else if id.starts_with("BLOCK_") {
+    } else if id.contains("_BLOCK_") {
+        // Real block ids are "{parcel_id}_BLOCK_{n}" (p37_house_cluster.rs's
+        // own `format!("{}_BLOCK_{}", parcel_id, ...)`), never a bare
+        // "BLOCK_..." prefix -- `starts_with` here always missed and fell
+        // through to "other", making blocks indistinguishable from the raw
+        // parcel until this was caught by eye against real satellite imagery.
         ("#8064a2", "block")
     } else {
         ("#999999", "other")

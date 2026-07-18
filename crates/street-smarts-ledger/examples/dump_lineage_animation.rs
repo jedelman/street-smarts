@@ -46,7 +46,14 @@ fn entity_kind_color(id: &str) -> &'static str {
         "#4fb3a9"
     } else if id.contains("_P95_cell_") {
         "#5b9bd5"
-    } else if id.starts_with("BLOCK_") {
+    } else if id.contains("_BLOCK_") {
+        // Real block ids are "{parcel_id}_BLOCK_{n}" -- never a bare
+        // "BLOCK_..." prefix. A `starts_with` check here always misses and
+        // silently falls through to the raw-parcel color below, making a
+        // block indistinguishable from the parcel it replaced -- caught by
+        // eye against real satellite imagery, not by any test (nothing
+        // here asserted per-kind color, only that SOME opacity animation
+        // existed).
         "#8064a2"
     } else {
         "#c0392b" // the raw pre-P37 parcel
