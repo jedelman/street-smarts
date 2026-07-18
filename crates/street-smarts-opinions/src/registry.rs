@@ -7,9 +7,9 @@ use crate::pattern::{
     P115CourtyardsWhichLive, P130EntranceRoom, P133StaircaseAsAStage, P165OpeningToTheStreet,
     P21FourStoryLimit, P221NaturalDoorsAndWindows, P29DensityRings, P30ActivityNodes,
     P37HouseCluster, P49LoopedLocalRoads, P50TJunctions, P60AccessibleGreen,
-    P61SmallPublicSquares, P67CommonLand, P95BuildingComplexOpinion, P106PositiveOutdoorSpace,
-    P127IntimacyGradient, P128IndoorSunlight, P129CommonAreasAtTheHeart, P131TheFlowThroughRooms,
-    P159LightOnTwoSides,
+    P61SmallPublicSquares, P67CommonLand, P95BuildingComplexOpinion, P99MainBuilding,
+    P106PositiveOutdoorSpace, P127IntimacyGradient, P128IndoorSunlight, P129CommonAreasAtTheHeart,
+    P131TheFlowThroughRooms, P159LightOnTwoSides,
 };
 use serde::{Deserialize, Serialize};
 use street_smarts_core::nir::Neighborhood;
@@ -53,6 +53,7 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P49LoopedLocalRoads),
         Box::new(P50TJunctions),
         Box::new(P60AccessibleGreen),
+        Box::new(P99MainBuilding),
     ]
 }
 
