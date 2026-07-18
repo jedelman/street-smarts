@@ -279,7 +279,8 @@ def build_scene(nbhd, context_path=None):
     origin_lng = sum(p["lng"] for p in all_pts) / len(all_pts)
     origin_lat = sum(p["lat"] for p in all_pts) / len(all_pts)
 
-    building_solids = []  # (solid, color_name)
+    building_solids = []  # (solid, color_name) -- real punched openings, for the isometric/elevation/plan views
+    building_solids_unpunched = []  # same footprints/heights, no window/door boolean cuts -- see export_glb's own docstring for why
     building_ids_with_real_shape = set()
 
     # Real P107-shaped buildings first (real height, may have a courtyard hole).
@@ -294,8 +295,9 @@ def build_scene(nbhd, context_path=None):
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
-                solid = punch_openings(solid, b, origin_lng, origin_lat)
-                building_solids.append((solid, "building_shaped"))
+                building_solids_unpunched.append((solid, "building_shaped"))
+                punched = punch_openings(solid, b, origin_lng, origin_lat)
+                building_solids.append((punched, "building_shaped"))
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
         if bid.endswith("_building"):
@@ -320,6 +322,7 @@ def build_scene(nbhd, context_path=None):
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 building_solids.append((solid, "building_unshaped"))
+                building_solids_unpunched.append((solid, "building_unshaped"))
 
     # Plazas / open space -- thin colored slabs at ground level.
     plaza_solids = []
@@ -361,6 +364,7 @@ def build_scene(nbhd, context_path=None):
 
     return {
         "buildings": building_solids,
+        "buildings_unpunched": building_solids_unpunched,
         "plazas": plaza_solids,
         "streets": street_solids,
         "context": context_solids,
@@ -535,21 +539,53 @@ def render_svg_projection(combined, out_path, direction, title):
 
 
 def export_glb(scene, out_path):
-    """Export the full scene as a single binary glTF (.glb) -- colored the
-    same as `render_isometric`, window/door openings already cut. A real,
+    """Export the full scene as a single binary glTF (.glb) -- a real,
     colored 3D model any standard viewer can open (web three.js/
     `<model-viewer>`, Blender, VS Code's built-in 3D preview, online glTF
     viewers) directly, without re-running the Rust pipeline or cadquery to
     look at it again.
 
-    Real punched exterior openings, no interior walls -- see
-    `render_floor_plan`'s own module doc for why interior partitions are
-    drawn as a 2D plan instead of built into the 3D solid.
+    Uses `scene["buildings_unpunched"]`, NOT `scene["buildings"]` -- unlike
+    `render_isometric`, which just rasterizes whatever it's given into a
+    fixed-size PNG no matter how complex the source mesh, cadquery's GLTF
+    writer re-tessellates straight from the BREP geometry with (as far as
+    this file's own testing found) no way to request a coarser mesh --
+    `Assembly.save`'s own `tolerance`/`angularTolerance` kwargs, and
+    manually calling `shape.tessellate()` at a coarser value before
+    `asm.add()`, both produced byte-identical output regardless of the
+    value passed. Measured directly, not assumed: `clean_baseline`'s 24
+    buildings WITH `punch_openings`'s real window/door boolean cuts
+    produced 145,344 triangles and a ~25.4 MiB file (real courtyard
+    buildings with dozens of openings each -- every subtraction adds real
+    topological complexity, and it compounds); the exact same 24
+    buildings WITHOUT punching produced 956 triangles and 0.17 MiB.
+    Excluding `scene["context"]` (261 real Overture buildings, no
+    instancing/geometry sharing across assembly members either) helps too,
+    but is a rounding error next to that ~150x difference -- punching was
+    the real cause, not context.
+
+    First found the hard way: 261 context buildings alone were blamed and
+    excluded, but the resulting file was STILL ~26 MiB (over Cloudflare
+    Workers' hard 25 MiB per-asset limit) -- which silently failed the
+    Workers deploy step and skipped every step after it, including the
+    actual Pages deploy that serves the live site, so a real code change
+    shipped in CI green but never actually reached production. Fixed for
+    real only after measuring where the triangles were actually coming
+    from, not after the first plausible-looking suspect.
+
+    The isometric PNG and elevation/plan SVG exports keep full punched
+    detail (`render_isometric`/`build_exterior_master` still use
+    `scene["buildings"]`) -- only the downloadable .glb trades real
+    window/door cuts for a plain massing model, to stay inside a hard
+    external size limit rather than a soft budget. No interior walls
+    either way -- see `render_floor_plan`'s own module doc for why
+    interior partitions are drawn as a 2D plan instead of built into the
+    3D solid.
     """
     asm = cq.Assembly()
     n_added = 0
     for group, alpha, solids_key in (
-        ("context", 0.45, "context"), ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings")
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched")
     ):
         for solid, kind in scene.get(solids_key, []):
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
