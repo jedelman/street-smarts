@@ -19,6 +19,7 @@ pub mod p133_staircase_as_a_stage;
 pub mod p114_hierarchy_of_open_space;
 pub mod p115_courtyards_which_live;
 pub mod p159_light_on_two_sides;
+pub mod p165_opening_to_the_street;
 pub mod p221_natural_doors_and_windows;
 pub mod p67_common_land;
 
@@ -38,5 +39,6 @@ pub use p133_staircase_as_a_stage::P133StaircaseAsAStage;
 pub use p114_hierarchy_of_open_space::P114HierarchyOfOpenSpace;
 pub use p115_courtyards_which_live::P115CourtyardsWhichLive;
 pub use p159_light_on_two_sides::P159LightOnTwoSides;
+pub use p165_opening_to_the_street::P165OpeningToTheStreet;
 pub use p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 pub use p67_common_land::P67CommonLand;
