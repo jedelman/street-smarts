@@ -173,6 +173,42 @@ pub fn haversine_m(a: &LngLat, b: &LngLat) -> f64 {
     2.0 * R * h.sqrt().asin()
 }
 
+/// Shortest distance from a point to a polyline (a sequence of segments),
+/// in meters -- the real perpendicular distance to the nearest segment,
+/// clamped to that segment's endpoints, not just distance to a vertex.
+/// Uses a local equirectangular projection centered on each segment, which
+/// is accurate at the neighborhood scale this crate operates at.
+pub fn point_to_polyline_m(p: &LngLat, polyline: &[LngLat]) -> f64 {
+    if polyline.len() < 2 {
+        return polyline.first().map(|q| haversine_m(p, q)).unwrap_or(f64::MAX);
+    }
+    polyline
+        .windows(2)
+        .map(|w| point_to_segment_m(p, &w[0], &w[1]))
+        .fold(f64::MAX, f64::min)
+}
+
+fn point_to_segment_m(p: &LngLat, a: &LngLat, b: &LngLat) -> f64 {
+    let lat0 = ((a.lat + b.lat) / 2.0).to_radians();
+    let m_per_deg_lat = 111_320.0;
+    let m_per_deg_lng = 111_320.0 * lat0.cos();
+    let to_xy = |q: &LngLat| {
+        (
+            (q.lng - a.lng) * m_per_deg_lng,
+            (q.lat - a.lat) * m_per_deg_lat,
+        )
+    };
+    let (bx, by) = to_xy(b);
+    let (px, py) = to_xy(p);
+    let len_sq = bx * bx + by * by;
+    if len_sq <= 1e-9 {
+        return (px * px + py * py).sqrt();
+    }
+    let t = ((px * bx + py * by) / len_sq).clamp(0.0, 1.0);
+    let (cx, cy) = (t * bx, t * by);
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,6 +228,30 @@ mod tests {
         let poly = Polygon::from_ring(ring);
         let area = poly.area_m2();
         assert!((area - 1.0).abs() < 0.05, "area was {area}");
+    }
+
+    #[test]
+    fn point_to_polyline_projects_onto_the_middle_of_a_long_segment() {
+        let m = 1.0 / 111_320.0;
+        // Segment runs along y=10 from x=-50 to x=50; point sits at the
+        // origin, directly "below" the segment's midpoint, not near either
+        // endpoint -- a vertex-only distance check would badly overshoot.
+        let a = LngLat::new(-50.0 * m, 10.0 * m);
+        let b = LngLat::new(50.0 * m, 10.0 * m);
+        let p = LngLat::new(0.0, 0.0);
+        let d = point_to_polyline_m(&p, &[a, b]);
+        assert!((d - 10.0).abs() < 0.5, "got {d}");
+    }
+
+    #[test]
+    fn point_to_polyline_clamps_past_the_segment_end() {
+        let m = 1.0 / 111_320.0;
+        let a = LngLat::new(0.0, 0.0);
+        let b = LngLat::new(10.0 * m, 0.0);
+        // Point is beyond b, off the end of the segment.
+        let p = LngLat::new(20.0 * m, 0.0);
+        let d = point_to_polyline_m(&p, &[a, b]);
+        assert!((d - 10.0).abs() < 0.5, "got {d}");
     }
 
     #[test]
