@@ -3,10 +3,11 @@
 use crate::activist::OwnershipPattern;
 use crate::geometric::{LevelsOfScale, StrongCenters};
 use crate::pattern::{
-    P108ConnectedBuildings, P130EntranceRoom, P133StaircaseAsAStage, P21FourStoryLimit,
-    P221NaturalDoorsAndWindows, P29DensityRings, P37HouseCluster, P61SmallPublicSquares,
-    P67CommonLand, P95BuildingComplexOpinion, P106PositiveOutdoorSpace, P127IntimacyGradient,
-    P128IndoorSunlight, P129CommonAreasAtTheHeart, P131TheFlowThroughRooms, P159LightOnTwoSides,
+    P108ConnectedBuildings, P114HierarchyOfOpenSpace, P130EntranceRoom, P133StaircaseAsAStage,
+    P21FourStoryLimit, P221NaturalDoorsAndWindows, P29DensityRings, P37HouseCluster,
+    P61SmallPublicSquares, P67CommonLand, P95BuildingComplexOpinion, P106PositiveOutdoorSpace,
+    P127IntimacyGradient, P128IndoorSunlight, P129CommonAreasAtTheHeart, P131TheFlowThroughRooms,
+    P159LightOnTwoSides,
 };
 use serde::{Deserialize, Serialize};
 use street_smarts_core::nir::Neighborhood;
@@ -41,6 +42,7 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P130EntranceRoom),
         Box::new(P133StaircaseAsAStage),
         Box::new(P67CommonLand),
+        Box::new(P114HierarchyOfOpenSpace),
     ]
 }
 
