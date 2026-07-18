@@ -211,14 +211,38 @@ pub fn run_corrected_pipeline_with_p37(
     seed: u64,
     p37_params: &P37Params,
 ) -> Neighborhood {
+    run_corrected_pipeline_with_p37_traced(baseline, parcel_id, seed, p37_params).0
+}
+
+/// Same as `run_corrected_pipeline_with_p37`, but also returns the real,
+/// literal sequence of operator ids that actually ran -- respecting every
+/// `if let Ok(...)` skip -- as it executed, not a hand-copied guess at what
+/// the function does. This is what closes `language_graph.rs`'s own
+/// documented limitation ("does not, by itself, keep this table in sync
+/// with `pipeline.rs`'s actual call sequence"): its test calls this
+/// function and validates the returned trace, not a second, independently-
+/// maintained literal that could silently drift from this one.
+/// `run_corrected_pipeline_with_p37` is a thin wrapper that discards the
+/// trace, so every existing caller/test is unaffected.
+pub fn run_corrected_pipeline_with_p37_traced(
+    baseline: &Neighborhood,
+    parcel_id: &str,
+    seed: u64,
+    p37_params: &P37Params,
+) -> (Neighborhood, Vec<&'static str>) {
+    let mut trace: Vec<&'static str> = Vec::new();
+
     let sub37 = P37HouseCluster.apply(baseline, parcel_id, p37_params, seed).unwrap();
     let mut nbhd = apply_subdivision(baseline, &sub37);
+    trace.push(P37HouseCluster.name());
 
     let sub52 = PathNetwork.apply(&nbhd, "*", &PathNetworkParams::defaults(), seed).unwrap();
     nbhd = apply_subdivision(&nbhd, &sub52);
+    trace.push(PathNetwork.name());
 
     if let Ok(sub29) = P29DensityRings.apply(&nbhd, "*", &P29Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub29);
+        trace.push(P29DensityRings.name());
     }
 
     let block_ids: Vec<String> = nbhd.select_ids(&Scope::Block);
@@ -228,6 +252,13 @@ pub fn run_corrected_pipeline_with_p37(
     let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
     let square_counts = allocate_squares_by_area(&block_areas, total_squares);
 
+    // Tracked at pipeline-sequence granularity ("did this stage run at all
+    // this pipeline pass"), not per-block -- matching what `LANGUAGE`
+    // models. A block that's skipped (too small, etc.) doesn't change
+    // whether P61/P95 count as having run, as long as at least one block
+    // succeeded.
+    let p61_ran = std::cell::Cell::new(false);
+    let p95_ran = std::cell::Cell::new(false);
     let (folded, _skipped) = run_per_block(&nbhd, &block_ids, seed, |state, block_id, block_seed| {
         let mut steps = Vec::new();
         let mut local = state.clone();
@@ -239,45 +270,64 @@ pub fn run_corrected_pipeline_with_p37(
                 );
                 if let Ok(sub) = &sub61 {
                     local = apply_subdivision(&local, sub);
+                    p61_ran.set(true);
                 }
                 steps.push(sub61);
             }
         }
-        steps.push(P95BuildingComplex.apply(&local, block_id, &P95Params::defaults(), block_seed));
+        let sub95 = P95BuildingComplex.apply(&local, block_id, &P95Params::defaults(), block_seed);
+        if sub95.is_ok() {
+            p95_ran.set(true);
+        }
+        steps.push(sub95);
         steps
     });
     nbhd = folded;
+    if p61_ran.get() {
+        trace.push(P61SmallPublicSquares.name());
+    }
+    if p95_ran.get() {
+        trace.push(P95BuildingComplex.name());
+    }
 
     if let Ok(sub108) = P108ConnectedBuildings.apply(&nbhd, "*", &P108Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub108);
+        trace.push(P108ConnectedBuildings.name());
     }
 
     if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &P96Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub96);
+        trace.push(P96NumberOfStories.name());
     }
 
     if let Ok(sub107) = P107WingsOfLight.apply(&nbhd, "*", &P107Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub107);
+        trace.push(P107WingsOfLight.name());
     }
 
     if let Ok(sub127) = P127IntimacyGradient.apply(&nbhd, "*", &P127Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub127);
+        trace.push(P127IntimacyGradient.name());
     }
 
     if let Ok(sub130) = P130EntranceRoom.apply(&nbhd, "*", &P130Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub130);
+        trace.push(P130EntranceRoom.name());
     }
 
     if let Ok(sub129) = P129CommonAreasAtTheHeart.apply(&nbhd, "*", &P129Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub129);
+        trace.push(P129CommonAreasAtTheHeart.name());
     }
 
     if let Ok(sub131) = P131TheFlowThroughRooms.apply(&nbhd, "*", &P131Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub131);
+        trace.push(P131TheFlowThroughRooms.name());
     }
 
     if let Ok(sub221) = P221NaturalDoorsAndWindows.apply(&nbhd, "*", &P221Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub221);
+        trace.push(P221NaturalDoorsAndWindows.name());
     }
 
     // AFTER P221, not right after P131 -- Building.floors isn't set until
@@ -285,7 +335,8 @@ pub fn run_corrected_pipeline_with_p37(
     // this file's own doc comment (step 14) for the full story.
     if let Ok(sub133) = P133StaircaseAsAStage.apply(&nbhd, "*", &P133Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub133);
+        trace.push(P133StaircaseAsAStage.name());
     }
 
-    nbhd
+    (nbhd, trace)
 }
