@@ -4,4 +4,6 @@
 
 pub mod history;
 
-pub use history::{hash_neighborhood, Commit, HistoryStore, InMemoryHistoryStore, NeighborhoodId};
+pub use history::{
+    block_membership, hash_neighborhood, Commit, HistoryStore, InMemoryHistoryStore, NeighborhoodId,
+};
