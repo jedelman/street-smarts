@@ -18,6 +18,7 @@ pub mod p131_the_flow_through_rooms;
 pub mod p133_staircase_as_a_stage;
 pub mod p159_light_on_two_sides;
 pub mod p221_natural_doors_and_windows;
+pub mod p67_common_land;
 
 pub use p21_four_story_limit::P21FourStoryLimit;
 pub use p29_density_rings::P29DensityRings;
@@ -34,3 +35,4 @@ pub use p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 pub use p133_staircase_as_a_stage::P133StaircaseAsAStage;
 pub use p159_light_on_two_sides::P159LightOnTwoSides;
 pub use p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
+pub use p67_common_land::P67CommonLand;
