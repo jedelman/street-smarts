@@ -36,12 +36,21 @@
 //! matters for the operators that ORIGINATE a given field -- P29
 //! (`density_tier`), P37/P95 (`use_category`), P107 (`typology`),
 //! PathNetwork/P61 (`classification`) -- since every other operator either
-//! doesn't touch that field or only reads it. Each of those gets a real,
-//! additional `System` impl (not replacing the generic path, which still
-//! applies to everything else) that computes its typed component directly,
-//! from the same intermediate value it already uses to build the string
-//! label, rather than by parsing the string back out after writing it. See
-//! each operator's own module for its specific native port.
+//! doesn't touch that field or only reads it.
+//!
+//! Each of those gets a `run_native` INHERENT method (not a second `impl
+//! System`, which would conflict with the generic blanket impl above --
+//! `T: DynOperator` already covers every one of these types, and stable
+//! Rust has no specialization to let a more specific impl override a
+//! blanket one). `run_native` isn't part of any trait; it's an additional,
+//! separate entry point the same handful of call sites (`pipeline.rs`,
+//! eventually) can choose to use instead of `System::run` when they want
+//! the stronger guarantee. Internally, each one shares its ring/pad/
+//! typology assignment computation with the operator's own `apply()` via a
+//! small extracted helper, so the string label and the typed component are
+//! two projections of ONE computation, not one parsed from the other --
+//! see each operator's own module for its specific native port and the
+//! shared-helper refactor that makes this true rather than aspirational.
 
 use crate::subdivision::{apply_subdivision, DynOperator};
 use serde_json::Value as JsonValue;

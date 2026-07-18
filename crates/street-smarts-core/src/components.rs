@@ -145,6 +145,25 @@ pub enum DensityTier {
 }
 
 impl DensityTier {
+    /// Classify a ring index directly, without going through a string at
+    /// all -- the SAME branch structure as `ring_tier_label` below (ring 0
+    /// -> `Core`, the last ring -> `Edge`, anything between -> `Middle`),
+    /// used by `p29_density_rings`'s `run_native` so the component and the
+    /// string label are two projections of the one `(ring_idx, n_rings)`
+    /// value it already computes per block, not one parsed from the other.
+    /// `every_ring_classification_agrees_with_the_string_label_path` below
+    /// is the property test proving these two independent branch chains
+    /// never disagree.
+    pub fn from_ring(ring_idx: usize, n_rings: usize) -> Self {
+        if ring_idx == 0 {
+            Self::Core
+        } else if n_rings > 0 && ring_idx == n_rings - 1 {
+            Self::Edge
+        } else {
+            Self::Middle
+        }
+    }
+
     /// Parse `p29_density_rings`'s own label convention. `None` for any
     /// value that isn't `"core"`, `"edge"`, or `"ring_N"` (including the
     /// field simply being absent -- P29 hasn't run, or a fixture predates
@@ -343,6 +362,27 @@ mod tests {
                 let label = ring_tier_label(ring_idx, n_rings);
                 let parsed = DensityTier::from_label(&label);
                 assert!(parsed.is_some(), "label {label:?} (ring {ring_idx}/{n_rings}) should parse");
+            }
+        }
+    }
+
+    #[test]
+    fn every_ring_classification_agrees_with_the_string_label_path() {
+        // from_ring (component-native) and from_label(ring_tier_label(...))
+        // (string-derived) are two independently-written branch chains
+        // over the same (ring_idx, n_rings) input -- this is what makes
+        // p29_density_rings's run_native a genuine second computation
+        // rather than a trivial wrapper. If they ever disagreed, the
+        // component and the string this operator produces would silently
+        // mean different things.
+        for n_rings in [1usize, 2, 3, 6] {
+            for ring_idx in 0..n_rings {
+                let native = DensityTier::from_ring(ring_idx, n_rings);
+                let via_label = DensityTier::from_label(&ring_tier_label(ring_idx, n_rings));
+                assert_eq!(
+                    Some(native), via_label,
+                    "ring {ring_idx}/{n_rings}: from_ring={native:?} but from_label(ring_tier_label(...))={via_label:?}"
+                );
             }
         }
     }
