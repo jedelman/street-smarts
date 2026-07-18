@@ -14,6 +14,7 @@ pub mod opinion;
 pub mod provenance;
 pub mod scope;
 pub mod timer;
+pub mod world;
 
 pub use geometry::{LngLat, Polygon, PolygonPart, Ring};
 pub use nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, OpenSpace, Parcel, Street};
@@ -21,3 +22,4 @@ pub use opinion::{Capability, Opinion, OpinionFamily, OpinionOutput, OpinionRef,
 pub use provenance::ProvenanceTag;
 pub use scope::Scope;
 pub use timer::Timer;
+pub use world::World;
