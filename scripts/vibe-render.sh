@@ -5,8 +5,10 @@
 # architectural rendering -- see tools/vibe-render/render.py for caveats.
 #
 # Runs three scenarios:
-#   - clean_baseline: eastside-baseline.json, parcel 00001129 (47.7-acre
-#     pre-redevelopment mega-parcel, no EDA tags)
+#   - clean_baseline: eastside-baseline.json, parcel MILITARY_CIRCLE_ASSEMBLED
+#     (the real Military Circle site, Norfolk VA -- a 97.7-acre union of
+#     25 real Norfolk GIS parcels, no EDA tags; see the parcel's own `spec`
+#     field for the real tax-parcel ids it was assembled from)
 #   - barrio_mallcore: eastside-proposal.json, parcel 13279568 (MALL_CORE,
 #     27.8 acres, the fragmentation stress case -- see task #7)
 #   - mallcore_seeding: MALL_CORE again, rendered twice -- once with P37's
@@ -41,7 +43,7 @@ DUMP_BIN="target/release/examples/dump_pipeline"
 DUMP_SEEDING_BIN="target/release/examples/dump_pipeline_seeding"
 
 echo "==> running corrected pipeline: clean_baseline"
-"$DUMP_BIN" data/eastside-baseline.json 00001129 "$SEED" "$OUT_DIR/clean_baseline.json"
+"$DUMP_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline.json"
 
 echo "==> running corrected pipeline: barrio_mallcore"
 "$DUMP_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/barrio_mallcore.json"

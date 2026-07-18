@@ -30,7 +30,7 @@
 //!
 //! Matches `scripts/vibe-render.sh`'s "clean_baseline" scenario by default:
 //!   cargo run -p street-smarts-ledger --release --example dump_lineage_graph -- \
-//!       data/eastside-baseline.json 00001129 1 /tmp/lineage.svg
+//!       data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED 1 /tmp/lineage.svg
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
