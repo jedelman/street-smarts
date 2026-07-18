@@ -27,13 +27,13 @@
 //! current consumer (including the `p29_density_rings` opinion's own
 //! variance check) actually needs to ask.
 //!
-//! # Investigated and deliberately NOT built: `BlockMembership`
+//! # `BlockMembership`: answered via history lineage, not a NIR sidecar
 //!
 //! `PRIMITIVES_SPEC.md` §1.2 names `BlockMembership` as an example
 //! component alongside `DensityTier`. Investigated as the natural next
-//! pilot after `DensityTier` and stopped before writing it, because the
-//! parse-from-existing-data approach that worked for `DensityTier`
-//! doesn't hold here, for a reason worth recording precisely:
+//! pilot after `DensityTier` and NOT built as a parse-from-existing-data
+//! sidecar the way `DensityTier` was, for a reason worth recording
+//! precisely:
 //!
 //! `p95_building_complex` pad ids DO encode their source block as a
 //! prefix (`format!("{block_id}_P95_courtyard_p{label}")` /
@@ -59,24 +59,37 @@
 //! boundary. For a merged pad, "which block does this belong to" may not
 //! be a single well-defined value at all, not just a hard-to-recover one.
 //!
-//! Two real paths forward, neither attempted here:
-//! - Track membership FORWARD from creation (P95 already knows its own
-//!   `block_id` -- it's the `parcel_id` argument it's invoked with per
-//!   block in the pipeline's own loop) and propagate it THROUGH P108's
-//!   merge as a `Vec<String>` (a merged pad can trace back to more than
-//!   one source block), rather than reconstructing it backward from ids
-//!   after the fact. Real work: touches P95's and P108's actual output
-//!   shapes, not just a read-only sidecar.
-//! - Answer the question from Phase 4's content-addressed history
-//!   instead of NIR data at all -- a commit's real parent/operator
-//!   lineage already records which block-scoped `P95` call produced a
-//!   given pad, and unioning lineages is exactly what a merge should do.
-//!   Not available yet either: Phase 4's history store isn't wired into
-//!   the real pipeline's per-block loop.
+//! Of the two real paths forward this doc comment originally named
+//! (propagate membership FORWARD through P95/P108's own output shapes, or
+//! answer it from Phase 4's content-addressed history instead), the
+//! history path is what got built: `Subdivision::entity_provenance`
+//! records, per new entity id, the source entity id(s) it was derived
+//! from (P95: a pad's source is the block it was carved from; P108: a
+//! merged pad's sources are every pad clustered into it), `Commit` in
+//! `street-smarts-ledger` carries that forward, and
+//! `street_smarts_ledger::history::block_membership` walks the commit
+//! chain resolving an entity id back to its base source(s) recursively.
+//! A pad merged across a block boundary correctly resolves to BOTH source
+//! blocks -- not a bug, the honest answer for exactly the case this doc
+//! comment flagged as not single-valued. See
+//! `street-smarts-ledger/src/history.rs`'s own tests
+//! (`block_membership_resolves_a_single_hop_p95_pad_to_its_source_block`,
+//! `block_membership_resolves_a_p108_merged_pad_back_through_two_hops`)
+//! for this proven end to end against the real P95/P108 operators.
 //!
-//! Recorded here, not silently dropped, so the next person who reaches
-//! for `BlockMembership` doesn't have to rediscover this by hitting the
-//! same silent-wrong-answer bug in production.
+//! Not done as part of this: wiring `street-smarts-patterns::pipeline`'s
+//! real 14-step `run_corrected_pipeline_with_p37` through `HistoryStore`.
+//! `street-smarts-ledger` already depends on `street-smarts-patterns` (for
+//! `DynOperator`/`Subdivision`/`apply_subdivision`), so that orchestration
+//! can't live in `pipeline.rs` itself without a dependency cycle -- it
+//! would need its own home in `street-smarts-ledger`, and P61's per-block
+//! call goes through the free function `place_new_squares_n`, not the
+//! `PatternOperator`/`DynOperator` trait `get_or_compute` calls through,
+//! so it isn't a drop-in swap of `apply_subdivision` for
+//! `get_or_compute`. Real follow-up work, not silently dropped -- the
+//! `block_membership` mechanism itself works for any `HistoryStore`-backed
+//! commit chain today, it just isn't the one the production pipeline
+//! currently builds.
 
 use serde::{Deserialize, Serialize};
 

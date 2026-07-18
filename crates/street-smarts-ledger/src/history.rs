@@ -101,6 +101,14 @@ pub struct Commit {
     pub id: NeighborhoodId,
     pub parent: Option<NeighborhoodId>,
     pub operator_name: String,
+    /// The entity id (or `"*"`) this operator was invoked on -- e.g. a
+    /// specific `BLOCK_n` for a per-block P95 call. Part of what makes a
+    /// commit's identity unique: two calls with identical
+    /// operator/params/seed but different targets are different commits,
+    /// not a cache hit for each other (see `get_or_compute`'s cache-key
+    /// match, which includes this field for exactly that reason).
+    #[serde(default)]
+    pub target: String,
     pub params: serde_json::Value,
     pub seed: u64,
     /// Version tag of the code that produced this commit. A cache entry
@@ -110,6 +118,15 @@ pub struct Commit {
     /// fix to that operator, and silently trusting a stale cache entry
     /// across that boundary would be wrong, not just imprecise.
     pub algorithm_version: String,
+    /// Copied straight from the `Subdivision` this commit's patch was --
+    /// see `Subdivision::entity_provenance`'s own doc comment. This is
+    /// what lets a lineage query (`block_membership`, below) walk commits
+    /// instead of parsing entity id naming conventions, which the
+    /// `BlockMembership` investigation in `street-smarts-core`'s
+    /// `components.rs` found unsafe once P108 assigns new ids that
+    /// discard the source block's id prefix.
+    #[serde(default)]
+    pub entity_provenance: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 pub trait HistoryStore {
@@ -141,6 +158,75 @@ pub trait HistoryStore {
     /// Register a root `Neighborhood` (e.g. a loaded fixture) with no
     /// parent, so `get_or_compute` has something to build on.
     fn insert_root(&mut self, n: &Neighborhood) -> NeighborhoodId;
+}
+
+/// Resolve which base-level entity id(s) `entity_id` ultimately traces back
+/// to, by walking `entity_provenance` up the commit chain ending at `from`
+/// -- the real answer to "which block did this pad come from" that
+/// `street-smarts-core`'s `components.rs` found unsafe to answer by parsing
+/// entity id naming conventions after the fact (P108 discards the id
+/// prefix; a merged pad may not even have a single well-defined source
+/// block).
+///
+/// Walks every commit's `entity_provenance` looking for `entity_id` as a
+/// key. If found, each recorded source is resolved the same way,
+/// recursively -- an id with no `entity_provenance` entry anywhere in the
+/// chain is a base entity (e.g. a `BLOCK_n` parcel P37 created directly
+/// from raw land, or something present in the root `Neighborhood`) and
+/// becomes a leaf of the result. A merged pad (P108) can legitimately
+/// resolve to more than one block -- that's not a bug in this function,
+/// it's the real answer for a pad that merged across a block boundary (see
+/// `components.rs`'s own note on why membership isn't always single-valued).
+///
+/// `entity_id` itself is returned unchanged (as a single-element vec) if no
+/// commit in the chain ever recorded it as a derived entity -- covers both
+/// "it's already a base entity" and "it isn't in this history at all"
+/// (indistinguishable from provenance data alone; callers who need to tell
+/// the two apart should check `store.commit`/`store.materialize` directly).
+pub fn block_membership(
+    store: &dyn HistoryStore,
+    from: NeighborhoodId,
+    entity_id: &str,
+) -> Vec<String> {
+    let mut chain: Vec<Commit> = Vec::new();
+    let mut cur = Some(from);
+    while let Some(id) = cur {
+        match store.commit(&id) {
+            Some(c) => {
+                cur = c.parent;
+                chain.push(c);
+            }
+            None => break,
+        }
+    }
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    resolve_lineage(&chain, entity_id, &mut seen);
+    seen.into_iter().collect()
+}
+
+/// Recursion core of `block_membership`: resolves `entity_id` against every
+/// commit in `chain` (order doesn't matter -- entity ids are unique per
+/// run, so at most one commit's `entity_provenance` has it as a key),
+/// accumulating leaf ids into `out`. Guards against revisiting the same id
+/// twice (a merged pad with two sources that share a grandparent source
+/// would otherwise walk that shared ancestor's own sources twice -- no
+/// correctness issue either way since `out` is a set, but wasted work on
+/// anything but a tiny fixture).
+fn resolve_lineage(chain: &[Commit], entity_id: &str, out: &mut std::collections::BTreeSet<String>) {
+    let sources = chain.iter().find_map(|c| c.entity_provenance.get(entity_id));
+    match sources {
+        Some(sources) => {
+            for s in sources {
+                if out.contains(s) {
+                    continue;
+                }
+                resolve_lineage(chain, s, out);
+            }
+        }
+        None => {
+            out.insert(entity_id.to_string());
+        }
+    }
 }
 
 /// In-memory `HistoryStore`. Stores each commit's `Subdivision` patch
@@ -191,10 +277,14 @@ impl HistoryStore for InMemoryHistoryStore {
         algorithm_version: &str,
     ) -> Result<NeighborhoodId, String> {
         // Cache lookup: any existing commit with this exact parent,
-        // operator, params, seed, AND algorithm_version.
+        // operator, TARGET, params, seed, AND algorithm_version. `target`
+        // is part of the key -- without it, two per-block calls (e.g. P95
+        // on BLOCK_0 and BLOCK_1) that happen to share params/seed would
+        // wrongly collide and return one block's result for the other.
         for (id, commit) in &self.commits {
             if commit.parent == Some(parent)
                 && commit.operator_name == op.name()
+                && commit.target == target
                 && &commit.params == params_json
                 && commit.seed == seed
                 && commit.algorithm_version == algorithm_version
@@ -215,9 +305,11 @@ impl HistoryStore for InMemoryHistoryStore {
                 id,
                 parent: Some(parent),
                 operator_name: op.name().to_string(),
+                target: target.to_string(),
                 params: params_json.clone(),
                 seed,
                 algorithm_version: algorithm_version.to_string(),
+                entity_provenance: patch.entity_provenance.clone(),
             },
         );
         self.patches.insert(id, patch);
@@ -246,6 +338,8 @@ mod tests {
     use street_smarts_core::geometry::{LngLat, Polygon};
     use street_smarts_core::nir::{NeighborhoodMeta, Parcel};
     use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
+    use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
+    use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
     use street_smarts_patterns::{Parameters, PatternOperator};
 
     fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
@@ -395,5 +489,150 @@ mod tests {
         let children = store.children(&root_id);
         assert_eq!(children.len(), 2, "two distinct seeds from the same root are two distinct branches");
         assert!(children.contains(&child_a) && children.contains(&child_b));
+    }
+
+    /// Two square `BLOCK_*` parcels, `gap_m` apart along the x axis. Built
+    /// directly (not via P37) so block adjacency/geometry is fully
+    /// controlled -- what the `block_membership` tests below need to force
+    /// a real cross-block P108 merge deterministically.
+    fn two_block_neighborhood(side_m: f64, gap_m: f64) -> Neighborhood {
+        let m_per_deg_lng = 111_320.0;
+        let m_per_deg_lat = 110_540.0;
+        let square = |x0_m: f64, id: &str| -> Parcel {
+            let to_lnglat = |x_m: f64, y_m: f64| LngLat::new(x_m / m_per_deg_lng, y_m / m_per_deg_lat);
+            let ring = vec![
+                to_lnglat(x0_m, 0.0),
+                to_lnglat(x0_m + side_m, 0.0),
+                to_lnglat(x0_m + side_m, side_m),
+                to_lnglat(x0_m, side_m),
+            ];
+            Parcel {
+                id: id.into(),
+                polygon: Polygon::from_ring(ring),
+                area_acres: (side_m * side_m) / 4046.86,
+                use_category: None,
+                ownership: None,
+                is_eda: true,
+                spec: Some(format!("BLOCK_{id}")),
+                density_tier: None,
+                target_stories: None,
+            }
+        };
+        Neighborhood {
+            id: "raw".into(),
+            bbox_wgs84: [0.0, 0.0, (2.0 * side_m + gap_m) / m_per_deg_lng, side_m / m_per_deg_lat],
+            parcels: vec![square(0.0, "BLOCK_A"), square(side_m + gap_m, "BLOCK_B")],
+            buildings: vec![],
+            streets: vec![],
+            open_space: vec![],
+            boundaries: vec![],
+            activity_nodes: vec![],
+            metadata: NeighborhoodMeta {
+                source: "synthetic".into(),
+                fetched_at: "test".into(),
+                license: "test".into(),
+                layer_provenance: Default::default(),
+                label: "block_membership fixture".into(),
+            },
+        }
+    }
+
+    /// P95 params that produce exactly one pad + one courtyard per block --
+    /// the minimum viable output, and the most deterministic (fewest
+    /// Voronoi seeds) shape to build a lineage test against.
+    fn single_pad_p95_params() -> P95Params {
+        let mut p = P95Params::defaults();
+        p.min_buildings = 1.0;
+        p.max_buildings = 1.0;
+        p
+    }
+
+    #[test]
+    fn block_membership_resolves_a_single_hop_p95_pad_to_its_source_block() {
+        let mut store = InMemoryHistoryStore::new();
+        let root = two_block_neighborhood(300.0, 200.0); // blocks far apart -- no P108 merge possible
+        let root_id = store.insert_root(&root);
+
+        let params = single_pad_p95_params().as_map();
+        let after_p95 = store
+            .get_or_compute(root_id, &P95BuildingComplex, "BLOCK_A", &params, 7, "v1")
+            .expect("P95 should succeed on a real block-sized parcel");
+
+        let snapshot = store.materialize(&after_p95).unwrap();
+        let pad = snapshot
+            .parcels
+            .iter()
+            .find(|p| p.id.starts_with("BLOCK_A_P95_cell_"))
+            .expect("single_pad_p95_params should produce exactly one BLOCK_A pad");
+
+        assert_eq!(
+            block_membership(&store, after_p95, &pad.id),
+            vec!["BLOCK_A".to_string()],
+            "a P95 pad's only recorded source is the block it was carved from"
+        );
+
+        // The courtyard is the other new entity P95 records provenance
+        // for -- same source, different entity kind.
+        let courtyard_id = format!("BLOCK_A_P95_courtyard_p{}", 0);
+        if snapshot.open_space.iter().any(|o| o.id == courtyard_id) {
+            assert_eq!(block_membership(&store, after_p95, &courtyard_id), vec!["BLOCK_A".to_string()]);
+        }
+    }
+
+    #[test]
+    fn block_membership_resolves_a_p108_merged_pad_back_through_two_hops() {
+        let mut store = InMemoryHistoryStore::new();
+        // Blocks share a party wall (0.0m gap) -- after P95's 0.1m pad_inset_m
+        // on each side, the two blocks' pads sit ~0.2m apart, comfortably
+        // inside P108's default 1.5m connect_gap_threshold_m.
+        let root = two_block_neighborhood(300.0, 0.0);
+        let root_id = store.insert_root(&root);
+        let params = single_pad_p95_params().as_map();
+
+        let after_a = store
+            .get_or_compute(root_id, &P95BuildingComplex, "BLOCK_A", &params, 7, "v1")
+            .expect("P95 should succeed on BLOCK_A");
+        let after_b = store
+            .get_or_compute(after_a, &P95BuildingComplex, "BLOCK_B", &params, 8, "v1")
+            .expect("P95 should succeed on BLOCK_B");
+
+        let before_p108 = store.materialize(&after_b).unwrap();
+        let pad_a = before_p108.parcels.iter().find(|p| p.id.starts_with("BLOCK_A_P95_cell_"))
+            .expect("BLOCK_A should have produced one pad").id.clone();
+        let pad_b = before_p108.parcels.iter().find(|p| p.id.starts_with("BLOCK_B_P95_cell_"))
+            .expect("BLOCK_B should have produced one pad").id.clone();
+
+        let after_p108 = store
+            .get_or_compute(after_b, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), 1, "v1")
+            .expect("the two adjacent pads should be within connect_gap_threshold_m and merge");
+
+        let final_snapshot = store.materialize(&after_p108).unwrap();
+        let merged = final_snapshot
+            .parcels
+            .iter()
+            .find(|p| p.id.starts_with("p108_merged_"))
+            .expect("BLOCK_A's and BLOCK_B's pads should have merged into one p108_merged_N parcel");
+
+        let mut membership = block_membership(&store, after_p108, &merged.id);
+        membership.sort();
+        assert_eq!(
+            membership,
+            vec!["BLOCK_A".to_string(), "BLOCK_B".to_string()],
+            "a pad merged across a block boundary has no single well-defined source block -- \
+             block_membership resolving to BOTH blocks is the honest answer, not a bug \
+             (see components.rs's own note on why membership isn't always single-valued)"
+        );
+
+        // Sanity: the merge really did happen via P108's own provenance
+        // (source pad ids), not some other mechanism -- confirms the test
+        // is actually exercising the two-hop chain (pad -> P95 commit ->
+        // block; merged pad -> P108 commit -> source pads -> their P95
+        // commits -> block), not accidentally passing some other way.
+        let p108_commit = store.commit(&after_p108).expect("P108 commit should exist");
+        let mut recorded_sources = p108_commit.entity_provenance.get(&merged.id).cloned().unwrap_or_default();
+        recorded_sources.sort();
+        let mut expected_sources = vec![pad_a, pad_b];
+        expected_sources.sort();
+        assert_eq!(recorded_sources, expected_sources);
     }
 }
