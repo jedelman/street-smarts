@@ -51,6 +51,7 @@
 //!   P37/P61/P95/etc., and becomes a real question the moment Phase B
 //!   routes an actual operator through `World` instead of a `Vec`.
 
+use crate::components::DensityTier;
 use crate::nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, OpenSpace, Parcel, Street};
 use std::collections::BTreeMap;
 
@@ -60,6 +61,14 @@ use std::collections::BTreeMap;
 /// scattered across the existing pattern operators, and deterministic
 /// (sorted-by-id) iteration order as a side effect of using a BTreeMap
 /// rather than a HashMap.
+///
+/// `density_tiers` is Phase B's first typed component sidecar -- see
+/// `components.rs`'s own doc comment. Populated by parsing each parcel's
+/// EXISTING `density_tier` string in `from_neighborhood`; entries are
+/// only present for parcels where that string parses (P29 has run and
+/// produced a recognized label). Purely additive and read-only: nothing
+/// in `to_neighborhood` reads this map back, the string field remains
+/// the one source of truth for serialization.
 #[derive(Debug, Clone)]
 pub struct World {
     pub id: String,
@@ -71,10 +80,20 @@ pub struct World {
     pub boundaries: BTreeMap<String, Boundary>,
     pub activity_nodes: BTreeMap<String, ActivityNode>,
     pub metadata: NeighborhoodMeta,
+    pub density_tiers: BTreeMap<String, DensityTier>,
 }
 
 impl World {
     pub fn from_neighborhood(n: &Neighborhood) -> Self {
+        let density_tiers = n
+            .parcels
+            .iter()
+            .filter_map(|p| {
+                let label = p.density_tier.as_deref()?;
+                let tier = DensityTier::from_label(label)?;
+                Some((p.id.clone(), tier))
+            })
+            .collect();
         Self {
             id: n.id.clone(),
             bbox_wgs84: n.bbox_wgs84,
@@ -85,6 +104,7 @@ impl World {
             boundaries: n.boundaries.iter().map(|b| (b.id.clone(), b.clone())).collect(),
             activity_nodes: n.activity_nodes.iter().map(|a| (a.id.clone(), a.clone())).collect(),
             metadata: n.metadata.clone(),
+            density_tiers,
         }
     }
 
@@ -183,6 +203,18 @@ mod tests {
         let out = world.to_neighborhood();
         let ids: Vec<&str> = out.parcels.iter().map(|p| p.id.as_str()).collect();
         assert_eq!(ids, vec!["P1", "P2"], "World-backed output is sorted-by-id, not insertion order");
+    }
+
+    #[test]
+    fn density_tiers_sidecar_is_populated_from_the_existing_string_field() {
+        // sample_neighborhood: P2 has density_tier "core", P1 has None.
+        let world = World::from_neighborhood(&sample_neighborhood());
+        assert_eq!(world.density_tiers.get("P2"), Some(&DensityTier::Core));
+        assert_eq!(
+            world.density_tiers.get("P1"), None,
+            "a parcel with no density_tier string should have no sidecar entry, not a default"
+        );
+        assert_eq!(world.density_tiers.len(), 1, "only parcels with a parseable tier get an entry");
     }
 
     #[test]

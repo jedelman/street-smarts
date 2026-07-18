@@ -188,13 +188,7 @@ impl PatternOperator for P29DensityRings {
             let ring_idx = ((normalized * n_rings as f64) as usize).min(n_rings - 1);
             tier_counts[ring_idx] += 1;
 
-            let tier = if ring_idx == 0 {
-                "core".to_string()
-            } else if ring_idx == n_rings - 1 {
-                "edge".to_string()
-            } else {
-                format!("ring_{ring_idx}")
-            };
+            let tier = street_smarts_core::ring_tier_label(ring_idx, n_rings);
             // Linear interpolation between core and edge targets across
             // the ring index -- ring 0 gets exactly core_target_stories,
             // the last ring gets exactly edge_target_stories.
@@ -209,7 +203,7 @@ impl PatternOperator for P29DensityRings {
         }
 
         for (i, count) in tier_counts.iter().enumerate() {
-            let label = if i == 0 { "core".to_string() } else if i == n_rings - 1 { "edge".to_string() } else { format!("ring_{i}") };
+            let label = street_smarts_core::ring_tier_label(i, n_rings);
             steps.push(format!("{label}: {count} block(s)"));
         }
 
