@@ -187,9 +187,15 @@ mod tests {
 
     #[test]
     fn varied_tiers_score_full_variance() {
+        // "core"/"ring_1"/"edge" -- the real vocabulary
+        // p29_density_rings::P29DensityRings actually produces (ring_idx
+        // 0/1/n_rings-1 at the n_rings=3 default). "mid" was here before
+        // and is not a value the real generator ever emits -- caught
+        // while building the typed DensityTier component and cross-
+        // checking against the generator's actual tier-labeling logic.
         let n = nbhd(vec![
             block("0", Some("core"), Some(4.0)),
-            block("1", Some("mid"), Some(3.0)),
+            block("1", Some("ring_1"), Some(3.0)),
             block("2", Some("edge"), Some(2.0)),
         ]);
         match P29DensityRings.evaluate(&n) {

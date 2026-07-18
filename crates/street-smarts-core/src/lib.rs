@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod components;
 pub mod geometry;
 pub mod nir;
 pub mod opinion;
@@ -16,6 +17,7 @@ pub mod scope;
 pub mod timer;
 pub mod world;
 
+pub use components::{ring_tier_label, DensityTier};
 pub use geometry::{LngLat, Polygon, PolygonPart, Ring};
 pub use nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, OpenSpace, Parcel, Street};
 pub use opinion::{Capability, Opinion, OpinionFamily, OpinionOutput, OpinionRef, SourceCitation};
