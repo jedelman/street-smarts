@@ -190,6 +190,9 @@ impl PatternOperator for P107WingsOfLight {
     }
 }
 
+/// `apply_with_assignments`'s native-port return shape.
+type NativeAssignments = (Subdivision, Vec<(String, BuildingTypology)>, Vec<(String, PadRole)>);
+
 impl P107WingsOfLight {
     /// The real computation, extended to also return each new building's
     /// `BuildingTypology` and each shaped pad's `PadRole` as they're
@@ -205,7 +208,7 @@ impl P107WingsOfLight {
         parcel_id: &str,
         params: &P107Params,
         seed: u64,
-    ) -> Result<(Subdivision, Vec<(String, BuildingTypology)>, Vec<(String, PadRole)>), String> {
+    ) -> Result<NativeAssignments, String> {
         let targets: Vec<&Parcel> = if parcel_id == "*" {
             nbhd.select(&Scope::BUILDING_PAD).collect()
         } else {
