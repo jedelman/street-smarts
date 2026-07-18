@@ -3,12 +3,13 @@
 use crate::activist::OwnershipPattern;
 use crate::geometric::{LevelsOfScale, StrongCenters};
 use crate::pattern::{
-    P100PedestrianStreet, P108ConnectedBuildings, P112EntranceTransition, P120PathsAndGoals,
-    P122BuildingFronts, P130EntranceRoom, P133StaircaseAsAStage, P163OutdoorRoom,
-    P192WindowsOverlookingLife, P21FourStoryLimit, P221NaturalDoorsAndWindows,
-    P22NineParPercentParking, P28EccentricNucleus, P29DensityRings, P36DegreesOfPublicness,
-    P37HouseCluster, P38RowHouses, P61SmallPublicSquares, P95BuildingComplexOpinion,
-    P106PositiveOutdoorSpace, P127IntimacyGradient, P128IndoorSunlight,
+    P100PedestrianStreet, P101BuildingThoroughfare, P108ConnectedBuildings,
+    P112EntranceTransition, P120PathsAndGoals, P122BuildingFronts, P130EntranceRoom,
+    P133StaircaseAsAStage, P163OutdoorRoom, P191ShapeOfIndoorSpace, P192WindowsOverlookingLife,
+    P21FourStoryLimit, P221NaturalDoorsAndWindows, P22NineParPercentParking, P28EccentricNucleus,
+    P29DensityRings, P32ShoppingStreet, P36DegreesOfPublicness, P37HouseCluster, P38RowHouses,
+    P46MarketOfManyShops, P48HousingInBetween, P61SmallPublicSquares, P89CornerGrocery,
+    P95BuildingComplexOpinion, P106PositiveOutdoorSpace, P127IntimacyGradient, P128IndoorSunlight,
     P129CommonAreasAtTheHeart, P131TheFlowThroughRooms, P159LightOnTwoSides,
 };
 use serde::{Deserialize, Serialize};
@@ -53,6 +54,12 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P122BuildingFronts),
         Box::new(P163OutdoorRoom),
         Box::new(P192WindowsOverlookingLife),
+        Box::new(P32ShoppingStreet),
+        Box::new(P46MarketOfManyShops),
+        Box::new(P48HousingInBetween),
+        Box::new(P89CornerGrocery),
+        Box::new(P101BuildingThoroughfare),
+        Box::new(P191ShapeOfIndoorSpace),
     ]
 }
 
