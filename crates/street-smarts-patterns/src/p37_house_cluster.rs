@@ -92,11 +92,13 @@ use crate::planar::{
     ring_to_local, scale_toward_centroid, union_pieces, voronoi_cell, Pt2,
 };
 use crate::prng::Prng;
-use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
+use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
+use street_smarts_core::components::PadRole;
 use street_smarts_core::geometry::{LngLat, Polygon};
 use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
 use street_smarts_core::opinion::SourceCitation;
+use street_smarts_core::world::World;
 
 /// Migrated to `#[derive(Parameters)]` (PATTERN_LANGUAGE_SIMULATION.md
 /// §3.3) as the proof-of-concept for the macro -- the other 13 `P*Params`
@@ -293,7 +295,13 @@ impl PatternOperator for P37HouseCluster {
                         id: block_id.clone(),
                         polygon: Polygon::from_ring(block_ring),
                         area_acres: block_area_m2 / 4046.86,
-                        use_category: Some("house_cluster_block".into()),
+                        // The string comes FROM the component (not the
+                        // other way around) -- the strongest form of
+                        // dual-write, since there's no separate branch
+                        // chain that could drift from PadRole::to_label's
+                        // own definition. See run_native below and
+                        // components.rs's own doc comment.
+                        use_category: Some(PadRole::HouseClusterBlock.to_label().into()),
                         ownership: None,
                         is_eda: true,
                         spec: Some(format!("BLOCK_{}", global_block_idx)),
@@ -388,6 +396,27 @@ impl PatternOperator for P37HouseCluster {
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
         })
+    }
+}
+
+impl P37HouseCluster {
+    /// Native `System` port (inherent method, not a second `impl System`
+    /// -- see `system.rs`'s own module doc for why). Every block this
+    /// operator emits gets the SAME `PadRole::HouseClusterBlock` -- there's
+    /// no branching to duplicate the way P29's ring assignment has, so
+    /// dual-write here is just: run `apply()` unchanged, then tag every
+    /// NEW parcel id `apply()` reported in the resulting `World`'s
+    /// `pad_roles` map with that one constant.
+    pub fn run_native(&self, world: &World, params: &P37Params, parcel_id: &str, seed: u64) -> Result<World, String> {
+        let nbhd = world.to_neighborhood();
+        let sub = self.apply(&nbhd, parcel_id, params, seed)?;
+        let new_ids: Vec<String> = sub.new_parcels.iter().map(|p| p.id.clone()).collect();
+        let new_nbhd = apply_subdivision(&nbhd, &sub);
+        let mut new_world = World::from_neighborhood(&new_nbhd);
+        for id in new_ids {
+            new_world.pad_roles.insert(id, PadRole::HouseClusterBlock);
+        }
+        Ok(new_world)
     }
 }
 
