@@ -4,7 +4,11 @@
 //! wholeness properties.
 
 pub mod p21_four_story_limit;
+pub mod p22_nine_per_cent_parking;
+pub mod p28_eccentric_nucleus;
 pub mod p29_density_rings;
+pub mod p36_degrees_of_publicness;
+pub mod p38_row_houses;
 pub mod p37_house_cluster;
 pub mod p61_small_public_squares;
 pub mod p95_building_complex;
@@ -20,7 +24,11 @@ pub mod p159_light_on_two_sides;
 pub mod p221_natural_doors_and_windows;
 
 pub use p21_four_story_limit::P21FourStoryLimit;
+pub use p22_nine_per_cent_parking::P22NineParPercentParking;
+pub use p28_eccentric_nucleus::P28EccentricNucleus;
 pub use p29_density_rings::P29DensityRings;
+pub use p36_degrees_of_publicness::P36DegreesOfPublicness;
+pub use p38_row_houses::P38RowHouses;
 pub use p37_house_cluster::P37HouseCluster;
 pub use p61_small_public_squares::P61SmallPublicSquares;
 pub use p95_building_complex::P95BuildingComplexOpinion;
