@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// The top-level neighborhood document.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Neighborhood {
     pub id: String,
     pub bbox_wgs84: [f64; 4], // [min_lng, min_lat, max_lng, max_lat]
@@ -28,7 +28,7 @@ pub struct Neighborhood {
     pub metadata: NeighborhoodMeta,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NeighborhoodMeta {
     pub source: String,
     pub fetched_at: String,
@@ -41,7 +41,7 @@ pub struct NeighborhoodMeta {
 }
 
 /// A parcel = a tax-assessor unit of land. May or may not have a building.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Parcel {
     pub id: String,
     pub polygon: Polygon,
@@ -86,7 +86,7 @@ pub enum Ownership {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Building {
     pub id: String,
     pub polygon: Polygon,
@@ -123,7 +123,7 @@ pub struct Building {
 /// own pattern language describes spatial relationships, not prescribed
 /// uses, and this project doesn't assume a program this pipeline has no
 /// way to know.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InteriorCell {
     pub id: String,
     /// The cell's own 2D footprint.
@@ -157,7 +157,7 @@ pub struct InteriorCell {
 /// Positioned relative to the building's own footprint ring, not in
 /// absolute coordinates, so it stays correct if the footprint is
 /// reprojected.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Opening {
     pub kind: OpeningKind,
     /// Index `i` of the wall edge this opening sits on: the segment from
@@ -187,7 +187,7 @@ pub enum OpeningKind {
     Door,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Street {
     pub id: String,
     pub centerline: Vec<crate::geometry::LngLat>,
@@ -197,7 +197,7 @@ pub struct Street {
     pub row_width_m: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenSpace {
     pub id: String,
     pub polygon: Polygon,
@@ -230,7 +230,7 @@ pub enum OpenSpaceKind {
     Common,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Boundary {
     pub id: String,
     pub centerline: Vec<crate::geometry::LngLat>,
@@ -245,7 +245,7 @@ pub enum BoundaryKind {
     Jurisdictional,    // city limit, zoning edge
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActivityNode {
     pub id: String,
     pub location: crate::geometry::LngLat,
