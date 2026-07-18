@@ -3,7 +3,7 @@
 use crate::activist::OwnershipPattern;
 use crate::geometric::{LevelsOfScale, StrongCenters};
 use crate::pattern::{
-    P102FamilyOfEntrances, P108ConnectedBuildings, P114HierarchyOfOpenSpace,
+    P102FamilyOfEntrances, P108ConnectedBuildings, P110MainEntrance, P114HierarchyOfOpenSpace,
     P115CourtyardsWhichLive, P130EntranceRoom, P133StaircaseAsAStage, P165OpeningToTheStreet,
     P21FourStoryLimit, P221NaturalDoorsAndWindows, P29DensityRings, P37HouseCluster,
     P61SmallPublicSquares, P67CommonLand, P95BuildingComplexOpinion, P106PositiveOutdoorSpace,
@@ -47,6 +47,7 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P115CourtyardsWhichLive),
         Box::new(P165OpeningToTheStreet),
         Box::new(P102FamilyOfEntrances),
+        Box::new(P110MainEntrance),
     ]
 }
 
