@@ -59,7 +59,17 @@ fi
 
 for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
   echo "==> rendering: $scenario"
-  "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
+  if [ "$scenario" = "clean_baseline" ]; then
+    # Real surrounding-building massing (Overture Maps, pre-filtered to
+    # exclude our own site -- see the file's own _provenance field) --
+    # only for clean_baseline, the scenario with real, geolocated site
+    # data. The other scenarios' fixtures aren't real single addresses in
+    # the same way, so there's no honest "surrounding context" to fetch.
+    "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario" \
+      data/military-circle-context-buildings.geojson
+  else
+    "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
+  fi
 done
 
 echo "==> done. Renders in $OUT_DIR/"
