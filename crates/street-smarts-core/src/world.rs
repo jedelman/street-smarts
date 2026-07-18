@@ -24,6 +24,32 @@
 //! plan): Phase B's typed components (DensityTier, BlockMembership,
 //! PadRole, etc.) as dual-written sidecars, and Phase C's optional
 //! deprecation of the shadow string fields. This module is Phase A only.
+//!
+//! # Review notes (findings, no code changes needed for Phase A)
+//!
+//! - **`PartialEq` on `f64`-bearing structs is IEEE-754 equality, not a
+//!   total equivalence relation.** `NaN != NaN` -- if a `Neighborhood`
+//!   ever contained a `NaN` coordinate (degenerate polygon math, a
+//!   divide-by-zero upstream), it would compare unequal to an identical
+//!   copy of itself, not just fail to round-trip. Nothing in this
+//!   codebase currently guarantees NaN can't appear, and this PR doesn't
+//!   add that guarantee -- known sharp edge for anyone reaching for
+//!   `assert_eq!(Neighborhood, ...)` elsewhere, not something Phase A
+//!   needed to fix.
+//! - **`BTreeMap` was chosen for test determinism (sorted-by-id output,
+//!   see `to_neighborhood_emits_sorted_by_id_not_original_order`), not a
+//!   proven requirement of future consumers.** A `HashMap` would be
+//!   strictly faster for the stated "O(log n) instead of a linear scan"
+//!   goal (O(1) instead of O(log n)) if sorted iteration turns out not to
+//!   matter to whatever Phase B's `System`/query machinery actually
+//!   needs. Revisit once there's a real consumer, don't assume this
+//!   choice is settled.
+//! - **Round-trip fidelity here proves CONTENT survives `World`, not that
+//!   nothing downstream depends on original `Vec` order for
+//!   correctness.** No current risk -- `World` isn't wired into any real
+//!   pipeline path in Phase A -- but this hasn't been audited across
+//!   P37/P61/P95/etc., and becomes a real question the moment Phase B
+//!   routes an actual operator through `World` instead of a `Vec`.
 
 use crate::nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, OpenSpace, Parcel, Street};
 use std::collections::BTreeMap;
