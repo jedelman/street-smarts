@@ -19,6 +19,9 @@ use crate::pattern::{
     P139FarmhouseKitchen, P147CommunalEating,
     P161SunnyPlace, P116CascadeOfRoofs, P117ShelteringRoof, P118RoofGarden, P119Arcades,
     P162NorthFace, P166GallerySurround,
+    P51GreenStreets, P53MainGateways, P126SomethingRoughlyInTheMiddle, P195StaircaseVolume,
+    P164StreetWindows, P197ThickWalls, P198ClosetsBetweenRooms, P31Promenade, P59QuietBacks,
+    P68ConnectedPlay, P98CirculationRealms,
 };
 use serde::{Deserialize, Serialize};
 use street_smarts_core::nir::Neighborhood;
@@ -98,6 +101,17 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P119Arcades),
         Box::new(P162NorthFace),
         Box::new(P166GallerySurround),
+        Box::new(P51GreenStreets),
+        Box::new(P53MainGateways),
+        Box::new(P126SomethingRoughlyInTheMiddle),
+        Box::new(P195StaircaseVolume),
+        Box::new(P164StreetWindows),
+        Box::new(P197ThickWalls),
+        Box::new(P198ClosetsBetweenRooms),
+        Box::new(P31Promenade),
+        Box::new(P59QuietBacks),
+        Box::new(P68ConnectedPlay),
+        Box::new(P98CirculationRealms),
     ]
 }
 
