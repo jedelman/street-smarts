@@ -36,7 +36,7 @@ fn defaults_match_hand_written_struct() {
     assert_eq!(d.block_inset_m, 10.0);
     assert_eq!(d.seed_jitter, 0.5);
     assert_eq!(d.min_block_area_m2, 1500.0);
-    assert_eq!(d.common_land_fraction, 0.12);
+    assert_eq!(d.common_land_fraction, 0.26);
     assert_eq!(d.min_common_land_area_m2, 150.0);
     assert_eq!(d.seeding_mode, 0.0);
 }
@@ -46,7 +46,7 @@ fn as_vector_is_in_schema_order() {
     let d = P37Params::defaults();
     assert_eq!(
         d.as_vector(),
-        vec![7000.0, 2.0, 12.0, 10.0, 0.5, 1500.0, 0.12, 150.0, 0.0]
+        vec![7000.0, 2.0, 12.0, 10.0, 0.5, 1500.0, 0.26, 150.0, 0.0]
     );
 }
 

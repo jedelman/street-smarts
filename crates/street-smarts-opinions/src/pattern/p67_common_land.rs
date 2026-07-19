@@ -9,15 +9,18 @@
 //! > Basic: be wary of the automobile; on no account let it dominate this
 //! > land.
 //!
-//! # A real, checkable gap this opinion surfaces
+//! # A real gap this opinion found, and closed
 //!
-//! `p37_house_cluster.rs`'s own `common_land_fraction` parameter DEFAULTS TO
-//! 0.12 (12%) -- well under half of Alexander's literal "25 percent"
-//! figure -- with a max of 0.4 (40%). This isn't a bug to silently work
-//! around; it's exactly the kind of claim ("this produces Common Land")
-//! that needs an independent check instead of trusting the generator's own
-//! doc comment. This opinion is that check, scored against Alexander's own
-//! number, not the generator's default.
+//! `p37_house_cluster.rs`'s own `common_land_fraction` parameter originally
+//! DEFAULTED TO 0.12 (12%) -- well under half of Alexander's literal "25
+//! percent" figure. This opinion is what found that gap: an independent
+//! check against Alexander's own number, not the generator's own doc
+//! comment claiming "this produces Common Land." The generator's default
+//! has since been raised to 0.26 (max stays 0.4) specifically to clear
+//! this check -- see `p37_house_cluster.rs`'s own module doc for the fix.
+//! This opinion still scores against Alexander's literal number, not
+//! whatever the generator's current default happens to be, so it stays a
+//! real check rather than a tautology.
 //!
 //! # Two sub-scores
 //!
@@ -166,9 +169,9 @@ impl Opinion for P67CommonLand {
             details,
             caveats: vec![
                 "area_fraction is normalized against Alexander's literal '25 percent' figure, not \
-                 p37_house_cluster's own common_land_fraction default (0.12) -- a generator running \
-                 at its own default will score well below 1.0 here by design, not by opinion error. \
-                 See this module's own doc comment.".into(),
+                 whatever p37_house_cluster's own common_land_fraction default happens to be -- if \
+                 that default is ever lowered again, this opinion will score it below 1.0 by \
+                 design, not by opinion error. See this module's own doc comment.".into(),
                 "Common land is matched to its source block by id convention \
                  (\"{block_id}_common\", P37's own naming) -- an OpenSpace tagged Common that a \
                  future operator names differently won't be found by this opinion.".into(),
@@ -296,10 +299,12 @@ mod tests {
     }
 
     #[test]
-    fn generators_own_12_percent_default_scores_below_half() {
-        // Matches p37_house_cluster's own common_land_fraction default
-        // (0.12) exactly -- this is the real gap this opinion exists to
-        // surface. 10,000 m² block, 1,200 m² common land.
+    fn a_fraction_below_alexanders_target_still_scores_proportionally() {
+        // 10,000 m² block, 1,200 m² common land -- 12%, once p37's own
+        // default before it was raised to close this exact gap (see
+        // p37_house_cluster.rs's own module doc). Kept as a boundary-case
+        // regression: a real generator regressing back toward a low
+        // fraction should still score well below full credit.
         let side = (1200.0_f64).sqrt();
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
@@ -314,7 +319,33 @@ mod tests {
                     (sub_scores["area_fraction"] - expected).abs() < 0.02,
                     "expected ~{expected:.2} (12%/25%), got {}", sub_scores["area_fraction"]
                 );
-                assert!(sub_scores["area_fraction"] < 0.5, "P37's own default should score well below half of Alexander's target");
+                assert!(sub_scores["area_fraction"] < 0.5, "12% common land should score well below half of Alexander's target");
+            }
+            other => panic!("expected Value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generators_own_26_percent_default_clears_alexanders_target() {
+        // Matches p37_house_cluster's own common_land_fraction default
+        // (0.26, raised specifically to clear Alexander's literal "over 25
+        // percent" after this opinion found the original 0.12 default
+        // failing it -- see p37_house_cluster.rs's own module doc).
+        // 10,000 m² block, 2,600 m² common land.
+        let side = (2600.0_f64).sqrt();
+        let n = nbhd(
+            vec![block("BLOCK_1", 0.0, 0.0)],
+            vec![common_patch("BLOCK_1_common", 0.0, 0.0, side)],
+            vec![],
+        );
+        let out = P67CommonLand.evaluate(&n);
+        match out {
+            OpinionOutput::Value { sub_scores, .. } => {
+                assert!(
+                    (sub_scores["area_fraction"] - 1.0).abs() < 1e-6,
+                    "26% common land should clear Alexander's 25% target and clamp to full credit, got {}",
+                    sub_scores["area_fraction"]
+                );
             }
             other => panic!("expected Value, got {other:?}"),
         }
