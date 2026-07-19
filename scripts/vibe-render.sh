@@ -10,7 +10,8 @@
 # the same "look at the massing from outside" need for a fraction of the
 # cost.
 #
-# Runs three scenarios:
+# Runs whichever scenarios $VIBE_RENDER_SCENARIOS names -- defaults to
+# just clean_baseline (the one real, geolocated site):
 #   - clean_baseline: eastside-baseline.json, parcel MILITARY_CIRCLE_ASSEMBLED
 #     (the real Military Circle site, Norfolk VA -- a 97.7-acre union of
 #     25 real Norfolk GIS parcels, no EDA tags; see the parcel's own `spec`
@@ -22,6 +23,13 @@
 #     (seeding_mode=1.0) -- so the two can be compared side by side. See
 #     crates/street-smarts-patterns/src/field.rs and
 #     examples/dump_pipeline_seeding.rs.
+# barrio_mallcore/mallcore_seeding are archived, not deleted, as of the
+# commit that added this env var -- real fixture data and real pipeline
+# code, still fully valid (nothing about the pipeline itself changed),
+# just not part of the default gallery/CI render for now. Bring all four
+# back for one run with:
+#   VIBE_RENDER_SCENARIOS="clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided" \
+#     scripts/vibe-render.sh
 #
 # Output goes to $OUT_DIR (default: target/vibe-render/): the intermediate
 # pipeline JSON, the rendered PNG/SVG files, a per-scenario .glb (real
@@ -47,6 +55,8 @@ OUT_DIR="${OUT_DIR:-target/vibe-render}"
 VENV_DIR="${VENV_DIR:-tools/vibe-render/.venv}"
 SEED="${VIBE_RENDER_SEED:-42}"
 PUBLISH_DIR="${PUBLISH_DIR:-}"
+SCENARIOS="${VIBE_RENDER_SCENARIOS:-clean_baseline}"
+has_scenario() { case " $SCENARIOS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 mkdir -p "$OUT_DIR"
 
@@ -63,11 +73,15 @@ echo "==> running corrected pipeline: clean_baseline"
 echo "==> rendering: clean_baseline lineage animation (real geometry, no satellite -- see dump_lineage_animation.rs)"
 "$DUMP_LINEAGE_ANIMATION_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline_lineage.svg" 1.2
 
-echo "==> running corrected pipeline: barrio_mallcore"
-"$DUMP_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/barrio_mallcore.json"
+if has_scenario barrio_mallcore; then
+  echo "==> running corrected pipeline: barrio_mallcore"
+  "$DUMP_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/barrio_mallcore.json"
+fi
 
-echo "==> running corrected pipeline: mallcore_seeding (stratified vs field-guided)"
-"$DUMP_SEEDING_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/mallcore_seeding"
+if has_scenario mallcore_seeding_stratified || has_scenario mallcore_seeding_fieldguided; then
+  echo "==> running corrected pipeline: mallcore_seeding (stratified vs field-guided)"
+  "$DUMP_SEEDING_BIN" data/eastside-proposal.json 13279568 "$SEED" "$OUT_DIR/mallcore_seeding"
+fi
 
 echo "==> preparing Python render environment"
 if [ ! -d "$VENV_DIR" ]; then
@@ -76,6 +90,7 @@ fi
 "$VENV_DIR/bin/pip" install -q -r tools/vibe-render/requirements.txt
 
 for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
+  has_scenario "$scenario" || continue
   echo "==> rendering: $scenario"
   if [ "$scenario" = "clean_baseline" ]; then
     # Real surrounding-building massing (Overture Maps, pre-filtered to
