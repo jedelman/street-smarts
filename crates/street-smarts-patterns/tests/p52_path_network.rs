@@ -62,26 +62,26 @@ fn four_corner_blocks() -> Neighborhood {
 #[test]
 fn loop_budget_zero_gives_pure_mst_tree() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     // 4 blocks -> MST has exactly 3 edges, no loop edges.
     assert_eq!(sub.new_streets.len(), 3, "pure tree should have n-1 = 3 edges for 4 blocks");
     assert!(
         sub.new_streets.iter().all(|s| s.classification.as_deref() == Some("local")),
-        "with loop_budget=0, every edge should be MST backbone ('local')"
+        "with both loop budgets at 0, every edge should be MST backbone ('local')"
     );
     // A square's MST is 3 sides, never a diagonal -- diagonals are longer.
     assert!(
-        sub.new_streets.iter().all(|s| !s.id.starts_with("loop_")),
-        "no loop-prefixed edges should exist when loop_budget=0"
+        sub.new_streets.iter().all(|s| !s.id.starts_with("loop_") && !s.id.starts_with("localloop_")),
+        "no loop-prefixed edges should exist when both loop budgets are 0"
     );
 }
 
 #[test]
 fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 1.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 1.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_streets.len(), 4, "MST (3) + loop_budget 1 = 4 edges");
@@ -92,10 +92,29 @@ fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
 }
 
 #[test]
+fn local_loop_budget_one_adds_exactly_one_local_edge() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 1.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert_eq!(sub.new_streets.len(), 4, "MST (3) + local_loop_budget 1 = 4 edges");
+    let local = sub.new_streets.iter().filter(|s| s.classification.as_deref() == Some("local")).count();
+    assert_eq!(local, 4, "MST backbone (3) plus one local_loop edge should all be classified 'local'");
+    assert!(
+        sub.new_streets.iter().any(|s| s.id.starts_with("localloop_")),
+        "a localloop_-prefixed edge should exist when local_loop_budget=1"
+    );
+    // Local streets now contain a real cycle: edges >= nodes for the
+    // 4-block connected component (4 edges, 4 nodes) -- this is exactly
+    // what p49_looped_local_roads checks for.
+}
+
+#[test]
 fn loop_budget_never_exceeds_available_non_mst_edges() {
     // 4 blocks -> complete graph has 6 edges, MST takes 3, leaving 3
     // possible loop edges. Asking for 10 shouldn't crash or duplicate --
-    // it should just take all 3 available.
+    // it should just take all 3 available (loop_budget's share is taken
+    // first, leaving nothing for local_loop_budget).
     let nbhd = four_corner_blocks();
     let params = PathNetworkParams { loop_budget: 10.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
@@ -103,11 +122,53 @@ fn loop_budget_never_exceeds_available_non_mst_edges() {
 }
 
 #[test]
+fn every_segment_bulges_at_least_its_own_row_width() {
+    // Alexander's P121 Path Shape: a path should bulge in the middle, not
+    // run dead straight. Every segment this generator emits should now
+    // have a real 3rd (midpoint) vertex, offset perpendicular to the
+    // straight line between its endpoints by at least row_width_m --
+    // see p121_path_shape's own opinion, which checks exactly this.
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults();
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 7).unwrap();
+
+    assert!(!sub.new_streets.is_empty());
+    for s in &sub.new_streets {
+        assert_eq!(s.centerline.len(), 3, "{} should have a real bulge midpoint, not a straight 2-point line", s.id);
+        let a = s.centerline[0];
+        let b = s.centerline[2];
+        let mid = s.centerline[1];
+        // Perpendicular distance from mid to the line a-b, in local meters
+        // (equirectangular projection, fine at this fixture's scale).
+        let m = 111_320.0;
+        let (ax, ay) = (a.lng * m, a.lat * m);
+        let (bx, by) = (b.lng * m, b.lat * m);
+        let (mx, my) = (mid.lng * m, mid.lat * m);
+        let (dx, dy) = (bx - ax, by - ay);
+        let len = (dx * dx + dy * dy).sqrt();
+        let cross = (dx * (my - ay) - dy * (mx - ax)).abs();
+        let dev = cross / len;
+        let row_width = s.row_width_m.unwrap();
+        assert!(dev >= row_width - 1e-6, "{} bulge deviation {dev:.2}m should be >= its own row_width_m {row_width:.2}m", s.id);
+    }
+}
+
+#[test]
+fn bulge_is_deterministic_for_the_same_seed() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults();
+    let sub_a = PathNetwork.apply(&nbhd, "*", &params, 42).unwrap();
+    let sub_b = PathNetwork.apply(&nbhd, "*", &params, 42).unwrap();
+    assert_eq!(sub_a.new_streets, sub_b.new_streets, "the same seed should reproduce the identical bulge shape");
+}
+
+#[test]
 fn params_roundtrip() {
-    let p = PathNetworkParams { loop_budget: 5.0, path_width_m: 6.0 };
+    let p = PathNetworkParams { loop_budget: 5.0, local_loop_budget: 2.0, path_width_m: 6.0 };
     let v = p.as_vector();
     let back = PathNetworkParams::from_vector(&v);
     assert_eq!(back.loop_budget, 5.0);
+    assert_eq!(back.local_loop_budget, 2.0);
     assert_eq!(back.path_width_m, 6.0);
 }
 

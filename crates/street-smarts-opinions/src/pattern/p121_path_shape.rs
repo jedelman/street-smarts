@@ -10,17 +10,21 @@
 //! > the ends narrower, so that the path forms an enclosure which is a
 //! > place to stay, not just a place to pass through.
 //!
-//! # A structurally guaranteed gap, not a probabilistic one
+//! # A structurally guaranteed gap this opinion found, and closed
 //!
-//! `path_network.rs`'s own module doc says it plainly: "Paths are
-//! straight segments between block centroids... each individual edge does
-//! not yet route around obstacles or follow shared boundaries." Every
-//! `Street` this generator (and `p61_small_public_squares`'s connector
-//! links) produces has exactly two centerline points -- start and end,
-//! nothing between. A straight 2-point line has no midpoint to bulge BY
-//! CONSTRUCTION, not by chance -- `bulge_fraction` (below) is
-//! mathematically guaranteed to be 0.0 on any street this pipeline
-//! currently generates, confirmed by the schema, not merely likely.
+//! `path_network.rs`'s original v0.2 design built each `Street` as a bare
+//! straight segment between two block centroids -- exactly two centerline
+//! points, start and end, nothing between. A straight 2-point line has no
+//! midpoint to bulge BY CONSTRUCTION, not by chance: `bulge_fraction`
+//! (below) was mathematically guaranteed to read 0.0 on any street that
+//! generator produced.
+//!
+//! v0.3 of `path_network` closed this: every segment it emits now bulges
+//! its midpoint perpendicular to the straight line between its endpoints
+//! by `row_width_m * 1.5`, clearing this opinion's own "at least the
+//! street's own row_width_m" bar by construction. `p61_small_public_squares`'s
+//! own connector links are unaffected and still bare 2-point lines -- see
+//! that operator's own module doc for why it wasn't in scope here.
 //!
 //! # One real, checkable metric
 //!
@@ -130,10 +134,9 @@ impl Opinion for P121PathShape {
             sub_scores,
             details,
             caveats: vec![
-                "Every street this pipeline currently generates has exactly two centerline \
-                 points (start and end) -- see this module's own doc comment. bulge_fraction is \
-                 mathematically guaranteed to read 0.0 on real pipeline output today, not a \
-                 possible-but-unlikely finding.".into(),
+                "p61_small_public_squares's own connector links are still bare 2-point straight \
+                 lines -- only path_network's segments bulge as of v0.3. See this module's own \
+                 doc comment.".into(),
                 "Doesn't check 'narrower at the ends' at all -- centerline geometry alone can't \
                  express varying path WIDTH along its length; row_width_m is one flat value per \
                  street.".into(),
@@ -174,13 +177,33 @@ mod tests {
 
     #[test]
     fn a_bare_two_point_street_has_no_bulge() {
-        // Matches the real generator's own current output exactly.
+        // Matches p61_small_public_squares's own connector links, which
+        // are still bare 2-point straight lines -- see this module's own
+        // doc comment.
         let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0) };
         let out = P121PathShape.evaluate(&nbhd(vec![s]));
         match out {
             OpinionOutput::Value { sub_scores, contributing_features, .. } => {
                 assert!((sub_scores["bulge_fraction"] - 0.0).abs() < 1e-6);
                 assert!(contributing_features.contains(&"S1".to_string()));
+            }
+            other => panic!("expected Value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_generators_own_1_5x_bulge_clears_the_check() {
+        // Matches path_network's real v0.3 output shape: midpoint offset
+        // row_width_m * 1.5 perpendicular to the straight line -- see
+        // path_network.rs's own BULGE_MULTIPLIER constant.
+        let row_width = 5.5;
+        let bulge = row_width * 1.5;
+        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, bulge), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(row_width) };
+        let out = P121PathShape.evaluate(&nbhd(vec![s]));
+        match out {
+            OpinionOutput::Value { sub_scores, contributing_features, .. } => {
+                assert!((sub_scores["bulge_fraction"] - 1.0).abs() < 1e-6);
+                assert!(contributing_features.is_empty());
             }
             other => panic!("expected Value, got {other:?}"),
         }
