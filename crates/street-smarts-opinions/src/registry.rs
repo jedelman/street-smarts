@@ -3,14 +3,17 @@
 use crate::activist::OwnershipPattern;
 use crate::geometric::{LevelsOfScale, StrongCenters};
 use crate::pattern::{
-    P100PedestrianStreet, P101BuildingThoroughfare, P108ConnectedBuildings,
-    P112EntranceTransition, P120PathsAndGoals, P122BuildingFronts, P130EntranceRoom,
-    P133StaircaseAsAStage, P163OutdoorRoom, P191ShapeOfIndoorSpace, P192WindowsOverlookingLife,
-    P21FourStoryLimit, P221NaturalDoorsAndWindows, P22NineParPercentParking, P28EccentricNucleus,
-    P29DensityRings, P32ShoppingStreet, P36DegreesOfPublicness, P37HouseCluster, P38RowHouses,
-    P46MarketOfManyShops, P48HousingInBetween, P61SmallPublicSquares, P89CornerGrocery,
-    P95BuildingComplexOpinion, P106PositiveOutdoorSpace, P127IntimacyGradient, P128IndoorSunlight,
-    P129CommonAreasAtTheHeart, P131TheFlowThroughRooms, P159LightOnTwoSides,
+    P100PedestrianStreet, P101BuildingThoroughfare, P102FamilyOfEntrances, P105SouthFacingOutdoors,
+    P108ConnectedBuildings, P110MainEntrance, P112EntranceTransition, P114HierarchyOfOpenSpace,
+    P115CourtyardsWhichLive, P120PathsAndGoals, P121PathShape, P122BuildingFronts, P130EntranceRoom,
+    P133StaircaseAsAStage, P160BuildingEdge, P163OutdoorRoom, P165OpeningToTheStreet,
+    P191ShapeOfIndoorSpace, P192WindowsOverlookingLife, P21FourStoryLimit,
+    P221NaturalDoorsAndWindows, P22NineParPercentParking, P28EccentricNucleus, P29DensityRings,
+    P30ActivityNodes, P32ShoppingStreet, P36DegreesOfPublicness, P37HouseCluster, P38RowHouses,
+    P46MarketOfManyShops, P48HousingInBetween, P49LoopedLocalRoads, P50TJunctions,
+    P60AccessibleGreen, P61SmallPublicSquares, P67CommonLand, P89CornerGrocery,
+    P95BuildingComplexOpinion, P99MainBuilding, P106PositiveOutdoorSpace, P127IntimacyGradient,
+    P128IndoorSunlight, P129CommonAreasAtTheHeart, P131TheFlowThroughRooms, P159LightOnTwoSides,
 };
 use serde::{Deserialize, Serialize};
 use street_smarts_core::nir::Neighborhood;
@@ -60,6 +63,20 @@ pub fn all_opinions_v01() -> Vec<Box<dyn Opinion>> {
         Box::new(P89CornerGrocery),
         Box::new(P101BuildingThoroughfare),
         Box::new(P191ShapeOfIndoorSpace),
+        Box::new(P67CommonLand),
+        Box::new(P114HierarchyOfOpenSpace),
+        Box::new(P115CourtyardsWhichLive),
+        Box::new(P165OpeningToTheStreet),
+        Box::new(P102FamilyOfEntrances),
+        Box::new(P110MainEntrance),
+        Box::new(P30ActivityNodes),
+        Box::new(P49LoopedLocalRoads),
+        Box::new(P50TJunctions),
+        Box::new(P60AccessibleGreen),
+        Box::new(P99MainBuilding),
+        Box::new(P105SouthFacingOutdoors),
+        Box::new(P121PathShape),
+        Box::new(P160BuildingEdge),
     ]
 }
 
