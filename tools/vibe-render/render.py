@@ -499,10 +499,14 @@ def export_glb(scene, out_path):
     buildings with dozens of openings each -- every subtraction adds real
     topological complexity, and it compounds); the exact same 24
     buildings WITHOUT punching produced 956 triangles and 0.17 MiB.
-    Excluding `scene["context"]` (261 real Overture buildings, no
-    instancing/geometry sharing across assembly members either) helps too,
-    but is a rounding error next to that ~150x difference -- punching was
-    the real cause, not context.
+    `scene["context"]` (261 real Overture buildings, plain unfused boxes,
+    no instancing/geometry sharing across assembly members either) was
+    ALSO excluded the first time this was built, on the assumption it was
+    part of the size problem -- measuring it directly (below) showed it
+    wasn't, so it's included now: real surrounding massing (the same
+    Overture data `render_isometric` already draws for `clean_baseline`),
+    so the interactive model shows the generated design sitting in its
+    real site context too, not just floating in isolation.
 
     First found the hard way: 261 context buildings alone were blamed and
     excluded, but the resulting file was STILL ~26 MiB (over Cloudflare
@@ -511,7 +515,9 @@ def export_glb(scene, out_path):
     actual Pages deploy that serves the live site, so a real code change
     shipped in CI green but never actually reached production. Fixed for
     real only after measuring where the triangles were actually coming
-    from, not after the first plausible-looking suspect.
+    from (punching, not context, and not context's ~3,100 simple box
+    triangles either -- confirmed directly before re-adding it here, not
+    assumed safe by analogy).
 
     The isometric PNG export keeps full punched detail (`render_isometric`
     still uses `scene["buildings"]`) -- only the downloadable/interactive
@@ -524,7 +530,8 @@ def export_glb(scene, out_path):
     asm = cq.Assembly()
     n_added = 0
     for group, alpha, solids_key in (
-        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched")
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched"),
+        ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
         for solid, kind in scene.get(solids_key, []):
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
