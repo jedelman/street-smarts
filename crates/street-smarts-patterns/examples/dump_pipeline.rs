@@ -1,8 +1,27 @@
-//! Runs the corrected pipeline (see `crate::pipeline::run_corrected_pipeline`)
-//! against a real fixture parcel and writes the resulting neighborhood as
-//! JSON. This is the data-generation half of the 3D "vibe test" -- the
-//! render half lives in `tools/vibe-render/render.py`, orchestrated
-//! together by `scripts/vibe-render.sh`.
+//! Runs the corrected pipeline against a real fixture parcel and writes
+//! the resulting neighborhood as JSON. This is the data-generation half
+//! of the 3D "vibe test" -- the render half lives in
+//! `tools/vibe-render/render.py`, orchestrated together by
+//! `scripts/vibe-render.sh`.
+//!
+//! Runs through `street_smarts_ledger::run_corrected_pipeline_via_ledger`
+//! -- the SAME function `examples/dump_lineage_animation.rs` (in the
+//! `street-smarts-ledger` crate) uses -- rather than calling
+//! `crate::pipeline::run_corrected_pipeline` directly, so a single real
+//! pipeline run produces both this JSON and, when the animation is also
+//! generated for the same scenario, its every intermediate frame. Before
+//! this, both examples independently recomputed the identical 14-stage
+//! sequence from scratch; see `run_corrected_pipeline_via_ledger`'s own
+//! doc comment for the full rationale. `street-smarts-patterns` itself
+//! stays free of any dependency on `street-smarts-ledger` in real library
+//! terms (this is a `[dev-dependencies]`-only link, used by this example
+//! alone) -- the ledger crate depends on patterns, not the reverse, so
+//! the real production pipeline (`pipeline.rs`, what `street-smarts-web`'s
+//! WASM build actually ships) can't itself route through the ledger
+//! without an inverted dependency. `tests/pipeline_ledger_consistency.rs`
+//! (in `street-smarts-ledger`) is the tripwire that catches the two
+//! implementations drifting apart, since this real constraint means
+//! they're necessarily two separate copies of the same sequence, not one.
 //!
 //! Usage:
 //!   cargo run -p street-smarts-patterns --release --example dump_pipeline -- \
@@ -14,7 +33,7 @@
 
 use std::path::Path;
 use street_smarts_core::nir::Neighborhood;
-use street_smarts_patterns::pipeline::run_corrected_pipeline;
+use street_smarts_ledger::{run_corrected_pipeline_via_ledger, HistoryStore, InMemoryHistoryStore};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -32,7 +51,10 @@ fn main() {
     let baseline: Neighborhood = serde_json::from_str(&raw)
         .unwrap_or_else(|e| panic!("couldn't parse {fixture_path}: {e}"));
 
-    let result = run_corrected_pipeline(&baseline, parcel_id, seed);
+    let mut store = InMemoryHistoryStore::new();
+    let root_id = store.insert_root(&baseline);
+    let (final_id, _commits) = run_corrected_pipeline_via_ledger(&mut store, root_id, parcel_id, seed);
+    let result = store.materialize(&final_id).expect("final commit must materialize");
 
     if let Some(parent) = Path::new(out_path).parent() {
         std::fs::create_dir_all(parent).ok();

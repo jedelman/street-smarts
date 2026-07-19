@@ -2,10 +2,13 @@
 //! own coordinate space (real parcel/pad/building/street geometry, not
 //! the abstract commit-graph layout `dump_lineage_graph` draws) -- the
 //! site unfolding step by step, through the REAL, FULL corrected
-//! pipeline: P37 blocks -> PathNetwork's streets -> P29's density tiers
-//! -> per-block P61 squares/P95 pads -> P108's merges -> P96's story
-//! counts -> P107's real building massing -> P127/P130/P129/P131's
-//! interior partitioning -> P221's openings -> P133's stair cores.
+//! pipeline (`street_smarts_ledger::run_corrected_pipeline_via_ledger` --
+//! see that function's own doc for why this and `examples/dump_pipeline.rs`
+//! both build on it instead of each independently re-deriving the same
+//! 14-stage sequence): P37 blocks -> PathNetwork's streets -> P29's
+//! density tiers -> per-block P61 squares/P95 pads -> P108's merges ->
+//! P96's story counts -> P107's real building massing -> P127/P130/P129/
+//! P131's interior partitioning -> P221's openings -> P133's stair cores.
 //!
 //! Every polygon/polyline is real geometry from the actual `Neighborhood`
 //! snapshot at each commit -- not a schematic. Uses SMIL `<animate>` on
@@ -17,21 +20,19 @@
 //!
 //! # What this can and can't show
 //!
-//! Every real commit in the corrected pipeline (`pipeline.rs`'s own
-//! `run_corrected_pipeline_with_p37_traced`, which this mirrors exactly --
-//! same operators, same targets, same per-block P61 area-budget split,
-//! same seed derivation) gets a real step and a real label. But not every
-//! step changes something this renderer draws: P29 (density-tier tagging),
-//! P96 (story-count tagging), and P127/P130/P129/P131/P221/P133 (interior
-//! cells, entrance/common-area tags, connections, window/door openings,
-//! stair cores) all mutate a building/parcel's own FIELDS in place --
-//! same id, same footprint -- rather than adding or removing a top-level
-//! entity. This renderer only draws each entity's OUTER footprint
-//! (building interior partition lines and door/window openings aren't
-//! rendered at all, a real limitation, not a bug), so those steps
-//! legitimately produce no new visible shape -- the step counter and
-//! label still advance, honestly reflecting that the commit really ran,
-//! even though there's nothing new to fade in.
+//! Every real commit in the corrected pipeline gets a real step and a
+//! real label. But not every step changes something this renderer draws:
+//! P29 (density-tier tagging), P96 (story-count tagging), and P127/P130/
+//! P129/P131/P221/P133 (interior cells, entrance/common-area tags,
+//! connections, window/door openings, stair cores) all mutate a
+//! building/parcel's own FIELDS in place -- same id, same footprint --
+//! rather than adding or removing a top-level entity. This renderer only
+//! draws each entity's OUTER footprint (building interior partition
+//! lines and door/window openings aren't rendered at all, a real
+//! limitation, not a bug), so those steps legitimately produce no new
+//! visible shape -- the step counter and label still advance, honestly
+//! reflecting that the commit really ran, even though there's nothing
+//! new to fade in.
 //!
 //! Usage:
 //!   cargo run -p street-smarts-ledger --release --example dump_lineage_animation -- \
@@ -41,24 +42,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::{Neighborhood, OpenSpaceKind};
-use street_smarts_core::Scope;
-use street_smarts_ledger::{HistoryStore, InMemoryHistoryStore, NeighborhoodId};
-use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
-use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
-use street_smarts_patterns::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
-use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
-use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
-use street_smarts_patterns::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
-use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
-use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
-use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
-use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
-use street_smarts_patterns::p61_small_public_squares::{P61Params, P61SmallPublicSquares};
-use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
-use street_smarts_patterns::p96_number_of_stories::{P96NumberOfStories, P96Params};
-use street_smarts_patterns::path_network::{PathNetwork, PathNetworkParams};
-use street_smarts_patterns::pipeline::allocate_squares_by_area;
-use street_smarts_patterns::{DynOperator, Parameters};
+use street_smarts_ledger::{run_corrected_pipeline_via_ledger, Commit, HistoryStore, InMemoryHistoryStore};
 
 /// An entity's real geometry -- a filled area (parcel/open-space/building,
 /// with real holes for a P107 courtyard building) or a stroked line (a
@@ -126,29 +110,22 @@ fn geometry_of(n: &Neighborhood, id: &str) -> Geometry {
         return Geometry::Line(s.centerline.clone());
     }
     if let Some(b) = n.buildings.iter().find(|b| b.id == id) {
-        let part = b.polygon.parts_view().into_iter().next().unwrap_or_default_part();
+        let part = first_part_or_empty(b.polygon.parts_view());
         return Geometry::Area { outer: part.outer, holes: part.holes };
     }
     if let Some(o) = n.open_space.iter().find(|o| o.id == id) {
-        let part = o.polygon.parts_view().into_iter().next().unwrap_or_default_part();
+        let part = first_part_or_empty(o.polygon.parts_view());
         return Geometry::Area { outer: part.outer, holes: part.holes };
     }
     if let Some(p) = n.parcels.iter().find(|p| p.id == id) {
-        let part = p.polygon.parts_view().into_iter().next().unwrap_or_default_part();
+        let part = first_part_or_empty(p.polygon.parts_view());
         return Geometry::Area { outer: part.outer, holes: part.holes };
     }
     panic!("entity {id} not found in snapshot");
 }
 
-/// Local convenience: `parts_view()`'s first part, or an empty part for a
-/// degenerate (empty-ring) polygon rather than panicking on `.unwrap()`.
-trait FirstPartOrEmpty {
-    fn unwrap_or_default_part(self) -> street_smarts_core::geometry::PolygonPart;
-}
-impl FirstPartOrEmpty for Option<street_smarts_core::geometry::PolygonPart> {
-    fn unwrap_or_default_part(self) -> street_smarts_core::geometry::PolygonPart {
-        self.unwrap_or(street_smarts_core::geometry::PolygonPart { outer: vec![], holes: vec![] })
-    }
+fn first_part_or_empty(parts: Vec<street_smarts_core::geometry::PolygonPart>) -> street_smarts_core::geometry::PolygonPart {
+    parts.into_iter().next().unwrap_or(street_smarts_core::geometry::PolygonPart { outer: vec![], holes: vec![] })
 }
 
 fn entity_ids(n: &Neighborhood) -> BTreeSet<String> {
@@ -157,75 +134,6 @@ fn entity_ids(n: &Neighborhood) -> BTreeSet<String> {
         .chain(n.buildings.iter().map(|b| b.id.clone()))
         .chain(n.streets.iter().map(|s| s.id.clone()))
         .collect()
-}
-
-struct Step {
-    operator_name: String,
-    target: String,
-    seed: u64,
-}
-
-/// Diffs the just-materialized snapshot against `prev_ids`, records any
-/// newly-appeared entity (born at this step) and any entity that
-/// disappeared (removed at this step -- e.g. a P95 pad P108 just merged
-/// away), then pushes the step itself. Kept as a plain function taking
-/// `store`/`entities`/etc. explicitly, not a capturing closure, so it can
-/// be called freely between `&mut store` borrows elsewhere in `main`.
-fn record_step(
-    store: &InMemoryHistoryStore,
-    id: NeighborhoodId,
-    commit_op: String,
-    commit_target: String,
-    commit_seed: u64,
-    prev_ids: &mut BTreeSet<String>,
-    entities: &mut BTreeMap<String, Entity>,
-    steps: &mut Vec<Step>,
-) {
-    let snapshot = store.materialize(&id).expect("just-computed commit must materialize");
-    let now_ids = entity_ids(&snapshot);
-    let step_idx = steps.len() + 1;
-    for added in now_ids.difference(prev_ids) {
-        entities.insert(added.clone(), Entity {
-            geometry: geometry_of(&snapshot, added),
-            color: entity_color(&snapshot, added),
-            born_step: step_idx,
-            removed_step: None,
-        });
-    }
-    for removed in prev_ids.difference(&now_ids) {
-        if let Some(e) = entities.get_mut(removed) {
-            e.removed_step = Some(step_idx);
-        }
-    }
-    *prev_ids = now_ids;
-    steps.push(Step { operator_name: commit_op, target: commit_target, seed: commit_seed });
-}
-
-/// Tries `op` at `target`/`params`/`seed`; on success, records the commit
-/// as a real step and advances `cur`. On failure (a real, expected skip --
-/// e.g. a block too small for P61/P95, or an operator with nothing left
-/// to do), leaves everything untouched, exactly like `pipeline.rs`'s own
-/// `if let Ok(...)` tolerance.
-#[allow(clippy::too_many_arguments)]
-fn try_run_and_record(
-    store: &mut InMemoryHistoryStore,
-    op: &dyn DynOperator,
-    target: &str,
-    params: &serde_json::Value,
-    seed: u64,
-    cur: &mut NeighborhoodId,
-    prev_ids: &mut BTreeSet<String>,
-    entities: &mut BTreeMap<String, Entity>,
-    steps: &mut Vec<Step>,
-) -> bool {
-    match store.get_or_compute(*cur, op, target, params, seed, "v1") {
-        Ok(next) => {
-            record_step(store, next, op.name().to_string(), target.to_string(), seed, prev_ids, entities, steps);
-            *cur = next;
-            true
-        }
-        Err(_) => false,
-    }
 }
 
 fn main() {
@@ -248,8 +156,13 @@ fn main() {
     let mut store = InMemoryHistoryStore::new();
     let root_id = store.insert_root(&baseline);
 
+    // The single real pipeline run -- same function `dump_pipeline.rs`
+    // uses for the final-state JSON, so there's exactly one computation
+    // of "what does this pipeline produce," not two that could drift.
+    let (_final_id, commits) = run_corrected_pipeline_via_ledger(&mut store, root_id, parcel_id, seed);
+    eprintln!("{} real commit(s)", commits.len());
+
     let mut entities: BTreeMap<String, Entity> = BTreeMap::new();
-    let mut steps: Vec<Step> = Vec::new();
     // The diff loop needs the FULL baseline id set to correctly detect
     // what P37 adds/removes, but only `parcel_id` itself is worth drawing
     // at step 0 -- a real fixture like eastside-baseline.json carries
@@ -266,69 +179,34 @@ fn main() {
         });
     }
 
-    let mut cur = root_id;
-
-    // The exact same 14-stage sequence, targets, and skip-tolerance as
-    // `pipeline.rs`'s own `run_corrected_pipeline_with_p37_traced` -- see
-    // that function's doc comment for the full real rationale behind this
-    // order. Every commit here is a REAL `get_or_compute` call, not a
-    // narrated guess.
-    try_run_and_record(&mut store, &P37HouseCluster, parcel_id, &P37Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-
-    try_run_and_record(&mut store, &PathNetwork, "*", &PathNetworkParams::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-
-    try_run_and_record(&mut store, &P29DensityRings, "*", &P29Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-
-    // Site-scale square budget split across blocks by area -- identical
-    // computation to `pipeline.rs`'s own, reusing its real `pub fn` rather
-    // than a second, independently-maintained copy.
-    let after_p29 = store.materialize(&cur).unwrap();
-    let block_ids: Vec<String> = after_p29.select_ids(&Scope::Block);
-    eprintln!("{} block(s)", block_ids.len());
-    let block_areas: Vec<f64> = block_ids.iter()
-        .map(|id| after_p29.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
-        .collect();
-    let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
-    let square_counts = allocate_squares_by_area(&block_areas, total_squares);
-
-    for (i, block_id) in block_ids.iter().enumerate() {
-        let block_seed = seed + i as u64 + 1;
-        let n_squares = square_counts[i];
-        if n_squares > 0 {
-            // `P61SmallPublicSquares::apply` with no existing Plaza on this
-            // block falls through to the same `place_new_squares_n` logic
-            // `pipeline.rs` calls directly, given the SAME target square
-            // count via `max_squares` -- see p61_small_public_squares.rs's
-            // own `place_new_squares` thin wrapper. Going through the
-            // typed `Params`/`DynOperator` interface here (instead of that
-            // private free function) is what lets this run through
-            // `get_or_compute` at all.
-            let p61_params = P61Params { max_squares: n_squares as f64, ..P61Params::defaults() };
-            try_run_and_record(&mut store, &P61SmallPublicSquares, block_id, &p61_params.as_map(), block_seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
+    for (step_idx, commit) in commits.iter().enumerate() {
+        let step_idx = step_idx + 1; // 1-based, matching the label text
+        let snapshot = store.materialize(&commit.id).expect("recorded commit must materialize");
+        let now_ids = entity_ids(&snapshot);
+        for added in now_ids.difference(&prev_ids) {
+            entities.insert(added.clone(), Entity {
+                geometry: geometry_of(&snapshot, added),
+                color: entity_color(&snapshot, added),
+                born_step: step_idx,
+                removed_step: None,
+            });
         }
-        try_run_and_record(&mut store, &P95BuildingComplex, block_id, &P95Params::defaults().as_map(), block_seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
+        for removed in prev_ids.difference(&now_ids) {
+            if let Some(e) = entities.get_mut(removed) {
+                e.removed_step = Some(step_idx);
+            }
+        }
+        prev_ids = now_ids;
     }
 
-    try_run_and_record(&mut store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P127IntimacyGradient, "*", &P127Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P129CommonAreasAtTheHeart, "*", &P129Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P131TheFlowThroughRooms, "*", &P131Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    try_run_and_record(&mut store, &P221NaturalDoorsAndWindows, "*", &P221Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
-    // AFTER P221, not right after P131 -- Building.floors isn't set until
-    // P221 derives it from real height. See pipeline.rs's own step 14 doc.
-    try_run_and_record(&mut store, &P133StaircaseAsAStage, "*", &P133Params::defaults().as_map(), seed, &mut cur, &mut prev_ids, &mut entities, &mut steps);
+    eprintln!("{} entities total", entities.len());
 
-    eprintln!("{} commit(s), {} entities total", steps.len(), entities.len());
-
-    let svg = render_animated_svg(&entities, &steps, seconds_per_step);
+    let svg = render_animated_svg(&entities, &commits, seconds_per_step);
     if let Some(parent) = std::path::Path::new(out_path).parent() {
         std::fs::create_dir_all(parent).ok();
     }
     std::fs::write(out_path, svg).unwrap_or_else(|e| panic!("couldn't write {out_path}: {e}"));
-    println!("{out_path}: {} step(s), {} entities, {:.1}s loop", steps.len(), entities.len(), steps.len() as f64 * seconds_per_step / 0.9);
+    println!("{out_path}: {} step(s), {} entities, {:.1}s loop", commits.len(), entities.len(), commits.len() as f64 * seconds_per_step / 0.9);
 }
 
 /// Fraction of the loop spent stepping through the pipeline; the rest is a
@@ -339,8 +217,8 @@ const FADE_FRAC: f64 = 0.012;
 const PX_PER_METER: f64 = 0.9;
 const MARGIN_PX: f64 = 30.0;
 
-fn render_animated_svg(entities: &BTreeMap<String, Entity>, steps: &[Step], seconds_per_step: f64) -> String {
-    let n = steps.len().max(1);
+fn render_animated_svg(entities: &BTreeMap<String, Entity>, commits: &[Commit], seconds_per_step: f64) -> String {
+    let n = commits.len().max(1);
     let total_dur = n as f64 * seconds_per_step / CONTENT_FRAC;
 
     // Local-meter projection, single fixed frame for the whole animation
@@ -398,7 +276,7 @@ fn render_animated_svg(entities: &BTreeMap<String, Entity>, steps: &[Step], seco
     }
 
     let mut labels = String::new();
-    for (i, step) in steps.iter().enumerate() {
+    for (i, commit) in commits.iter().enumerate() {
         let idx = i + 1;
         let start_t = (i as f64 / n as f64) * CONTENT_FRAC;
         // Each label is on for exactly its own step's window; the LAST
@@ -414,7 +292,7 @@ fn render_animated_svg(entities: &BTreeMap<String, Entity>, steps: &[Step], seco
         let _ = writeln!(
             labels,
             r##"<text x="12" y="24" font-family="monospace" font-size="15" fill="#111111" opacity="0"><animate attributeName="opacity" dur="{total_dur}s" repeatCount="indefinite" keyTimes="{kt}" values="{v}" calcMode="discrete"/>step {idx}/{n}: {op} target={target} seed={seed}</text>"##,
-            op = xml_escape(&step.operator_name), target = xml_escape(&step.target), seed = step.seed,
+            op = xml_escape(&commit.operator_name), target = xml_escape(&commit.target), seed = commit.seed,
         );
     }
 
