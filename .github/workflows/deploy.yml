@@ -9,6 +9,20 @@ name: Build and deploy to Cloudflare
 # live site's custom domain keeps working exactly as before -- retiring it
 # needs one manual step outside CI: re-pointing that custom domain to the
 # Pages project in the Cloudflare dashboard.
+#
+# Also runs the 3D "vibe render" visual regression gate and uploads its
+# renders as a downloadable artifact -- folded in from a formerly separate
+# `vibe-render.yml` workflow, which ran `scripts/vibe-render.sh` a SECOND
+# time on every PR (its own full Rust compile + cadquery render, paying
+# real CI minutes twice for identical output). This job already runs
+# vibe-render.sh once for the deploy itself; the old workflow's two steps
+# below just read that SAME `target/vibe-render` output, no separate run
+# needed. This also closes a real gap the split left open: the perceptual-
+# hash check previously couldn't block a deploy at all (two independent
+# workflows, neither gated on the other) -- a real visual regression could
+# land on production as long as build-and-deploy itself stayed green. Now
+# it's a real gate, same "gated, not just measured" standard as the bundle
+# size budget below.
 
 on:
   push:
@@ -87,6 +101,38 @@ jobs:
           test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
           test -f public/vibe-render/clean_baseline_lineage.svg
           echo "All required outputs present."
+
+      - name: Visual regression check (isometric renders)
+        # HARDENING_SPEC.md §4 -- perceptual-hash gate, not just a human
+        # eyeball on the uploaded artifact below. Determinism confirmed
+        # separately before this was built (see PR history): the isometric
+        # PNG is byte-identical across repeat runs on identical input,
+        # unlike the SVG/.glb outputs (cosmetic-only non-determinism --
+        # embedded timestamp, randomized ids -- not gated here yet).
+        # A PR that intentionally changes a render updates the baseline
+        # with: python3 tools/vibe-render/perceptual_hash.py update-baseline
+        # tools/vibe-render/baselines/isometric.json target/vibe-render
+        # clean_baseline_isometric.png barrio_mallcore_isometric.png
+        # mallcore_seeding_stratified_isometric.png mallcore_seeding_fieldguided_isometric.png
+        #
+        # Reads `target/vibe-render` -- the "Generate vibe-render gallery"
+        # step above already populated it (its own $OUT_DIR default,
+        # independent of PUBLISH_DIR=public/vibe-render), same directory
+        # the old separate vibe-render.yml workflow re-derived from scratch.
+        run: |
+          tools/vibe-render/.venv/bin/python3 tools/vibe-render/perceptual_hash.py check \
+            tools/vibe-render/baselines/isometric.json \
+            target/vibe-render
+
+      - name: Upload vibe-render artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-render-${{ github.event.pull_request.number || github.sha }}
+          path: |
+            target/vibe-render/*.png
+            target/vibe-render/*.svg
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Bundle size budget
         # Gated, not just measured -- see HARDENING_SPEC.md §2 and
