@@ -9,21 +9,27 @@
 //! > allow any one loop to serve more than 50 cars, and keep the road
 //! > really narrow -- 17 to 20 feet is quite enough.
 //!
-//! # A real, confirmed gap, not a hypothetical
+//! # A real gap this opinion found, and closed
 //!
-//! `path_network.rs`'s own comment describes its output precisely: "MST =
-//! backbone (classified 'local'), loop edges = supplementary shortcuts
-//! (classified 'pedestrian')." A minimum spanning tree has exactly V-1
-//! edges for V vertices BY DEFINITION -- zero cycles. So every
-//! `Local`-classified street this generator produces is, by construction,
-//! part of a pure tree: the graph-cycle check below (`has_loop`) will
-//! find none among Local-classified streets on any real pipeline output,
-//! not because of a bug in this opinion but because the generator's own
-//! MST-backbone design doesn't loop its LOCAL roads at all -- only its
-//! separately-classified Pedestrian shortcuts create real cycles.
-//! Similarly, `path_network`'s own `path_width_m` defaults to 4.0m, below
-//! Alexander's literal 17-20ft (5.18-6.10m) range -- `width_in_range`
-//! will show that gap too.
+//! `path_network.rs`'s original v0.2 design built a Minimum Spanning Tree
+//! as its `Local`-classified backbone (exactly V-1 edges for V vertices BY
+//! DEFINITION -- zero cycles), then added extra edges classified
+//! `Pedestrian`, not `Local`, to relieve dead-ends. So every
+//! `Local`-classified street it produced was, by construction, part of a
+//! pure tree: the graph-cycle check below (`has_loop`) found none among
+//! Local-classified streets on any real pipeline output -- not a bug in
+//! this opinion, but the generator's own MST-backbone design never
+//! looping its LOCAL roads at all. `path_network`'s `path_width_m` also
+//! defaulted to 4.0m, below Alexander's literal 17-20ft (5.18-6.10m)
+//! range.
+//!
+//! v0.3 of `path_network` closed both: a new, separate `local_loop_budget`
+//! parameter (default 1.0) adds real `Local`-classified loop edges on top
+//! of the MST, and `path_width_m`'s default moved to 5.5m. This opinion
+//! still checks against Alexander's own numbers, not whatever the
+//! generator's current defaults happen to be, so it stays a real check
+//! rather than a tautology -- see `path_network.rs`'s own module doc for
+//! the fix.
 //!
 //! # Two sub-scores
 //!
@@ -265,14 +271,50 @@ mod tests {
     }
 
     #[test]
-    fn the_generators_own_4m_default_fails_the_width_check() {
-        // Matches path_network's own path_width_m default (4.0) -- the
-        // real gap this opinion exists to surface.
+    fn a_4m_width_below_alexanders_range_fails_the_width_check() {
+        // Matches path_network's original path_width_m default (4.0)
+        // before it was raised to close this exact gap -- kept as a
+        // boundary-case regression, see path_network.rs's own module doc.
         let n = nbhd(vec![street("S1", (0.0, 0.0), (100.0, 0.0), 4.0)]);
         let out = P49LoopedLocalRoads.evaluate(&n);
         match out {
             OpinionOutput::Value { sub_scores, .. } => {
                 assert!((sub_scores["width_in_range"] - 0.0).abs() < 1e-6);
+            }
+            other => panic!("expected Value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_generators_own_5_5m_default_clears_the_width_check() {
+        // Matches path_network's current path_width_m default (5.5),
+        // raised specifically to clear Alexander's literal 17-20ft range.
+        let n = nbhd(vec![street("S1", (0.0, 0.0), (100.0, 0.0), 5.5)]);
+        let out = P49LoopedLocalRoads.evaluate(&n);
+        match out {
+            OpinionOutput::Value { sub_scores, .. } => {
+                assert!((sub_scores["width_in_range"] - 1.0).abs() < 1e-6);
+            }
+            other => panic!("expected Value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_network_with_mst_plus_one_local_loop_edge_has_a_real_loop() {
+        // Models path_network's real v0.3 output shape: an MST backbone
+        // (A-B, B-C) plus one local_loop_budget edge (C-A) closing the
+        // triangle -- all classified 'local', matching real generator
+        // output at its current defaults.
+        let n = nbhd(vec![
+            street("path_A_to_B", (0.0, 0.0), (100.0, 0.0), 5.5),
+            street("path_B_to_C", (100.0, 0.0), (50.0, 87.0), 5.5),
+            street("localloop_C_to_A", (50.0, 87.0), (0.0, 0.0), 5.5),
+        ]);
+        let out = P49LoopedLocalRoads.evaluate(&n);
+        match out {
+            OpinionOutput::Value { sub_scores, .. } => {
+                assert!((sub_scores["has_loop"] - 1.0).abs() < 1e-6, "MST + local_loop_budget edge should close a real loop, got {}", sub_scores["has_loop"]);
+                assert!((sub_scores["width_in_range"] - 1.0).abs() < 1e-6);
             }
             other => panic!("expected Value, got {other:?}"),
         }
