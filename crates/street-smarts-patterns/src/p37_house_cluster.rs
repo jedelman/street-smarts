@@ -31,8 +31,11 @@
 //! # v0.2: common land, closing the gap above
 //!
 //! v0.1 deferred block-level common land entirely. This version reserves
-//! one: after carving each block, a `common_land_fraction` (default 12%)
-//! slice of that block's own area is scaled inward from the block's
+//! one: after carving each block, a `common_land_fraction` (default 26% --
+//! P67 Common Land's own opinion checks against Alexander's literal "over
+//! 25 percent," and v0.2's own first default of 12% failed that check; see
+//! `street-smarts-opinions::pattern::p67_common_land`) slice of that
+//! block's own area is scaled inward from the block's
 //! footprint toward its centroid (`planar::scale_toward_centroid`) and
 //! emitted as `OpenSpaceKind::Common` -- a real, distinct kind from
 //! `Plaza` (P61's intentional, publicly-scaled square) or a P95 courtyard
@@ -138,7 +141,7 @@ pub struct P37Params {
     /// (Alexander's "common land" that identifies the cluster) -- scaled
     /// inward from the block's footprint toward its centroid. 0 disables
     /// common-land generation entirely.
-    #[param(min = 0.0, max = 0.4, default = 0.12, desc = "Fraction of each block reserved as informal common land (0 disables it).")]
+    #[param(min = 0.0, max = 0.4, default = 0.26, desc = "Fraction of each block reserved as informal common land (0 disables it).")]
     pub common_land_fraction: f64,
     /// Skip common-land generation for a block if the resulting patch
     /// would be smaller than this -- not worth reserving land nobody could
