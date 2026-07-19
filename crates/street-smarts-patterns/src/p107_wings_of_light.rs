@@ -405,6 +405,7 @@ impl P107WingsOfLight {
             new_open_space: new_open,
             new_buildings: buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],

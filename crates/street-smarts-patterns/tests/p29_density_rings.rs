@@ -30,6 +30,49 @@ fn every_block_gets_tagged() {
     }
 }
 
+/// P28 Eccentric Nucleus: with eccentricity_frac > 0, the real Core-tier
+/// peak should sit measurably farther from the blocks' own bounding-box
+/// center than with eccentricity_frac == 0.0 -- the same "how far from
+/// bounding-box center" reasoning p28_eccentric_nucleus's own opinion uses.
+#[test]
+fn eccentricity_frac_measurably_shifts_the_core_tier_away_from_the_bounding_box_center() {
+    let nbhd = blocks_from_real_mall_parcel();
+
+    let block_centroid = |p: &street_smarts_core::nir::Parcel| {
+        let lng = p.polygon.outer.iter().map(|q| q.lng).sum::<f64>() / p.polygon.outer.len() as f64;
+        let lat = p.polygon.outer.iter().map(|q| q.lat).sum::<f64>() / p.polygon.outer.len() as f64;
+        (lng, lat)
+    };
+    let blocks: Vec<_> = nbhd.parcels.iter().filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_")).collect();
+    let (min_lng, max_lng) = blocks.iter().map(|p| block_centroid(p).0).fold((f64::MAX, f64::MIN), |(mn, mx), x| (mn.min(x), mx.max(x)));
+    let (min_lat, max_lat) = blocks.iter().map(|p| block_centroid(p).1).fold((f64::MAX, f64::MIN), |(mn, mx), x| (mn.min(x), mx.max(x)));
+    let bbox_center = ((min_lng + max_lng) / 2.0, (min_lat + max_lat) / 2.0);
+    let m_per_deg_lat = 110_540.0;
+    let m_per_deg_lng = 111_320.0;
+    let dist_from_bbox_center = |lng: f64, lat: f64| {
+        let dx = (lng - bbox_center.0) * m_per_deg_lng;
+        let dy = (lat - bbox_center.1) * m_per_deg_lat;
+        (dx * dx + dy * dy).sqrt()
+    };
+    let mean_core_dist = |sub: &street_smarts_patterns::subdivision::Subdivision| {
+        let core: Vec<_> = sub.new_parcels.iter().filter(|p| p.density_tier.as_deref() == Some("core")).collect();
+        let sum: f64 = core.iter().map(|p| { let (lng, lat) = block_centroid(p); dist_from_bbox_center(lng, lat) }).sum();
+        sum / core.len().max(1) as f64
+    };
+
+    let centered_params = P29Params { eccentricity_frac: 0.0, ..P29Params::defaults() };
+    let eccentric_params = P29Params { eccentricity_frac: 0.6, ..P29Params::defaults() };
+    let sub_centered = P29DensityRings.apply(&nbhd, "*", &centered_params, 7).unwrap();
+    let sub_eccentric = P29DensityRings.apply(&nbhd, "*", &eccentric_params, 7).unwrap();
+
+    let d_centered = mean_core_dist(&sub_centered);
+    let d_eccentric = mean_core_dist(&sub_eccentric);
+    assert!(
+        d_eccentric > d_centered,
+        "a higher eccentricity_frac should push the Core tier's mean position farther from the bounding-box center: centered={d_centered:.1}m, eccentric={d_eccentric:.1}m"
+    );
+}
+
 #[test]
 fn geometry_is_untouched_only_metadata_added() {
     let nbhd = blocks_from_real_mall_parcel();
@@ -63,7 +106,7 @@ fn produces_a_real_gradient_not_one_flat_tier() {
 #[test]
 fn respects_custom_core_and_edge_targets() {
     let nbhd = blocks_from_real_mall_parcel();
-    let params = P29Params { n_rings: 2.0, core_target_stories: 10.0, edge_target_stories: 1.0 };
+    let params = P29Params { n_rings: 2.0, core_target_stories: 10.0, edge_target_stories: 1.0, ..P29Params::defaults() };
     let sub = P29DensityRings.apply(&nbhd, "*", &params, 7).unwrap();
 
     let stories: Vec<f64> = sub.new_parcels.iter().filter_map(|p| p.target_stories).collect();

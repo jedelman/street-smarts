@@ -62,7 +62,10 @@ fn every_pad_gets_a_real_target_stories() {
 #[test]
 fn honors_the_ordinary_cap_with_only_a_few_widely_spaced_exceptions() {
     let nbhd = pads_from_real_mall_parcel();
-    let params = P96Params::defaults();
+    // Main-building boost (P99) is a distinct, position-only mechanism with
+    // its own dedicated test below -- disabled here so this test isolates
+    // the tall-exception spacing invariant it's actually checking.
+    let params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
     let sub = P96NumberOfStories.apply(&nbhd, "*", &params, 11).unwrap();
 
     let n_pads = sub.new_parcels.len();
@@ -109,7 +112,10 @@ fn no_density_tier_falls_back_to_default_target_stories_uniformly() {
 
     assert!(nbhd.parcels.iter().filter(|p| p.use_category.as_deref() == Some("p95_building_pad")).all(|p| p.density_tier.is_none()));
 
-    let params = P96Params::defaults();
+    // Main-building boost (P99) is a distinct mechanism with its own
+    // dedicated test below -- disabled here so this test isolates the
+    // flat-default-fallback invariant it's actually checking.
+    let params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
     let sub96 = P96NumberOfStories.apply(&nbhd, "*", &params, 1).unwrap();
     for p in &sub96.new_parcels {
         assert_eq!(p.target_stories, Some(params.default_target_stories), "{}: no tier should fall back to the flat default", p.id);
@@ -124,4 +130,33 @@ fn no_building_pads_errors() {
     empty.parcels.retain(|p| p.use_category.as_deref() != Some("p95_building_pad"));
     let result = P96NumberOfStories.apply(&empty, "*", &P96Params::defaults(), 1);
     assert!(result.is_err());
+}
+
+/// P99 Main Building: exactly one pad -- the one nearest every pad's own
+/// area-weighted centroid -- gets a real, measurable boost on top of its
+/// tier assignment; every other pad's assignment is unchanged.
+#[test]
+fn main_building_boost_lands_on_exactly_one_pad_and_nowhere_else() {
+    let nbhd = pads_from_real_mall_parcel();
+    let boosted_params = P96Params::defaults();
+    let unboosted_params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
+
+    let sub_boosted = P96NumberOfStories.apply(&nbhd, "*", &boosted_params, 11).unwrap();
+    let sub_unboosted = P96NumberOfStories.apply(&nbhd, "*", &unboosted_params, 11).unwrap();
+
+    let mut changed: Vec<(String, f64, f64)> = Vec::new();
+    for pb in &sub_boosted.new_parcels {
+        let pu = sub_unboosted.new_parcels.iter().find(|p| p.id == pb.id).expect("same pad set");
+        let (sb, su) = (pb.target_stories.unwrap(), pu.target_stories.unwrap());
+        if (sb - su).abs() > 1e-6 {
+            changed.push((pb.id.clone(), su, sb));
+        }
+    }
+
+    assert_eq!(changed.len(), 1, "exactly one pad should change with the boost enabled, got {changed:?}");
+    let (_, unboosted_stories, boosted_stories) = &changed[0];
+    assert!(
+        (boosted_stories - unboosted_stories - boosted_params.main_building_boost_stories).abs() < 1e-6,
+        "the boosted pad's story count should be exactly its unboosted assignment plus main_building_boost_stories"
+    );
 }

@@ -393,6 +393,7 @@ impl PatternOperator for P37HouseCluster {
             new_open_space: all_new_open,
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
             replaced_parcel_ids: vec![parcel_id.to_string()],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],

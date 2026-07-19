@@ -51,12 +51,26 @@
 //!   exists in the NIR schema but nothing populates it for these fixtures.
 //! - Doesn't look at the site's actual shape (an elongated site gets the
 //!   same circular rings as a compact one).
+//!
+//! # v0.2: `eccentricity_frac`, closing P28 Eccentric Nucleus's real gap
+//!
+//! `p28_eccentric_nucleus` checks whether the real `Core`-tier peak this
+//! operator produces sits at a genuinely OFF-CENTER position relative to
+//! the site's own bounding-box center -- Alexander's own "eccentric," not
+//! dead center. The plain area-weighted block centroid used as the ring
+//! center is, for a roughly compact block layout, close to that
+//! bounding-box center by construction -- the opposite of eccentric.
+//! `eccentricity_frac` (default 0.35) now shifts the real ring center a
+//! real fraction of the way from that plain centroid TOWARD the single
+//! block farthest from it (the real "direction of most room to grow," not
+//! an arbitrary pick) -- `0.0` keeps the old dead-center behavior exactly,
+//! higher values push the density peak measurably off-center.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::components::DensityTier;
-use street_smarts_core::geometry::LngLat;
+use street_smarts_core::geometry::{haversine_m, LngLat};
 use street_smarts_core::nir::{Neighborhood, Parcel};
 use street_smarts_core::world::World;
 use street_smarts_core::Scope;
@@ -73,6 +87,11 @@ pub struct P29Params {
     pub core_target_stories: f64,
     /// Target story count for the outermost ring.
     pub edge_target_stories: f64,
+    /// How far the real ring center shifts from the blocks' plain
+    /// area-weighted centroid toward the single farthest block -- `0.0`
+    /// is dead-center (the old behavior), higher values push the density
+    /// peak measurably off-center (P28 Eccentric Nucleus).
+    pub eccentricity_frac: f64,
 }
 
 impl Parameters for P29Params {
@@ -93,13 +112,18 @@ impl Parameters for P29Params {
                 "Target stories for the outermost ring.",
                 1.0, 4.0, 2.0,
             ).with_unit("stories"),
+            ParamSpec::float(
+                "eccentricity_frac",
+                "Fraction of the way the ring center shifts from the plain block centroid toward the farthest block (P28 Eccentric Nucleus).",
+                0.0, 0.8, 0.35,
+            ),
         ]
     }
     fn defaults() -> Self {
-        Self { n_rings: 3.0, core_target_stories: 6.0, edge_target_stories: 2.0 }
+        Self { n_rings: 3.0, core_target_stories: 6.0, edge_target_stories: 2.0, eccentricity_frac: 0.35 }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.n_rings, self.core_target_stories, self.edge_target_stories]
+        vec![self.n_rings, self.core_target_stories, self.edge_target_stories, self.eccentricity_frac]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -107,6 +131,7 @@ impl Parameters for P29Params {
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.n_rings = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.core_target_stories = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.edge_target_stories = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.eccentricity_frac = s.clamp(*x); }
         p
     }
 }
@@ -174,9 +199,13 @@ impl PatternOperator for P29DensityRings {
             ),
             steps,
             caveats: vec![
-                "The density center is the blocks' own area-weighted centroid, not a real civic \
-                 or activity center -- this pipeline has no reliable signal for the latter yet \
-                 (see the module doc comment).".into(),
+                "The density center is the blocks' own area-weighted centroid, shifted toward the \
+                 farthest block by eccentricity_frac -- not a real civic or activity center; this \
+                 pipeline has no reliable signal for the latter yet (see the module doc comment).".into(),
+                "The eccentric shift always points toward whichever block sits farthest from the \
+                 plain centroid -- a real, deterministic direction, not Alexander's own reasoning \
+                 for WHY a nucleus forms where it does (transit, an existing landmark); this \
+                 pipeline has no such signal to shift toward instead.".into(),
                 "Rings are equal-RADIUS bands, not equal-area -- the outer ring covers \
                  disproportionately more site area than the inner one on a roughly circular \
                  site.".into(),
@@ -193,6 +222,7 @@ impl PatternOperator for P29DensityRings {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
@@ -243,7 +273,23 @@ fn compute_ring_assignments<'a>(
         total_area += a;
         block_centroids.push((c, a));
     }
-    let center = LngLat::new(cx / total_area, cy / total_area);
+    let plain_center = LngLat::new(cx / total_area, cy / total_area);
+
+    // P28 Eccentric Nucleus: shift the real ring center a real fraction of
+    // the way from plain_center toward the single farthest block -- see
+    // this file's own "v0.2" module doc. eccentricity_frac == 0.0
+    // reproduces the old dead-center behavior exactly.
+    let center = if params.eccentricity_frac > 0.0 && block_centroids.len() > 1 {
+        let (far, _) = block_centroids.iter()
+            .map(|(c, _)| (*c, haversine_m(&plain_center, c)))
+            .fold((plain_center, 0.0), |best, cur| if cur.1 > best.1 { cur } else { best });
+        LngLat::new(
+            plain_center.lng + params.eccentricity_frac * (far.lng - plain_center.lng),
+            plain_center.lat + params.eccentricity_frac * (far.lat - plain_center.lat),
+        )
+    } else {
+        plain_center
+    };
 
     // Local-meter distance from center for each block (reuses the same
     // lng/lat-specific meter conversion `planar` uses elsewhere).

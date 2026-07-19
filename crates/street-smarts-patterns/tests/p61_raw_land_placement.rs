@@ -84,6 +84,35 @@ fn raw_parcel_with_no_plaza_gets_new_squares_placed_directly() {
     }
 }
 
+/// P126 Something Roughly in the Middle: every newly placed square gets a
+/// real ActivityNode, jittered off (not exactly at) the square's own
+/// centroid, and still real close to it.
+#[test]
+fn every_new_square_gets_a_real_activity_node_near_but_not_exactly_at_its_centroid() {
+    let n = nbhd(vec![raw_parcel("RAW_1", square_ring(0.0, 0.0, 100.0))], vec![]);
+    let sub = P61SmallPublicSquares.apply(&n, "RAW_1", &P61Params::defaults(), 7).unwrap();
+
+    assert_eq!(sub.new_activity_nodes.len(), sub.new_open_space.len(), "every square should get exactly one ActivityNode");
+
+    let m_per_deg_lat = 110_540.0;
+    let m_per_deg_lng = 111_320.0;
+    for sq in &sub.new_open_space {
+        let outer = &sq.polygon.outer;
+        let centroid_lng = outer.iter().map(|p| p.lng).sum::<f64>() / outer.len() as f64;
+        let centroid_lat = outer.iter().map(|p| p.lat).sum::<f64>() / outer.len() as f64;
+
+        let node = sub.new_activity_nodes.iter()
+            .find(|a| a.id.starts_with(&sq.id))
+            .unwrap_or_else(|| panic!("expected an ActivityNode for square {}", sq.id));
+
+        let dx = (node.location.lng - centroid_lng) * m_per_deg_lng;
+        let dy = (node.location.lat - centroid_lat) * m_per_deg_lat;
+        let offset_m = (dx * dx + dy * dy).sqrt();
+        assert!(offset_m > 0.01, "{}: ActivityNode should be jittered off the exact centroid, got {offset_m:.3}m offset", sq.id);
+        assert!(offset_m < 10.0, "{}: ActivityNode should still sit close to its square, got {offset_m:.1}m offset", sq.id);
+    }
+}
+
 #[test]
 fn star_mode_still_requires_an_existing_plaza() {
     let n = nbhd(vec![raw_parcel("RAW_1", square_ring(0.0, 0.0, 100.0))], vec![]);

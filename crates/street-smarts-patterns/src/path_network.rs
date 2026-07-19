@@ -437,6 +437,7 @@ impl PathNetwork {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: streets,
+            new_activity_nodes: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],

@@ -236,6 +236,7 @@ impl PatternOperator for P127IntimacyGradient {
             new_open_space: vec![],
             new_buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,

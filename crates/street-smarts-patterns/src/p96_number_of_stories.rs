@@ -44,6 +44,22 @@
 //! - `min_tall_spacing_m` spacing is checked pad-centroid to pad-centroid,
 //!   straight-line -- doesn't account for what's between them (a tall
 //!   exception across a street from another one still counts as "close").
+//!
+//! # v0.2: P99 Main Building, one real extension
+//!
+//! Alexander's P99: "decide which building... houses the most essential
+//! function... form this building as the main building, with a central
+//! position, higher roof." This schema has no program/use data to identify
+//! "most essential function" -- but position and height are both real.
+//! After the per-tier story assignment above, when 2+ pads exist, the ONE
+//! pad nearest the area-weighted centroid of every pad gets
+//! `main_building_boost_stories` added on top of whatever its tier already
+//! assigned -- uncapped by `max_ordinary_stories`, the same class of
+//! deliberate override as a tall exception, since Alexander's own text
+//! explicitly singles this one building out. This directly targets
+//! `p99_main_building`'s own two real proxies: height_dominance (the boost
+//! makes it measurably taller) and centrality (it's the nearest-to-center
+//! pad by construction).
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
@@ -70,6 +86,11 @@ pub struct P96Params {
     /// so P96 alone (no P29) is a no-op relative to P107's own flat
     /// default height.
     pub default_target_stories: f64,
+    /// Extra stories added, on top of its tier's normal assignment, to
+    /// the ONE pad nearest the area-weighted centroid of every pad --
+    /// Alexander's P99 Main Building ("form this building... with a
+    /// central position, higher roof"). 0 = no main-building boost.
+    pub main_building_boost_stories: f64,
 }
 
 impl Parameters for P96Params {
@@ -95,6 +116,11 @@ impl Parameters for P96Params {
                 "Target stories for pads with no density_tier (P29 didn't run).",
                 1.0, 8.0, 3.0,
             ).with_unit("stories"),
+            ParamSpec::float(
+                "main_building_boost_stories",
+                "Extra stories added to the one pad nearest the site's own area-weighted centroid (P99 Main Building).",
+                0.0, 10.0, 3.0,
+            ).with_unit("stories"),
         ]
     }
     fn defaults() -> Self {
@@ -103,10 +129,11 @@ impl Parameters for P96Params {
             tall_exception_fraction: 0.15,
             min_tall_spacing_m: 80.0,
             default_target_stories: 3.0,
+            main_building_boost_stories: 3.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.max_ordinary_stories, self.tall_exception_fraction, self.min_tall_spacing_m, self.default_target_stories]
+        vec![self.max_ordinary_stories, self.tall_exception_fraction, self.min_tall_spacing_m, self.default_target_stories, self.main_building_boost_stories]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -115,6 +142,7 @@ impl Parameters for P96Params {
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.tall_exception_fraction = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.min_tall_spacing_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.default_target_stories = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.main_building_boost_stories = s.clamp(*x); }
         p
     }
 }
@@ -227,6 +255,30 @@ impl PatternOperator for P96NumberOfStories {
             ));
         }
 
+        // P99 Main Building: the one pad nearest the area-weighted centroid
+        // of every pad gets a real boost on top of its tier's assignment,
+        // uncapped -- see this file's own "v0.2" module doc.
+        let mut main_building_idx: Option<usize> = None;
+        if pads.len() >= 2 && params.main_building_boost_stories > 0.0 {
+            let mut cx = 0.0;
+            let mut cy = 0.0;
+            let mut total_area = 0.0;
+            let centroids: Vec<LngLat> = pads.iter().map(|p| pad_centroid(p)).collect();
+            for (p, c) in pads.iter().zip(&centroids) {
+                let a = p.polygon.area_m2().max(1.0);
+                cx += c.lng * a;
+                cy += c.lat * a;
+                total_area += a;
+            }
+            let center = LngLat::new(cx / total_area, cy / total_area);
+            let (idx, _) = centroids.iter().enumerate()
+                .map(|(i, c)| (i, dist_m(*c, center)))
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .expect("pads is non-empty here");
+            assigned_stories[idx] += params.main_building_boost_stories;
+            main_building_idx = Some(idx);
+        }
+
         let mut new_parcels: Vec<Parcel> = Vec::with_capacity(pads.len());
         let mut replaced: Vec<String> = Vec::with_capacity(pads.len());
         for (i, p) in pads.iter().enumerate() {
@@ -234,6 +286,12 @@ impl PatternOperator for P96NumberOfStories {
             updated.target_stories = Some(assigned_stories[i]);
             new_parcels.push(updated);
             replaced.push(p.id.clone());
+        }
+        if let Some(idx) = main_building_idx {
+            steps.push(format!(
+                "Main building: {} boosted by {:.0} stories (now {:.0}) as the pad nearest the site's own centroid.",
+                pads[idx].id, params.main_building_boost_stories, assigned_stories[idx]
+            ));
         }
 
         let trace = SubdivisionTrace {
@@ -256,6 +314,9 @@ impl PatternOperator for P96NumberOfStories {
                 "Pads with no density_tier (P29 didn't run, or ran on a different scope) all get \
                  the same flat default_target_stories -- P96 alone, without P29, doesn't create \
                  any real height variation.".into(),
+                "The main-building pad is picked purely by position (nearest the pads' own \
+                 area-weighted centroid) -- this schema has no 'most essential function'/program \
+                 data to pick it by use, as Alexander's own text actually prescribes.".into(),
             ],
             seed,
             params: params.as_map(),
@@ -266,6 +327,7 @@ impl PatternOperator for P96NumberOfStories {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],

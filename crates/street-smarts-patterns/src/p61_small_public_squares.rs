@@ -98,6 +98,18 @@
 //!   sketches for this pattern are organic, hand-drawn subdivisions; a grid
 //!   is an honest first approximation, not a claim to match his intent
 //!   exactly.
+//!
+//! # v0.7: a real ActivityNode per square, closing P126's real gap
+//!
+//! `Neighborhood.activity_nodes` is a real, typed field -- before this,
+//! no operator anywhere in this pipeline ever populated it (the same
+//! class of real-field-no-producer gap `p33_night_life`'s own module doc
+//! documents for `use_category: "commercial"`). Every square this
+//! operator places now gets one real `ActivityNode` (`ActivityKind::Civic`)
+//! seeded from a real, deterministic `Prng` jitter off the square's own
+//! centroid -- "roughly, not exactly, in the middle," Alexander's own
+//! P126 Something Roughly in the Middle instruction, not dead-center by
+//! construction.
 
 use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::{ParamSpec, Parameters};
@@ -111,7 +123,7 @@ use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, Subdiv
 use serde::{Deserialize, Serialize};
 use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
+use street_smarts_core::nir::{ActivityKind, ActivityNode, Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
 use street_smarts_core::world::World;
 
@@ -181,6 +193,31 @@ impl Parameters for P61Params {
 }
 
 pub struct P61SmallPublicSquares;
+
+/// How far, as a fraction of the square's own local bounding-box short
+/// side, a real ActivityNode jitters off the square's centroid -- "roughly,
+/// not exactly, in the middle" (P126 Something Roughly in the Middle).
+const ACTIVITY_NODE_JITTER_FRAC: f64 = 0.2;
+
+/// One real, jittered-off-center ActivityNode for a newly placed square --
+/// see this file's own "v0.7" module doc. `sq_local` is the square's own
+/// ring in the same local-meter frame `centroid`/`bbox` already use;
+/// `origin` converts back to real lng/lat.
+fn activity_node_for_square(id: String, sq_local: &[Pt2], origin: &LngLat, prng: &mut Prng) -> ActivityNode {
+    let c = centroid(sq_local);
+    let (min_pt, max_pt) = bbox(sq_local);
+    let short_side = (max_pt.x - min_pt.x).min(max_pt.y - min_pt.y);
+    let jitter_m = short_side * ACTIVITY_NODE_JITTER_FRAC;
+    let angle = prng.range(0.0, std::f64::consts::TAU);
+    let jittered = Pt2::new(c.x + angle.cos() * jitter_m, c.y + angle.sin() * jitter_m);
+    ActivityNode {
+        id,
+        location: local_to_lnglat(jittered, origin),
+        kind: ActivityKind::Civic,
+        intensity: None,
+        label: None,
+    }
+}
 
 /// Break an oversized plaza into a grid of Voronoi-seeded sub-squares, each
 /// clipped to the plaza's real (possibly non-convex) boundary, sized so the
@@ -287,8 +324,10 @@ impl PatternOperator for P61SmallPublicSquares {
             return Err("p61_small_public_squares: no Plaza-kind open space found. Run P95/P107 first, or pass a specific raw parcel_id to place new squares directly.".into());
         }
 
+        let mut prng = Prng::new(seed);
         let mut new_open: Vec<OpenSpace> = Vec::new();
         let mut new_streets: Vec<Street> = Vec::new();
+        let mut new_activity_nodes: Vec<ActivityNode> = Vec::new();
         let mut replaced_ids: Vec<String> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut n_partitioned = 0;
@@ -410,6 +449,9 @@ impl PatternOperator for P61SmallPublicSquares {
                     polygon: street_smarts_core::geometry::Polygon::from_ring(ring),
                     kind: OpenSpaceKind::Plaza,
                 });
+                new_activity_nodes.push(activity_node_for_square(
+                    format!("{plaza_id}_p61_sq{idx}_activity"), sq_local, &origin, &mut prng,
+                ));
             }
             n_squares_total += squares.len();
             n_undecided_total += undecided_pieces.len();
@@ -479,6 +521,9 @@ impl PatternOperator for P61SmallPublicSquares {
             "Partitioning uses a regular grid of Voronoi-seeded cells, clipped to the plaza's \
              real boundary. That's an honest first approximation, not a claim to match \
              Alexander's own organic, hand-drawn subdivisions.".into(),
+            "Each square's ActivityNode is a real Prng jitter off its own centroid, not a real \
+             'where paths cross' computation (P126's own literal instruction) -- no path-crossing- \
+             a-square concept is checked here, only that it isn't placed dead-center.".into(),
         ];
         if any_dropped_slivers {
             caveats.push(
@@ -521,6 +566,7 @@ impl PatternOperator for P61SmallPublicSquares {
             new_open_space: new_open,
             new_buildings: vec![],
             new_streets,
+            new_activity_nodes,
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: replaced_ids,
             replaced_building_ids: vec![],
@@ -624,6 +670,7 @@ pub fn place_new_squares_n(
 
     let half_side = params.max_dimension_m / 2.0;
     let mut new_open: Vec<OpenSpace> = Vec::new();
+    let mut new_activity_nodes: Vec<ActivityNode> = Vec::new();
     let mut square_centers: Vec<Pt2> = Vec::new();
     let mut n_skipped_tiny = 0;
     for (idx, &node) in nodes.iter().enumerate() {
@@ -644,6 +691,9 @@ pub fn place_new_squares_n(
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(&clipped, &origin)),
             kind: OpenSpaceKind::Plaza,
         });
+        new_activity_nodes.push(activity_node_for_square(
+            format!("{}_p61_new_sq{idx}_activity", target_parcel.id), &clipped, &origin, &mut prng,
+        ));
     }
 
     if new_open.is_empty() {
@@ -697,6 +747,9 @@ pub fn place_new_squares_n(
              assumes reserved holes are convex (same assumption reserved_holes_for_part already \
              makes for P95), and doesn't spread squares across every leftover fragment if the \
              subtraction splits the parcel into several.".into(),
+            "Each square's ActivityNode is a real Prng jitter off its own centroid, not a real \
+             'where paths cross' computation (P126's own literal instruction) -- no path-crossing- \
+             a-square concept is checked here, only that it isn't placed dead-center.".into(),
         ],
         seed,
         params: params.as_map(),
@@ -707,6 +760,7 @@ pub fn place_new_squares_n(
         new_open_space: new_open,
         new_buildings: vec![],
         new_streets,
+        new_activity_nodes,
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],

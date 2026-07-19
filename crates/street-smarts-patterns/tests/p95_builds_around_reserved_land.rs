@@ -81,6 +81,7 @@ fn p95_builds_pads_around_pre_placed_squares_with_zero_overlap() {
         new_open_space: new_open.clone(),
         new_buildings: vec![],
         new_streets: new_streets.clone(),
+        new_activity_nodes: vec![],
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],
