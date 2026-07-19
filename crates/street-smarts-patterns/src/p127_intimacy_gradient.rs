@@ -551,6 +551,7 @@ mod tests {
             centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
             classification: Some("local".into()),
             row_width_m: Some(8.0),
+            surface: None,
         };
         let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
         let sub = P127IntimacyGradient

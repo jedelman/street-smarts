@@ -429,6 +429,7 @@ impl PatternOperator for P61SmallPublicSquares {
                         centerline: vec![centers_wgs[*i], centers_wgs[*j]],
                         classification: Some(StreetClassification::Pedestrian.to_label().into()),
                         row_width_m: Some(params.connector_width_m),
+                        surface: Some("grass_pavers".into()),
                     });
                 }
                 n_connectors = mst_edges.len();
@@ -662,6 +663,7 @@ pub fn place_new_squares_n(
                 centerline: vec![centers_wgs[*i], centers_wgs[*j]],
                 classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.connector_width_m),
+                surface: Some("grass_pavers".into()),
             });
         }
     }

@@ -153,7 +153,7 @@ mod tests {
 
     fn street(id: &str, a: (f64, f64), b: (f64, f64)) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: id.into(), centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)], classification: Some("local".into()), row_width_m: Some(4.0) }
+        Street { id: id.into(), centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None }
     }
 
     #[test]

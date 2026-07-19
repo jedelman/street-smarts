@@ -47,6 +47,7 @@ fn p95_builds_pads_around_pre_placed_squares_with_zero_overlap() {
             centerline: vec![local_to_lnglat(path_nodes[*i], &origin), local_to_lnglat(path_nodes[*j], &origin)],
             classification: Some("local".into()),
             row_width_m: Some(4.0),
+            surface: None,
         });
     }
 

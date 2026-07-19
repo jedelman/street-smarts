@@ -169,12 +169,12 @@ mod tests {
 
     fn street_along_x(y_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: format!("SX{y_m}"), centerline: vec![LngLat::new(-50.0 * m, y_m * m), LngLat::new(50.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(6.0) }
+        Street { id: format!("SX{y_m}"), centerline: vec![LngLat::new(-50.0 * m, y_m * m), LngLat::new(50.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(6.0), surface: None }
     }
 
     fn street_along_y(x_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: format!("SY{x_m}"), centerline: vec![LngLat::new(x_m * m, -50.0 * m), LngLat::new(x_m * m, 50.0 * m)], classification: Some("local".into()), row_width_m: Some(6.0) }
+        Street { id: format!("SY{x_m}"), centerline: vec![LngLat::new(x_m * m, -50.0 * m), LngLat::new(x_m * m, 50.0 * m)], classification: Some("local".into()), row_width_m: Some(6.0), surface: None }
     }
 
     #[test]

@@ -162,6 +162,98 @@ fn bulge_is_deterministic_for_the_same_seed() {
     assert_eq!(sub_a.new_streets, sub_b.new_streets, "the same seed should reproduce the identical bulge shape");
 }
 
+/// Five blocks at the vertices of a regular pentagon (radius 100m). A
+/// pentagon's MST is 4 of its 5 equal-length perimeter edges (a path);
+/// the 6 non-MST edges (1 perimeter + 5 diagonals) would, if all added
+/// unconstrained, form the complete graph K5 -- every node at degree 4,
+/// a four-way-or-more intersection everywhere. Exactly the case P50 T
+/// Junctions' "avoid four-way intersections" targets.
+fn pentagon_blocks() -> Neighborhood {
+    let m_per_deg = 111_320.0;
+    let radius_m = 100.0;
+
+    let make_pad = |id: &str, cx: f64, cy: f64, block: &str| -> Parcel {
+        let s = 0.00005;
+        let ring = vec![
+            LngLat::new(cx - s, cy - s),
+            LngLat::new(cx + s, cy - s),
+            LngLat::new(cx + s, cy + s),
+            LngLat::new(cx - s, cy + s),
+        ];
+        Parcel {
+            id: id.into(),
+            polygon: Polygon::from_ring(ring),
+            area_acres: 0.01,
+            use_category: Some("p95_building_pad".into()),
+            ownership: None,
+            is_eda: false,
+            spec: Some(block.into()),
+            density_tier: None,
+            target_stories: None,
+        }
+    };
+
+    let mut parcels = Vec::new();
+    for k in 0..5 {
+        let theta = std::f64::consts::TAU * (k as f64) / 5.0;
+        let x_m = radius_m * theta.cos();
+        let y_m = radius_m * theta.sin();
+        let cx = x_m / m_per_deg;
+        let cy = y_m / m_per_deg;
+        parcels.push(make_pad(&format!("p{k}"), cx, cy, &format!("BLOCK_{k}")));
+    }
+
+    Neighborhood {
+        id: "test".into(),
+        bbox_wgs84: [-0.001, -0.001, 0.001, 0.001],
+        parcels,
+        buildings: vec![],
+        streets: vec![],
+        open_space: vec![],
+        boundaries: vec![],
+        activity_nodes: vec![],
+        metadata: NeighborhoodMeta {
+            source: "synthetic".into(),
+            fetched_at: "test".into(),
+            license: "test".into(),
+            layer_provenance: Default::default(),
+            label: "P50 degree-cap fixture".into(),
+        },
+    }
+}
+
+#[test]
+fn loop_edge_selection_never_pushes_a_node_past_a_three_way_meeting() {
+    // Ask for every remaining edge (1 perimeter + 5 diagonals = 6) --
+    // unconstrained, this would produce K5 (every node at degree 4).
+    let nbhd = pentagon_blocks();
+    let params = PathNetworkParams { loop_budget: 3.0, local_loop_budget: 3.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    let mut degree: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for s in &sub.new_streets {
+        let a = s.centerline.first().unwrap();
+        let b = s.centerline.last().unwrap();
+        // Snap to the fixture's own block centroids by nearest match --
+        // simpler here to just count endpoints directly since ids encode
+        // the block pair.
+        let parts: Vec<&str> = s.id.trim_start_matches("path_").trim_start_matches("localloop_").trim_start_matches("loop_").split("_to_").collect();
+        assert_eq!(parts.len(), 2, "unexpected street id shape: {}", s.id);
+        *degree.entry(parts[0].to_string()).or_default() += 1;
+        *degree.entry(parts[1].to_string()).or_default() += 1;
+        let _ = (a, b); // endpoints only used for the id-parsing sanity check above
+    }
+
+    assert!(
+        sub.new_streets.len() < 10,
+        "K5 (all 5 blocks pairwise connected) would be 10 edges -- degree capping should have skipped some, got {}",
+        sub.new_streets.len()
+    );
+    for (block, d) in &degree {
+        assert!(*d <= 3, "block {block} ended up at degree {d} -- P50 T Junctions requires no node exceed a three-way meeting");
+    }
+}
+
 #[test]
 fn params_roundtrip() {
     let p = PathNetworkParams { loop_budget: 5.0, local_loop_budget: 2.0, path_width_m: 6.0 };

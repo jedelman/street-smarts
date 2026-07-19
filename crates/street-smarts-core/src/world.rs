@@ -265,7 +265,7 @@ mod tests {
             id: "S1".into(),
             centerline: vec![],
             classification: Some("pedestrian".into()),
-            row_width_m: None,
+            row_width_m: None, surface: None,
         });
 
         let world = World::from_neighborhood(&n);

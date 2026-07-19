@@ -146,7 +146,7 @@ mod tests {
 
     fn ped_street(len_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "PED1".into(), centerline: vec![LngLat::new(0.0, -5.0 * m), LngLat::new(len_m * m, -5.0 * m)], classification: Some("pedestrian".into()), row_width_m: Some(4.0) }
+        Street { id: "PED1".into(), centerline: vec![LngLat::new(0.0, -5.0 * m), LngLat::new(len_m * m, -5.0 * m)], classification: Some("pedestrian".into()), row_width_m: Some(4.0), surface: None }
     }
 
     fn building_with_door(id: &str, x_m: f64) -> Building {

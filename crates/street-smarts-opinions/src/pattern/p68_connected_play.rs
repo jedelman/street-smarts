@@ -178,7 +178,7 @@ mod tests {
 
     fn arterial_at(x_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "ART".into(), centerline: vec![LngLat::new(x_m * m, -200.0 * m), LngLat::new(x_m * m, 200.0 * m)], classification: Some("arterial".into()), row_width_m: Some(18.0) }
+        Street { id: "ART".into(), centerline: vec![LngLat::new(x_m * m, -200.0 * m), LngLat::new(x_m * m, 200.0 * m)], classification: Some("arterial".into()), row_width_m: Some(18.0), surface: None }
     }
 
     #[test]

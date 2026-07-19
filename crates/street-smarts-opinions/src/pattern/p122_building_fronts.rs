@@ -145,7 +145,7 @@ mod tests {
 
     fn street_at(dist_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "S1".into(), centerline: vec![LngLat::new(-50.0 * m, dist_m * m), LngLat::new(50.0 * m, dist_m * m)], classification: Some("local".into()), row_width_m: Some(4.0) }
+        Street { id: "S1".into(), centerline: vec![LngLat::new(-50.0 * m, dist_m * m), LngLat::new(50.0 * m, dist_m * m)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None }
     }
 
     #[test]

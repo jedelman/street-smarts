@@ -166,7 +166,7 @@ mod tests {
         let street = Street {
             id: "S1".into(),
             centerline: vec![LngLat::new(0.0, -50.0 * m), LngLat::new(0.0, 0.0)],
-            classification: Some("local".into()), row_width_m: Some(5.5),
+            classification: Some("local".into()), row_width_m: Some(5.5), surface: None,
         };
         let n = nbhd(vec![boundary("B1")], vec![street]);
         match P53MainGateways.evaluate(&n) {
@@ -181,7 +181,7 @@ mod tests {
         let street = Street {
             id: "S1".into(),
             centerline: vec![LngLat::new(500.0 * m, 500.0 * m), LngLat::new(600.0 * m, 500.0 * m)],
-            classification: Some("local".into()), row_width_m: Some(5.5),
+            classification: Some("local".into()), row_width_m: Some(5.5), surface: None,
         };
         let n = nbhd(vec![boundary("B1")], vec![street]);
         match P53MainGateways.evaluate(&n) {

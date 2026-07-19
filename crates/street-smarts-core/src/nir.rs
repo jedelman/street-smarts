@@ -195,6 +195,13 @@ pub struct Street {
     pub classification: Option<String>, // "arterial", "local", "alley", "pedestrian"
     #[serde(default)]
     pub row_width_m: Option<f64>,
+    /// Free-form, same convention as `Parcel.use_category` / `Building.typology`:
+    /// "grass_pavers" (Alexander's P51 Green Streets -- grass with paving
+    /// stones set in for wheels) or "asphalt". `None` means unset (older
+    /// fixtures, or a generator that hasn't decided yet) -- not the same
+    /// as "asphalt".
+    #[serde(default)]
+    pub surface: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

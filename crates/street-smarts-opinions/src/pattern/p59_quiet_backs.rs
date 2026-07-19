@@ -152,7 +152,7 @@ mod tests {
 
     fn arterial() -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "S1".into(), centerline: vec![LngLat::new(-200.0 * m, 0.0), LngLat::new(200.0 * m, 0.0)], classification: Some("arterial".into()), row_width_m: Some(18.0) }
+        Street { id: "S1".into(), centerline: vec![LngLat::new(-200.0 * m, 0.0), LngLat::new(200.0 * m, 0.0)], classification: Some("arterial".into()), row_width_m: Some(18.0), surface: None }
     }
 
     fn building(id: &str, y0: f64, y1: f64) -> Building {

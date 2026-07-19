@@ -169,7 +169,7 @@ mod tests {
             id: id.into(),
             centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)],
             classification: Some(classification.into()),
-            row_width_m: Some(5.5),
+            row_width_m: Some(5.5), surface: None,
         }
     }
 

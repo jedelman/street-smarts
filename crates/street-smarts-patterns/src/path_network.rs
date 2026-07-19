@@ -46,6 +46,27 @@
 //! literal 17-20 foot (5.18-6.10m) range for local roads -- the other real
 //! gap `p49_looped_local_roads` found.
 //!
+//! # v0.4: degree-capped loop-edge selection, closing P50's real gap
+//!
+//! `p50_t_junctions` checks that real intersections (nodes where 3+ streets
+//! share a coordinate-snapped endpoint) meet as clean three-way T's, not
+//! four-way-or-more crossings ("avoid four-way intersections and crossing
+//! movements" -- Alexander's own text). The old `loop_budget`/
+//! `local_loop_budget` selection took the cheapest remaining edges with no
+//! regard for how many edges already met at each endpoint, so a loop edge
+//! could freely push an already three-way node (MST degree 2, or one prior
+//! loop edge) to a four-way crossing. `select_loop_edges` now tracks each
+//! block's running degree (starting from the MST backbone) and skips any
+//! candidate edge that would push either endpoint to degree 4+, before
+//! falling through to the next-cheapest candidate -- a real, enforced
+//! topology constraint on this generator's own existing output, not a
+//! guess. This directly targets P50's `three_way_fraction` sub-score. It
+//! does NOT touch `near_90_fraction` -- the angle at which edges meet is a
+//! function of block position (computed upstream by `block_grouping`), not
+//! something this edge-selection pass controls; a real fix for that would
+//! mean moving or re-routing block centroids, out of scope here.
+//! Skipped-for-degree candidates are counted and reported in the trace.
+//!
 //! What it does NOT do yet:
 //! - Connect to the existing street grid (Princess Anne Rd, etc.) — needs
 //!   knowledge of which boundary parcels touch existing streets
@@ -279,12 +300,36 @@ impl PathNetwork {
         // `loop_budget`'s share goes first (Pedestrian shortcuts);
         // `local_loop_budget`'s share comes from whatever's left after
         // that (real loops in the Local/car network -- Alexander's P49).
+        // Degree-capped at 3 per node (Alexander's P50 T Junctions -- "avoid
+        // four-way intersections"), skipping over any candidate that would
+        // push a node past a three-way meeting -- see this file's own "v0.4"
+        // module doc.
         let loop_budget = params.loop_budget.round().max(0.0) as usize;
         let local_loop_budget = params.local_loop_budget.round().max(0.0) as usize;
-        let loop_edges: Vec<(usize, usize, f64)> =
-            remaining.iter().take(loop_budget).copied().collect();
-        let local_loop_edges: Vec<(usize, usize, f64)> =
-            remaining.iter().skip(loop_budget).take(local_loop_budget).copied().collect();
+        let mut degree = vec![0usize; nb];
+        for &(i, j, _) in mst_edges.iter() {
+            degree[i] += 1;
+            degree[j] += 1;
+        }
+        let mut loop_edges: Vec<(usize, usize, f64)> = Vec::new();
+        let mut local_loop_edges: Vec<(usize, usize, f64)> = Vec::new();
+        let mut skipped_for_four_way = 0usize;
+        for &(i, j, d) in remaining.iter() {
+            if loop_edges.len() >= loop_budget && local_loop_edges.len() >= local_loop_budget {
+                break;
+            }
+            if degree[i] >= 3 || degree[j] >= 3 {
+                skipped_for_four_way += 1;
+                continue;
+            }
+            if loop_edges.len() < loop_budget {
+                loop_edges.push((i, j, d));
+            } else {
+                local_loop_edges.push((i, j, d));
+            }
+            degree[i] += 1;
+            degree[j] += 1;
+        }
 
         // Emit Street segments: MST = backbone ("local"), local_loop_edges
         // = real loops in that same backbone (also "local"), loop_edges =
@@ -303,6 +348,7 @@ impl PathNetwork {
                 centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
                 classification: Some(StreetClassification::Local.to_label().into()),
                 row_width_m: Some(params.path_width_m),
+                surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Local));
         }
@@ -313,6 +359,7 @@ impl PathNetwork {
                 centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
                 classification: Some(StreetClassification::Local.to_label().into()),
                 row_width_m: Some(params.path_width_m),
+                surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Local));
         }
@@ -323,6 +370,7 @@ impl PathNetwork {
                 centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
                 classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.path_width_m),
+                surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Pedestrian));
         }
@@ -345,6 +393,11 @@ impl PathNetwork {
             "loop_budget={} -> {} extra edges added (classified 'pedestrian')",
             loop_budget, loop_edges.len()
         ));
+        steps.push(format!(
+            "{} candidate loop edge(s) skipped -- would have pushed a node past a three-way \
+             meeting (Alexander's P50 T Junctions: avoid four-way intersections)",
+            skipped_for_four_way
+        ));
         steps.push(format!("Emitted {} Street segments at {}m right-of-way", streets.len(), params.path_width_m as u32));
 
         let trace = SubdivisionTrace {
@@ -366,6 +419,14 @@ impl PathNetwork {
                  knowledge of which boundary parcels touch existing streets.".into(),
                 "Adjacent paths are not aggregated into named streets. Each segment is its own \
                  NIR Street entity.".into(),
+                "Loop-edge selection is capped at degree 3 per node (P50 T Junctions), but the MST \
+                 backbone itself is not -- a block whose only connection to the rest of the network \
+                 requires 4+ MST edges (a genuine hub in the block layout) can still end up a \
+                 four-way intersection; this pass only avoids making a discretionary loop edge WORSE, \
+                 it doesn't re-route the required backbone.".into(),
+                "Does not touch P50's near_90_fraction sub-score -- the angle at which edges meet a \
+                 node is a function of block position (set upstream by block_grouping), not \
+                 something this edge-selection pass controls.".into(),
             ],
             seed: 0,
             params: params.as_map(),
