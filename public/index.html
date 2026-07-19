@@ -527,6 +527,13 @@
      .svg-thumb img below, which needs a white background for the
      transparent-canvas cadquery plan/elevation SVGs to be visible. */
   figure.render img.isometric-img { background: #2a2a2e; }
+  /* Same dark canvas as the isometric PNGs (model-viewer's poster= IS
+     that PNG, shown until the real .glb finishes loading), sized to
+     match so there's no layout jump between poster and live model. */
+  figure.render model-viewer {
+    display: block; width: 100%; height: 420px; background: #2a2a2e; border-radius: 3px;
+    --poster-color: transparent;
+  }
   figure.render figcaption { margin-top: .75rem; }
   figure.render figcaption h3 { font-size: 1.1rem; margin: 0 0 .35rem; font-weight: 600; }
   figure.render figcaption p { margin: 0; color: var(--muted); font-size: 0.92rem; }
@@ -580,6 +587,14 @@
   @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
   .pair figure.render { margin: 0; }
 </style>
+<!-- Google's <model-viewer> custom element, pinned to an exact version --
+     interactive glTF/GLB viewer (orbit/zoom/pan, no page-authored WebGL
+     code) for the .glb files scripts/vibe-render.sh already generates.
+     Loaded from unpkg (a real external runtime dependency, unlike
+     everything else on this page) because vendoring+pinning it as a
+     build output would mean a new npm step in deploy.yml for one static
+     script; revisit if that tradeoff stops being worth it. -->
+<script type="module" src="https://unpkg.com/@google/model-viewer@4.3.1/dist/model-viewer.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -598,7 +613,10 @@
     <p class="caveat">
       Massing renders regenerated on every deploy, straight from the corrected pattern pipeline —
       extruded polygon massing blocks (via cadquery/OpenCascade), still a gut check on <em>scale and
-      density</em>, not a finished architectural rendering. Window and door openings <em>are</em> real
+      density</em>, not a finished architectural rendering. The 3D model below is live and
+      interactive — drag to orbit, scroll/pinch to zoom — the same real <code>.glb</code> mesh
+      available to download further down, not a pre-rendered screenshot. Window and door openings
+      <em>are</em> real
       boolean cuts, placed by a real pattern operator (<code>p221_natural_doors_and_windows</code> —
       Alexander's Pattern 221) reading each building's actual wall geometry and floor count, not
       decoration. Ground-floor interiors (<code>p127</code>/<code>p129</code>/<code>p130</code>/
@@ -609,10 +627,10 @@
     </p>
 
     <figure class="render">
-      <img class="isometric-img" src="/vibe-render/clean_baseline_isometric.png" alt="Isometric render of the clean-baseline scenario (Military Circle, Norfolk VA)" loading="lazy">
+      <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133). Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ: the faint gray massing around it is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration.</p>
+        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133). Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ, in the interactive model itself (orbit around it to see): the surrounding gray massing is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration. Only <code>clean_baseline</code> gets this treatment -- it's the one scenario with a real, geolocated site; the others' fixtures aren't real single addresses in the same way, so there's no honest "surrounding context" to show.</p>
         <div class="lineage-animation">
           <object data="/vibe-render/clean_baseline_lineage.svg" type="image/svg+xml" aria-label="Animation of the pattern pipeline building the site step by step, in real geometry">
             <a href="/vibe-render/clean_baseline_lineage.svg">clean_baseline_lineage.svg</a>
@@ -620,15 +638,6 @@
           <p class="note">Real parcel/pad footprints, not a diagram -- the site unfolding commit by commit (P37 → per-block P95 → P108), the same <code>HistoryStore</code> chain <code>block_membership</code> answers lineage questions from. Loops automatically.</p>
         </div>
         <div class="svg-grid">
-          <a class="svg-thumb" href="/vibe-render/clean_baseline_plan.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/clean_baseline_plan.svg" alt="Clean baseline plan" loading="lazy"><span>plan</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/clean_baseline_elevation_front.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/clean_baseline_elevation_front.svg" alt="Clean baseline elevation, front" loading="lazy"><span>elevation (front)</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/clean_baseline_elevation_side.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/clean_baseline_elevation_side.svg" alt="Clean baseline elevation, side" loading="lazy"><span>elevation (side)</span>
-          </a>
           <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
           </a>
@@ -647,20 +656,11 @@
     </figure>
 
     <figure class="render">
-      <img class="isometric-img" src="/vibe-render/barrio_mallcore_isometric.png" alt="Isometric render of the MALL_CORE fragmentation stress case" loading="lazy">
+      <model-viewer src="/vibe-render/barrio_mallcore.glb" poster="/vibe-render/barrio_mallcore_isometric.png" alt="3D model of the MALL_CORE fragmentation stress case -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Barrio breakdown: MALL_CORE</h3>
         <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
         <div class="svg-grid">
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_plan.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_plan.svg" alt="MALL_CORE plan" loading="lazy"><span>plan</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_elevation_front.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_elevation_front.svg" alt="MALL_CORE elevation, front" loading="lazy"><span>elevation (front)</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_elevation_side.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_elevation_side.svg" alt="MALL_CORE elevation, side" loading="lazy"><span>elevation (side)</span>
-          </a>
           <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/barrio_mallcore_floorplan_ground.svg" alt="MALL_CORE floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
           </a>
@@ -689,17 +689,11 @@
     </p>
     <div class="pair">
       <figure class="render">
-        <img class="isometric-img" src="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="Isometric render of MALL_CORE with Stratified seeding" loading="lazy">
+        <model-viewer src="/vibe-render/mallcore_seeding_stratified.glb" poster="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="3D model of MALL_CORE with Stratified seeding -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
         <figcaption>
           <h3>Stratified (default)</h3>
           <p>Blind jittered grid — no awareness of surrounding context.</p>
           <div class="svg-grid">
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_plan.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_stratified_plan.svg" alt="Stratified plan" loading="lazy"><span>plan</span>
-            </a>
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_elevation_front.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_stratified_elevation_front.svg" alt="Stratified elevation" loading="lazy"><span>elevation</span>
-            </a>
             <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" target="_blank" rel="noopener">
               <img src="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" alt="Stratified floor plan" loading="lazy"><span>floor plan</span>
             </a>
@@ -714,17 +708,11 @@
         </figcaption>
       </figure>
       <figure class="render">
-        <img class="isometric-img" src="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="Isometric render of MALL_CORE with FieldGuided seeding" loading="lazy">
+        <model-viewer src="/vibe-render/mallcore_seeding_fieldguided.glb" poster="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="3D model of MALL_CORE with FieldGuided seeding -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
         <figcaption>
           <h3>FieldGuided (prototype)</h3>
           <p>Pulled toward real CIVIC_*-tagged parcels and streets.</p>
           <div class="svg-grid">
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_plan.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_fieldguided_plan.svg" alt="FieldGuided plan" loading="lazy"><span>plan</span>
-            </a>
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_elevation_front.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_fieldguided_elevation_front.svg" alt="FieldGuided elevation" loading="lazy"><span>elevation</span>
-            </a>
             <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" target="_blank" rel="noopener">
               <img src="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" alt="FieldGuided floor plan" loading="lazy"><span>floor plan</span>
             </a>

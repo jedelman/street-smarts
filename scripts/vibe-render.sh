@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # 3D "vibe test": run the corrected pattern pipeline on real fixture data,
-# then extrude the result into massing solids and render plan/elevation/
-# isometric views. A gut check on scale and density, not a real
-# architectural rendering -- see tools/vibe-render/render.py for caveats.
+# then extrude the result into massing solids and render floor-plan and
+# isometric views, plus a .glb for interactive viewing in the browser
+# (<model-viewer> on the public gallery). A gut check on scale and
+# density, not a real architectural rendering -- see
+# tools/vibe-render/render.py for caveats. Used to also render plan/
+# elevation SVGs via a slow OpenCascade hidden-line-removal export
+# (~58% of render.py's time); dropped once the interactive .glb covered
+# the same "look at the massing from outside" need for a fraction of the
+# cost.
 #
 # Runs three scenarios:
 #   - clean_baseline: eastside-baseline.json, parcel MILITARY_CIRCLE_ASSEMBLED
@@ -29,8 +35,8 @@
 # already gates its WASM bundle to a 300KB gzip budget, so a multi-MB
 # inline SVG isn't something to ship on the public page by default.
 #
-# If $PUBLISH_DIR is set, every render (isometric PNGs, plan/elevation/
-# floor-plan SVGs, .glb) is also copied there under fixed filenames, ready
+# If $PUBLISH_DIR is set, every render (isometric PNGs, floor-plan SVGs,
+# .glb) is also copied there under fixed filenames, ready
 # to ship as static site assets -- the gallery embedding them lives at the
 # TOP of public/index.html (section#vibe-gallery), not a separate page.
 set -euo pipefail
@@ -91,7 +97,7 @@ if [ -n "$PUBLISH_DIR" ]; then
   echo "==> publishing every render.py artifact (png/svg/glb) to $PUBLISH_DIR"
   mkdir -p "$PUBLISH_DIR"
   # Blanket copy, not a per-file allowlist: every artifact type render.py
-  # produces (isometric PNG, plan/elevation/floor-plan SVGs, .glb) for
+  # produces (isometric PNG, floor-plan SVGs, .glb) for
   # every scenario, under its own real filename -- so a future new output
   # type is published automatically without touching this script again.
   # index.html links against these exact filenames.

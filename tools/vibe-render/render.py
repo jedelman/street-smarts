@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Extrude a street-smarts Neighborhood JSON into real 3D solids (via
 cadquery/OpenCascade -- the same B-rep kernel FreeCAD is built on; FreeCAD
-itself isn't installable in this environment) and render wireframe plan,
-elevation, floor-plan, and isometric views. Still a gut check on scale and
-density, not a finished architectural rendering -- but window and door
+itself isn't installable in this environment) and render floor-plan and
+isometric views, plus a `.glb` for interactive viewing. Still a gut check
+on scale and density, not a finished architectural rendering -- but window
+and door
 openings ARE now real OpenCascade boolean cuts (`punch_openings`), driven
 by `p221_natural_doors_and_windows`'s pattern-derived placement, not
 decoration. What's still NOT here: real wall thickness on the EXTERIOR
@@ -103,8 +104,8 @@ def extrude_polygon(outer_ring, holes, height, origin_lng, origin_lat):
 def punch_openings(solid, building, origin_lng, origin_lat):
     """Cut `building`'s window/door openings (placed by
     `p221_natural_doors_and_windows`) out of `solid` via a real OpenCascade
-    boolean subtraction -- this is what makes the elevation/plan exports
-    show real openings instead of a blank wall.
+    boolean subtraction -- this is what makes the isometric render show
+    real openings instead of a blank wall.
 
     Each `Opening` references a wall edge by `ring_index`/`on_hole` into
     `building["polygon"]["outer"]` or `["holes"][0]` (the SAME rings the
@@ -179,36 +180,6 @@ def punch_openings(solid, building, origin_lng, origin_lat):
         return solid
 
 
-def fuse_all(solids):
-    """Combine `solids` (each a Workplane, or a `(Workplane, label)` tuple
-    -- the shape kept, the label ignored) into one shape via ONE grouped
-    OCC boolean fuse -- the same stage-everything-then-apply-once pattern
-    as `punch_openings`' multi-tool cut, instead of N pairwise
-    `.union()` calls each paying its own full boolean-op cost. Falls back
-    to the old pairwise approach (skipping any one degenerate piece rather
-    than failing the whole export) only if the grouped call itself throws
-    -- a multi-tool BOP is usually MORE robust than a chain of pairwise
-    ones, not less, but this keeps the original resilience as a backstop.
-    """
-    items = [s[0] if isinstance(s, tuple) else s for s in solids]
-    if not items:
-        return None
-    if len(items) == 1:
-        return items[0]
-    try:
-        fused_shape = items[0].val().fuse(*[s.val() for s in items[1:]])
-        return cq.Workplane(obj=fused_shape)
-    except Exception as e:
-        print(f"  ! grouped fuse failed ({e}), falling back to pairwise union", file=sys.stderr)
-        combined = items[0]
-        for s in items[1:]:
-            try:
-                combined = combined.union(s)
-            except Exception:
-                pass  # keep going even if a union fails on a degenerate piece
-        return combined
-
-
 def shared_boundary(poly_a, poly_b, eps=0.05):
     """Find the coincident edge two adjacent `InteriorCell` polygons share
     -- both p127_intimacy_gradient's band/bay cuts and its loop-closing
@@ -279,7 +250,7 @@ def build_scene(nbhd, context_path=None):
     origin_lng = sum(p["lng"] for p in all_pts) / len(all_pts)
     origin_lat = sum(p["lat"] for p in all_pts) / len(all_pts)
 
-    building_solids = []  # (solid, color_name) -- real punched openings, for the isometric/elevation/plan views
+    building_solids = []  # (solid, color_name) -- real punched openings, for the isometric view
     building_solids_unpunched = []  # same footprints/heights, no window/door boolean cuts -- see export_glb's own docstring for why
     building_ids_with_real_shape = set()
 
@@ -507,37 +478,6 @@ def render_isometric(scene, out_path, title):
     print(f"wrote {out_path}")
 
 
-def build_exterior_master(scene):
-    """Fuse every solid (streets + plazas + buildings) into ONE shape,
-    ONCE. `render_svg_projection` used to redo
-    this fuse from scratch on every call -- three full-scene fuses (plan,
-    elevation front, elevation side) each paying the ~130-object BOP cost
-    independently, when the underlying geometry never changes between
-    them. Build once here, reuse for every flat projection."""
-    all_solids = scene["streets"] + scene["plazas"] + scene["buildings"]
-    if not all_solids:
-        return None
-    return fuse_all(all_solids)
-
-
-def render_svg_projection(combined, out_path, direction, title):
-    """Export a hidden-line SVG projection of an ALREADY-fused shape (see
-    `build_exterior_master`) along `direction`. Takes the fused shape
-    directly, not a scene, so the same master model can back every flat
-    view without re-fusing."""
-    if combined is None:
-        print(f"  ! no solids for {out_path}, skipping")
-        return
-    try:
-        cq.exporters.export(
-            combined, out_path,
-            opt={"projectionDir": direction, "showHidden": False},
-        )
-        print(f"wrote {out_path}")
-    except Exception as e:
-        print(f"  ! SVG export failed for {out_path}: {e}", file=sys.stderr)
-
-
 def export_glb(scene, out_path):
     """Export the full scene as a single binary glTF (.glb) -- a real,
     colored 3D model any standard viewer can open (web three.js/
@@ -559,10 +499,14 @@ def export_glb(scene, out_path):
     buildings with dozens of openings each -- every subtraction adds real
     topological complexity, and it compounds); the exact same 24
     buildings WITHOUT punching produced 956 triangles and 0.17 MiB.
-    Excluding `scene["context"]` (261 real Overture buildings, no
-    instancing/geometry sharing across assembly members either) helps too,
-    but is a rounding error next to that ~150x difference -- punching was
-    the real cause, not context.
+    `scene["context"]` (261 real Overture buildings, plain unfused boxes,
+    no instancing/geometry sharing across assembly members either) was
+    ALSO excluded the first time this was built, on the assumption it was
+    part of the size problem -- measuring it directly (below) showed it
+    wasn't, so it's included now: real surrounding massing (the same
+    Overture data `render_isometric` already draws for `clean_baseline`),
+    so the interactive model shows the generated design sitting in its
+    real site context too, not just floating in isolation.
 
     First found the hard way: 261 context buildings alone were blamed and
     excluded, but the resulting file was STILL ~26 MiB (over Cloudflare
@@ -571,13 +515,14 @@ def export_glb(scene, out_path):
     actual Pages deploy that serves the live site, so a real code change
     shipped in CI green but never actually reached production. Fixed for
     real only after measuring where the triangles were actually coming
-    from, not after the first plausible-looking suspect.
+    from (punching, not context, and not context's ~3,100 simple box
+    triangles either -- confirmed directly before re-adding it here, not
+    assumed safe by analogy).
 
-    The isometric PNG and elevation/plan SVG exports keep full punched
-    detail (`render_isometric`/`build_exterior_master` still use
-    `scene["buildings"]`) -- only the downloadable .glb trades real
-    window/door cuts for a plain massing model, to stay inside a hard
-    external size limit rather than a soft budget. No interior walls
+    The isometric PNG export keeps full punched detail (`render_isometric`
+    still uses `scene["buildings"]`) -- only the downloadable/interactive
+    .glb trades real window/door cuts for a plain massing model, to stay
+    inside a hard external size limit rather than a soft budget. No interior walls
     either way -- see `render_floor_plan`'s own module doc for why
     interior partitions are drawn as a 2D plan instead of built into the
     3D solid.
@@ -585,7 +530,8 @@ def export_glb(scene, out_path):
     asm = cq.Assembly()
     n_added = 0
     for group, alpha, solids_key in (
-        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched")
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched"),
+        ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
         for solid, kind in scene.get(solids_key, []):
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
@@ -989,101 +935,6 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
     print(f"wrote {out_path}")
 
 
-ELEVATION_FRONTAGE_DIST_M = 60.0  # how close a building's centroid must be to a street to count as facing it
-
-
-def point_to_polyline_dist(pt, pts):
-    """Distance from `pt` to the closest point anywhere on the polyline
-    `pts` (its segments, not just its vertices)."""
-    px, py = pt
-    best = math.inf
-    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
-        abx, aby = bx - ax, by - ay
-        len2 = abx * abx + aby * aby
-        if len2 < 1e-9:
-            d = math.hypot(px - ax, py - ay)
-        else:
-            t = max(0.0, min(1.0, ((px - ax) * abx + (py - ay) * aby) / len2))
-            d = math.hypot(px - (ax + t * abx), py - (ay + t * aby))
-        best = min(best, d)
-    return best
-
-
-def choose_elevation_directions(nbhd, origin_lng, origin_lat):
-    """Pick up to two streets to generate elevations perpendicular to,
-    instead of two arbitrary world-axis slices (old `(0,-1,0)`/`(1,0,0)`)
-    that don't correspond to any real street -- on a rotated or organic
-    street grid those just cut across whatever buildings happen to be
-    lying near that axis, which is what was reading as "just lines" with
-    no legible facade content.
-
-    For each street, "information" = how many buildings sit within
-    `ELEVATION_FRONTAGE_DIST_M` of it (real frontage, not the whole scene)
-    times how widely they're spread along its own length -- a street with
-    a handful of buildings scattered along a long block beats one with
-    many buildings bunched at one end (same drawing content, no more
-    information), and beats a short street with one lonely building
-    (nothing to compose an elevation from).
-
-    Returns up to two `(direction_xyz, label)` pairs: the single
-    highest-scoring street ("front"), and the highest-scoring street
-    whose own direction differs from the front street's by at least 40
-    degrees ("side") -- a genuine cross-street view, not a second look at
-    the same frontage from a nearly-parallel street. Falls back to the
-    old fixed side axis if no sufficiently different street scores at
-    all (e.g. a single-orientation grid).
-    """
-    building_centroids = []
-    for b in nbhd.get("buildings", []):
-        pts = ring_to_xy(b["polygon"]["outer"], origin_lng, origin_lat)
-        if len(pts) < 3:
-            continue
-        building_centroids.append((sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)))
-
-    scored = []
-    for s in nbhd.get("streets", []):
-        line = s.get("centerline") or []
-        if len(line) < 2:
-            continue
-        pts = [project(p["lng"], p["lat"], origin_lng, origin_lat) for p in line]
-        ax, ay = pts[0]
-        bx, by = pts[-1]
-        dx, dy = bx - ax, by - ay
-        length = math.hypot(dx, dy)
-        if length < 1e-6:
-            continue
-        ux, uy = dx / length, dy / length
-        along = [cx * ux + cy * uy for cx, cy in building_centroids if point_to_polyline_dist((cx, cy), pts) <= ELEVATION_FRONTAGE_DIST_M]
-        if len(along) < 2:
-            continue
-        spread = max(along) - min(along)
-        score = len(along) * spread
-        angle_deg = math.degrees(math.atan2(uy, ux)) % 180.0
-        label = s.get("id") or s.get("classification") or "street"
-        scored.append((score, angle_deg, (-uy, ux), label, len(along), spread))
-
-    if not scored:
-        return [((0, -1, 0), "elevation (front)"), ((1, 0, 0), "elevation (side)")]
-
-    scored.sort(key=lambda r: r[0], reverse=True)
-    front = scored[0]
-    print(f"  chosen front elevation street: {front[3]} ({front[4]} buildings, {front[5]:.0f}m frontage)")
-    results = [((front[2][0], front[2][1], 0.0), "elevation (front)")]
-
-    def angle_diff(a, b):
-        d = abs(a - b) % 180.0
-        return min(d, 180.0 - d)
-
-    side_candidates = [r for r in scored[1:] if angle_diff(r[1], front[1]) >= 40.0]
-    if side_candidates:
-        side = side_candidates[0]
-        print(f"  chosen side elevation street: {side[3]} ({side[4]} buildings, {side[5]:.0f}m frontage)")
-        results.append(((side[2][0], side[2][1], 0.0), "elevation (side)"))
-    else:
-        results.append(((1, 0, 0), "elevation (side)"))
-    return results
-
-
 def main():
     if len(sys.argv) not in (3, 4):
         print("usage: render.py <neighborhood.json> <output_prefix> [context_buildings.geojson]")
@@ -1100,14 +951,7 @@ def main():
 
     render_isometric(scene, f"{out_prefix}_isometric.png", nbhd_path.split("/")[-1])
 
-    exterior_master = build_exterior_master(scene)
-    render_svg_projection(exterior_master, f"{out_prefix}_plan.svg", (0, 0, 1), "plan")
-
     origin_lng, origin_lat = scene["origin"]
-    elevations = choose_elevation_directions(nbhd, origin_lng, origin_lat)
-    render_svg_projection(exterior_master, f"{out_prefix}_elevation_front.svg", elevations[0][0], elevations[0][1])
-    render_svg_projection(exterior_master, f"{out_prefix}_elevation_side.svg", elevations[1][0], elevations[1][1])
-
     render_floor_plan(nbhd, origin_lng, origin_lat, 0, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground)")
     max_floors = max((b.get("floors") or 1) for b in nbhd.get("buildings", [])) if nbhd.get("buildings") else 1
     if max_floors >= 2:
