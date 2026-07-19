@@ -655,78 +655,13 @@
       </figcaption>
     </figure>
 
-    <figure class="render">
-      <model-viewer src="/vibe-render/barrio_mallcore.glb" poster="/vibe-render/barrio_mallcore_isometric.png" alt="3D model of the MALL_CORE fragmentation stress case -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
-      <figcaption>
-        <h3>Barrio breakdown: MALL_CORE</h3>
-        <p>A 27.8-acre real parcel from the Eastside Commons proposal fixture — the fragmentation stress case that drove several fixes to the pipeline this project made along the way.</p>
-        <div class="svg-grid">
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_ground.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_floorplan_ground.svg" alt="MALL_CORE floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_upper.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_floorplan_upper.svg" alt="MALL_CORE floor plan, floor 2" loading="lazy"><span>floor plan (floor 2)</span>
-          </a>
-          <a class="svg-thumb" href="/vibe-render/barrio_mallcore_floorplan_largest_building.svg" target="_blank" rel="noopener">
-            <img src="/vibe-render/barrio_mallcore_floorplan_largest_building.svg" alt="MALL_CORE floor plan, largest building, all floors" loading="lazy"><span>largest building, all floors</span>
-          </a>
-        </div>
-        <div class="downloads">
-          <span class="label">3D model:</span>
-          <a href="/vibe-render/barrio_mallcore.glb" download>.glb</a>
-        </div>
-      </figcaption>
-    </figure>
-
-    <h3 style="margin-top:2rem;">Seeding-mode comparison</h3>
-    <p class="caveat">
-      P37 House Cluster's block-seeding strategy is opt-in configurable. <strong>Stratified</strong> is
-      the shipped default (a blind jittered grid). <strong>FieldGuided</strong> is a prototype ported
-      from the sibling <a href="https://jason-edelman.org/eastside-commons/" target="_blank" rel="noopener">eastside-commons</a>
-      project's pressure-field solver — it pulls block seeds toward real civic-anchor parcels and street
-      centerlines already in the neighborhood instead of scattering blindly. Same fixture, same seed, only
-      the seeding strategy differs.
-    </p>
-    <div class="pair">
-      <figure class="render">
-        <model-viewer src="/vibe-render/mallcore_seeding_stratified.glb" poster="/vibe-render/mallcore_seeding_stratified_isometric.png" alt="3D model of MALL_CORE with Stratified seeding -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
-        <figcaption>
-          <h3>Stratified (default)</h3>
-          <p>Blind jittered grid — no awareness of surrounding context.</p>
-          <div class="svg-grid">
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_stratified_floorplan_ground.svg" alt="Stratified floor plan" loading="lazy"><span>floor plan</span>
-            </a>
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_stratified_floorplan_largest_building.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_stratified_floorplan_largest_building.svg" alt="Stratified floor plan, largest building" loading="lazy"><span>largest building</span>
-            </a>
-          </div>
-          <div class="downloads">
-            <span class="label">3D model:</span>
-            <a href="/vibe-render/mallcore_seeding_stratified.glb" download>.glb</a>
-          </div>
-        </figcaption>
-      </figure>
-      <figure class="render">
-        <model-viewer src="/vibe-render/mallcore_seeding_fieldguided.glb" poster="/vibe-render/mallcore_seeding_fieldguided_isometric.png" alt="3D model of MALL_CORE with FieldGuided seeding -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
-        <figcaption>
-          <h3>FieldGuided (prototype)</h3>
-          <p>Pulled toward real CIVIC_*-tagged parcels and streets.</p>
-          <div class="svg-grid">
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_fieldguided_floorplan_ground.svg" alt="FieldGuided floor plan" loading="lazy"><span>floor plan</span>
-            </a>
-            <a class="svg-thumb" href="/vibe-render/mallcore_seeding_fieldguided_floorplan_largest_building.svg" target="_blank" rel="noopener">
-              <img src="/vibe-render/mallcore_seeding_fieldguided_floorplan_largest_building.svg" alt="FieldGuided floor plan, largest building" loading="lazy"><span>largest building</span>
-            </a>
-          </div>
-          <div class="downloads">
-            <span class="label">3D model:</span>
-            <a href="/vibe-render/mallcore_seeding_fieldguided.glb" download>.glb</a>
-          </div>
-        </figcaption>
-      </figure>
-    </div>
+    <!-- Archived: the "Barrio breakdown: MALL_CORE" figure and the
+         Stratified/FieldGuided seeding-mode comparison pair. Real markup,
+         real fixture data, not deleted -- just removed from the default
+         gallery/CI render (see scripts/vibe-render.sh's own
+         VIBE_RENDER_SCENARIOS doc). Restore by re-running vibe-render.sh
+         with all four scenarios enabled and reverting this file to the
+         commit before this comment was added. -->
     <p style="color:var(--muted);font-size:0.85rem;margin-top:1rem;">Generated by <code>scripts/vibe-render.sh</code> during CI deploy.</p>
   </section>
 
