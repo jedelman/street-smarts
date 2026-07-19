@@ -13,3 +13,4 @@ street-smarts-patterns-derive = { workspace = true }
 [dev-dependencies]
 street-smarts-opinions = { path = "../street-smarts-opinions" }
 street-smarts-conflict = { path = "../street-smarts-conflict" }
+street-smarts-ledger = { path = "../street-smarts-ledger" }

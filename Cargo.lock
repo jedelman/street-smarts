@@ -294,6 +294,7 @@ dependencies = [
  "serde_json",
  "street-smarts-conflict",
  "street-smarts-core",
+ "street-smarts-ledger",
  "street-smarts-opinions",
  "street-smarts-patterns-derive",
 ]
