@@ -34,6 +34,30 @@
 //! reflecting that the commit really ran, even though there's nothing
 //! new to fade in.
 //!
+//! One operator does NOT fit that "same id, same footprint" pattern:
+//! `p107_wings_of_light` (and `building_shape.rs`) replace every pad's
+//! `use_category` (pad -> `PadRole::PadWithBuilding`) via
+//! `replaced_parcel_ids`/`new_parcels`, but REUSE the pad's own id for
+//! the replacement instead of minting a new one -- a real, deliberate
+//! choice (so a building's source pad stays a legible, same-id record),
+//! but it means simple id-set add/remove diffing can't see that a real
+//! content swap happened. Without special-casing it, the ORIGINAL pad
+//! shape/color sits at full opacity forever, under the real building
+//! fading in at the same step -- worst for P108's large merged/courtyard
+//! pads, where the real building is a thin ring around a hole and the
+//! solid stale pad underneath swallows almost all of it visually
+//! (confirmed by rendering a real frame before this fix: the whole site
+//! read as solid P108-orange, with only slivers of real P107-brown
+//! building visible at the edges). Handled below by tracking each parcel
+//! id's own `use_category` across steps and fading an id out the moment
+//! its role changes, even though its id never left `entity_ids()`'s set
+//! -- detected off the raw field, not off `entity_color()`'s output,
+//! since P108's own `id.starts_with("p108_merged_")` shortcut in that
+//! function returns the same orange regardless of category and would
+//! miss exactly this case. No replacement entity is reinserted under the
+//! same id -- the real replacement is always a separate new id (the
+//! building itself) already covered by the ordinary add path.
+//!
 //! Usage:
 //!   cargo run -p street-smarts-ledger --release --example dump_lineage_animation -- \
 //!       <fixture.json> <parcel_id> <seed> <out.svg> [seconds_per_step]
@@ -65,20 +89,28 @@ struct Entity {
 
 /// Colors by the entity's REAL type/fields wherever one reliably
 /// distinguishes it (`Parcel.use_category`, `OpenSpace.kind`,
-/// `Street.classification`) -- id-substring matching only for the one
-/// case with no other real signal: P95's courtyard `OpenSpace` and P61's
+/// `Street.classification`) -- id-substring matching only for cases with
+/// no other real signal: P95's/P107's courtyard `OpenSpace`s and P61's
 /// real public squares share the exact same `OpenSpaceKind::Plaza`, so
-/// P95's own `"{parcel}_P95_courtyard_p{n}"` naming convention (an id
-/// format that operator itself constructs and owns, not a guess) is the
-/// only way to tell them apart. Same for P108's `"p108_merged_{n}"` --
-/// its own real synthetic id convention, not inferred.
+/// their own id-naming conventions (formats those operators construct
+/// and own, not a guess -- `"{parcel}_P95_courtyard_p{n}"`,
+/// `"{parcel}_P107_courtyard"`) are the only way to tell them apart; same
+/// for P108's `"p108_merged_{n}"` parcel ids.
+///
+/// The real-type checks (`n.buildings`/`n.streets`/`n.open_space` lookups)
+/// run FIRST, before any id-substring check, and the id-substring checks
+/// are scoped inside their own branch (only applied once we already know
+/// `id` names an OpenSpace, or a Parcel) rather than at the top level --
+/// P107 and P108 both build their own new ids by literally appending a
+/// suffix to their SOURCE pad's id (`{pad_id}_building`,
+/// `{pad_id}_P107_courtyard`), so a top-level `id.starts_with
+/// ("p108_merged_")` check (this function's own earlier form) would ALSO
+/// match a merged pad's own derived building/courtyard ids and miscolor
+/// them as "merged pad" orange instead of their real color -- confirmed
+/// by rendering a real frame: every P108-merged building/courtyard on
+/// site still rendered orange even after the pad's own stale-shape bug
+/// (see this module's own doc) was fixed, because THIS was masking it.
 fn entity_color(n: &Neighborhood, id: &str) -> &'static str {
-    if id.starts_with("p108_merged_") {
-        return "#f5a623"; // merged pad (P108)
-    }
-    if id.contains("_P95_courtyard_p") {
-        return "#4fb3a9"; // P95 courtyard (real OpenSpaceKind::Plaza, P95's own naming)
-    }
     if n.buildings.iter().any(|b| b.id == id) {
         return "#a0522d"; // real building massing (P107)
     }
@@ -89,6 +121,9 @@ fn entity_color(n: &Neighborhood, id: &str) -> &'static str {
         };
     }
     if let Some(o) = n.open_space.iter().find(|o| o.id == id) {
+        if id.contains("_P95_courtyard_p") || id.ends_with("_P107_courtyard") {
+            return "#4fb3a9"; // building courtyard (P95 or P107), real OpenSpaceKind::Plaza either way
+        }
         return match o.kind {
             OpenSpaceKind::Common => "#6ab04c", // P37's informal common land
             OpenSpaceKind::Plaza => "#f1c40f",  // P61's real public square
@@ -96,6 +131,9 @@ fn entity_color(n: &Neighborhood, id: &str) -> &'static str {
         };
     }
     if let Some(p) = n.parcels.iter().find(|p| p.id == id) {
+        if id.starts_with("p108_merged_") {
+            return "#f5a623"; // merged pad (P108) -- safe here: only reached once `id` is confirmed to name a real Parcel, not a derived building/courtyard id that merely shares the prefix
+        }
         return match p.use_category.as_deref() {
             Some("house_cluster_block") => "#8064a2", // P37 block
             Some("p95_building_pad") => "#5b9bd5",    // P95 pad, unmerged
@@ -126,6 +164,14 @@ fn geometry_of(n: &Neighborhood, id: &str) -> Geometry {
 
 fn first_part_or_empty(parts: Vec<street_smarts_core::geometry::PolygonPart>) -> street_smarts_core::geometry::PolygonPart {
     parts.into_iter().next().unwrap_or(street_smarts_core::geometry::PolygonPart { outer: vec![], holes: vec![] })
+}
+
+/// A parcel's own `use_category`, if `id` names a parcel -- the raw field
+/// `p107_wings_of_light`'s in-place-replacement (see this module's own
+/// doc) is detected off, since `entity_color()` can shortcut past it for
+/// `p108_merged_` ids.
+fn parcel_use_category<'a>(n: &'a Neighborhood, id: &str) -> Option<&'a str> {
+    n.parcels.iter().find(|p| p.id == id).and_then(|p| p.use_category.as_deref())
 }
 
 fn entity_ids(n: &Neighborhood) -> BTreeSet<String> {
@@ -163,6 +209,10 @@ fn main() {
     eprintln!("{} real commit(s)", commits.len());
 
     let mut entities: BTreeMap<String, Entity> = BTreeMap::new();
+    // Each parcel id's own `use_category` as of the last step we looked --
+    // the signal the in-place-replacement check below diffs on.
+    let mut role: BTreeMap<String, Option<String>> = BTreeMap::new();
+
     // The diff loop needs the FULL baseline id set to correctly detect
     // what P37 adds/removes, but only `parcel_id` itself is worth drawing
     // at step 0 -- a real fixture like eastside-baseline.json carries
@@ -177,6 +227,7 @@ fn main() {
             born_step: 0,
             removed_step: None,
         });
+        role.insert(id.clone(), parcel_use_category(&baseline, id).map(str::to_string));
     }
 
     for (step_idx, commit) in commits.iter().enumerate() {
@@ -190,10 +241,34 @@ fn main() {
                 born_step: step_idx,
                 removed_step: None,
             });
+            role.insert(added.clone(), parcel_use_category(&snapshot, added).map(str::to_string));
         }
         for removed in prev_ids.difference(&now_ids) {
             if let Some(e) = entities.get_mut(removed) {
                 e.removed_step = Some(step_idx);
+            }
+            role.remove(removed);
+        }
+        // Ids that survive this commit unchanged in the id-set sense might
+        // still have been swapped out in place -- p107_wings_of_light's
+        // (and building_shape.rs's) pad -> PadRole::PadWithBuilding
+        // recategorization, same id, is the real case (see module doc).
+        // Fade the pad here rather than reinsert a "reborn" entity under
+        // it: the real replacement is always a SEPARATE new entity (the
+        // building itself, a distinct id) born at this same step via the
+        // `added` loop above, so fading without reinserting is what
+        // actually lets that real building read clearly instead of being
+        // covered by another same-shaped overlay. Detected off the raw
+        // field, not `entity_color()`, since that function's
+        // `p108_merged_` id-prefix shortcut would mask the change for
+        // exactly the pads where it matters most.
+        for id in now_ids.intersection(&prev_ids) {
+            let new_role = parcel_use_category(&snapshot, id).map(str::to_string);
+            if role.get(id).cloned().unwrap_or(None) != new_role {
+                if let Some(e) = entities.get_mut(id) {
+                    e.removed_step = Some(step_idx);
+                }
+                role.insert(id.clone(), new_role);
             }
         }
         prev_ids = now_ids;
@@ -305,7 +380,7 @@ fn render_animated_svg(entities: &BTreeMap<String, Entity>, commits: &[Commit], 
         ("#16a085", "street, pedestrian (P52/P61)"), ("#6ab04c", "common land (P37)"),
     ];
     let row2 = [
-        ("#f1c40f", "square (P61)"), ("#5b9bd5", "pad, unmerged (P95)"), ("#4fb3a9", "courtyard (P95)"),
+        ("#f1c40f", "square (P61)"), ("#5b9bd5", "pad, unmerged (P95)"), ("#4fb3a9", "courtyard (P95/P107)"),
         ("#f5a623", "merged pad (P108)"), ("#a0522d", "building (P107)"),
     ];
     let mut legend = String::new();
