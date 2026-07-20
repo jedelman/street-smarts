@@ -32,14 +32,18 @@
 //!
 //! # Where the graph itself comes from
 //!
-//! `data/apl-pattern-graph.json` is the checked-in canonical source: real
-//! `larger`/`smaller` pattern-number cross-references fetched from
-//! `patternlanguage.com`/`patternlanguage.cc` for every generator pattern
-//! this project implements, structural data only (no copyrighted
-//! Problem/Solution prose -- see that file's own `_meta` for the real
-//! sources and its one caught, honestly-flagged disagreement between the
-//! two sources on a single unrelated pattern number). Every entry below
-//! cites a real edge from that graph -- not an invented relationship.
+//! `data/apl-pattern-graph.json` is the checked-in canonical source: the
+//! complete, real cross-reference graph for all 253 patterns in *A
+//! Pattern Language*, structural data only (no copyrighted Problem/
+//! Solution prose). Originally built by fetching individual
+//! `patternlanguage.cc` pages one at a time (and briefly, for 4 patterns,
+//! by unverified recall after their pages failed to load -- a real lapse,
+//! caught and fixed the same day, see that file's own `_meta.history`);
+//! now built by downloading `patternlanguage.cc`'s own precomputed Quartz
+//! content-link index directly and parsing it programmatically, so there
+//! is no model-summarization step and no hallucination surface for the
+//! graph data itself. Every entry below cites a real edge from that graph
+//! -- not an invented relationship.
 //!
 //! Two different contract STRENGTHS appear below, both real, labeled
 //! honestly rather than blurred together:
