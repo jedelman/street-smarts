@@ -88,6 +88,26 @@
 //!   is still a straight line, not an obstacle-aware route
 //! - Aggregate adjacent paths into named streets (each segment is its own
 //!   `Street` entity with an auto-id)
+//!
+//! # v0.6: Arterial classification, closing P36/P59/P68's real gap
+//!
+//! `StreetClassification::Arterial` existed in the enum from the start, but
+//! no operator anywhere ever produced it -- confirmed by grep, and
+//! documented as a load-bearing "honest gap" in P36 Degrees of Publicness,
+//! P59 Quiet Backs, and P68 Connected Play's own doc comments. Those three
+//! opinions all correctly check for an Arterial street at runtime; they
+//! just never saw one. This operator now reclassifies the `arterial_count`
+//! LONGEST edges of its own MST backbone (by real physical length, already
+//! computed by Kruskal's) as `Arterial`, at a wider `arterial_width_m`
+//! right-of-way and `"asphalt"` surface instead of `"grass_pavers"`. "The
+//! longest backbone edge" is a real, deterministic, measurable proxy for
+//! "the main through-route" -- not a fabricated classification -- but it is
+//! still a proxy: see this operator's own trace caveat for what it doesn't
+//! know (actual traffic volume, off-site arterial connections).
+//! `arterial_count` defaults to 1.0 (at least one real arterial per site);
+//! `arterial_width_m` defaults to 18.0m, a plausible arterial-scale
+//! placeholder (wider than any local/pedestrian width this operator
+//! produces), not a real code-minimum lookup.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{average_centroid, convex_hull, kruskal_mst, lnglat_to_local, local_to_lnglat, Pt2};
@@ -125,6 +145,18 @@ pub struct PathNetworkParams {
     /// own text for local roads: "17 to 20 feet is quite enough"
     /// (5.18-6.10m) -- see P49's own opinion, which checks this.
     pub path_width_m: f64,
+    /// How many of the MST backbone's own LONGEST edges (by real physical
+    /// length, already computed by Kruskal's) get reclassified `Arterial`
+    /// instead of `Local` -- a real, deterministic proxy for "the main
+    /// through-route," not an arbitrary pick. 0 = no arterial streets (the
+    /// old behavior). See this file's own "v0.6" module doc for why this
+    /// exists at all.
+    pub arterial_count: f64,
+    /// Right-of-way width for an Arterial-classified edge. Wider than
+    /// `path_width_m`'s local-road figure -- a plausible arterial-scale
+    /// placeholder, not a real code-minimum lookup (same category as
+    /// `p95_building_complex`'s `pad_inset_m`).
+    pub arterial_width_m: f64,
 }
 
 impl Parameters for PathNetworkParams {
@@ -145,6 +177,16 @@ impl Parameters for PathNetworkParams {
                 "Right-of-way width per path segment.",
                 2.0, 12.0, 5.5,
             ).with_unit("m"),
+            ParamSpec::float(
+                "arterial_count",
+                "How many of the MST backbone's longest edges become Arterial instead of Local.",
+                0.0, 3.0, 1.0,
+            ),
+            ParamSpec::float(
+                "arterial_width_m",
+                "Right-of-way width for an Arterial-classified edge.",
+                12.0, 30.0, 18.0,
+            ).with_unit("m"),
         ]
     }
     fn defaults() -> Self {
@@ -152,10 +194,12 @@ impl Parameters for PathNetworkParams {
             loop_budget: 2.0,
             local_loop_budget: 1.0,
             path_width_m: 5.5,
+            arterial_count: 1.0,
+            arterial_width_m: 18.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.loop_budget, self.local_loop_budget, self.path_width_m]
+        vec![self.loop_budget, self.local_loop_budget, self.path_width_m, self.arterial_count, self.arterial_width_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -163,6 +207,8 @@ impl Parameters for PathNetworkParams {
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.local_loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.path_width_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.arterial_count = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.arterial_width_m = s.clamp(*x); }
         p
     }
 }
@@ -367,26 +413,47 @@ impl PathNetwork {
             degree[j] += 1;
         }
 
-        // Emit Street segments: MST = backbone ("local"), local_loop_edges
-        // = real loops in that same backbone (also "local"), loop_edges =
-        // supplementary shortcuts ("pedestrian"). Real topological
-        // distinction, not a parity hack. Each segment's centerline bulges
-        // at its midpoint (Alexander's P121 Path Shape) -- drawn from a
-        // seeded Prng, in this fixed edge order, so the same seed always
-        // reproduces the same shape.
+        // P36/P59/P68's real gap: which MST edges become Arterial. The
+        // arterial_count LONGEST MST edges (by real physical length,
+        // already computed by Kruskal's) -- a real, deterministic proxy
+        // for "the main through-route," not an arbitrary pick. See this
+        // file's own "v0.6" module doc.
+        let arterial_count = params.arterial_count.round().max(0.0) as usize;
+        let mut by_length: Vec<(usize, usize, f64)> = mst_edges.clone();
+        by_length.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        let arterial_edges: std::collections::HashSet<(usize, usize)> = by_length.iter()
+            .take(arterial_count)
+            .map(|&(i, j, _)| (i, j))
+            .collect();
+
+        // Emit Street segments: MST = backbone (`Local`, or `Arterial` for
+        // its own longest edges), local_loop_edges = real loops in that
+        // same backbone (also `Local`), loop_edges = supplementary
+        // shortcuts (`Pedestrian`). Real topological distinction, not a
+        // parity hack. Each segment's centerline bulges at its midpoint
+        // (Alexander's P121 Path Shape) -- drawn from a seeded Prng, in
+        // this fixed edge order, so the same seed always reproduces the
+        // same shape.
         let mut prng = Prng::new(seed);
         let mut streets: Vec<Street> = Vec::new();
         let mut classification_assignments: Vec<(String, StreetClassification)> = Vec::new();
+        let mut n_arterial = 0usize;
         for &(i, j, _d) in mst_edges.iter() {
             let id = format!("path_{}_to_{}", block_ids[i], block_ids[j]);
+            let is_arterial = arterial_edges.contains(&(i, j));
+            let classification = if is_arterial { StreetClassification::Arterial } else { StreetClassification::Local };
+            let width = if is_arterial { params.arterial_width_m } else { params.path_width_m };
+            if is_arterial {
+                n_arterial += 1;
+            }
             streets.push(Street {
                 id: id.clone(),
-                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
-                classification: Some(StreetClassification::Local.to_label().into()),
-                row_width_m: Some(params.path_width_m),
-                surface: Some("grass_pavers".into()),
+                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, width, &mut prng),
+                classification: Some(classification.to_label().into()),
+                row_width_m: Some(width),
+                surface: Some(if is_arterial { "asphalt".into() } else { "grass_pavers".into() }),
             });
-            classification_assignments.push((id, StreetClassification::Local));
+            classification_assignments.push((id, classification));
         }
         for &(i, j, _d) in local_loop_edges.iter() {
             let id = format!("localloop_{}_to_{}", block_ids[i], block_ids[j]);
@@ -435,6 +502,11 @@ impl PathNetwork {
             skipped_for_four_way
         ));
         steps.push(format!("Emitted {} Street segments at {}m right-of-way", streets.len(), params.path_width_m as u32));
+        steps.push(format!(
+            "arterial_count={} -> {} of the MST backbone's own longest edges reclassified 'arterial' \
+             at {}m right-of-way (real length proxy for the main through-route)",
+            arterial_count, n_arterial, params.arterial_width_m as u32
+        ));
         steps.push(match &site_boundary {
             Some(b) => format!("Computed a real site-perimeter Boundary ({} vertices, convex hull of every block's own outer ring).", b.centerline.len()),
             None => "Fewer than 3 hull points -- no real site perimeter computed.".into(),
@@ -470,6 +542,11 @@ impl PathNetwork {
                 "The site-perimeter Boundary is the convex hull of every block's own outer ring -- \
                  real for a convex or roughly-convex site, but a real concave site's actual edge \
                  would sit inside this hull in places, not exactly on it.".into(),
+                "Arterial classification is a proxy: the arterial_count longest MST backbone edges \
+                 by real physical length, not a real functional-classification study (traffic \
+                 volume, connection to an off-site arterial, etc.). A real site's longest internal \
+                 link is a reasonable stand-in for 'the main through-route' but this does not know \
+                 whether that edge actually carries through-traffic.".into(),
             ],
             seed: 0,
             params: params.as_map(),

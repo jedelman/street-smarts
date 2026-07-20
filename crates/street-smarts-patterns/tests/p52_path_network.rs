@@ -62,7 +62,7 @@ fn four_corner_blocks() -> Neighborhood {
 #[test]
 fn loop_budget_zero_gives_pure_mst_tree() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     // 4 blocks -> MST has exactly 3 edges, no loop edges.
@@ -81,7 +81,7 @@ fn loop_budget_zero_gives_pure_mst_tree() {
 #[test]
 fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 1.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 1.0, local_loop_budget: 0.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_streets.len(), 4, "MST (3) + loop_budget 1 = 4 edges");
@@ -94,7 +94,7 @@ fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
 #[test]
 fn local_loop_budget_one_adds_exactly_one_local_edge() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 1.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 1.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_streets.len(), 4, "MST (3) + local_loop_budget 1 = 4 edges");
@@ -272,13 +272,147 @@ fn emits_a_real_site_perimeter_boundary() {
 }
 
 #[test]
+fn arterial_count_zero_gives_no_arterial_streets() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams { arterial_count: 0.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert!(
+        sub.new_streets.iter().all(|s| s.classification.as_deref() != Some("arterial")),
+        "arterial_count=0 should produce no arterial streets"
+    );
+    assert!(
+        sub.new_streets.iter().all(|s| s.surface.as_deref() != Some("asphalt")),
+        "arterial_count=0 should produce no asphalt-surfaced streets"
+    );
+}
+
+#[test]
+fn arterial_count_one_reclassifies_exactly_one_mst_backbone_edge() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults(); // arterial_count: 1.0
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    let arterial: Vec<_> = sub
+        .new_streets
+        .iter()
+        .filter(|s| s.classification.as_deref() == Some("arterial"))
+        .collect();
+    assert_eq!(arterial.len(), 1, "arterial_count=1 should reclassify exactly one edge");
+    let a = arterial[0];
+    assert!(
+        a.id.starts_with("path_"),
+        "the arterial edge should come from the MST backbone, not a loop edge, got {}",
+        a.id
+    );
+    assert_eq!(a.row_width_m, Some(params.arterial_width_m));
+    assert_eq!(a.surface.as_deref(), Some("asphalt"));
+}
+
+/// Three blocks in a line, unevenly spaced (10m then 100m), so the MST is
+/// unambiguous (the two adjacent edges, never the 110m direct span) and its
+/// two edges have clearly distinct real lengths -- lets this test prove
+/// arterial classification really does pick the LONGEST backbone edge, not
+/// an arbitrary one.
+fn three_blocks_uneven_spacing() -> Neighborhood {
+    let m_per_deg = 111_320.0;
+    let make_pad = |id: &str, cx: f64, block: &str| -> Parcel {
+        let s = 0.00002;
+        let ring = vec![
+            LngLat::new(cx - s, -s),
+            LngLat::new(cx + s, -s),
+            LngLat::new(cx + s, s),
+            LngLat::new(cx - s, s),
+        ];
+        Parcel {
+            id: id.into(),
+            polygon: Polygon::from_ring(ring),
+            area_acres: 0.01,
+            use_category: Some("p95_building_pad".into()),
+            ownership: None,
+            is_eda: false,
+            spec: Some(block.into()),
+            density_tier: None,
+            target_stories: None,
+        }
+    };
+
+    let x0 = 0.0;
+    let x1 = 10.0 / m_per_deg;
+    let x2 = 110.0 / m_per_deg;
+    let parcels = vec![
+        make_pad("a", x0, "BLOCK_0"),
+        make_pad("b", x1, "BLOCK_1"),
+        make_pad("c", x2, "BLOCK_2"),
+    ];
+
+    Neighborhood {
+        id: "test".into(),
+        bbox_wgs84: [x0, -0.0001, x2, 0.0001],
+        parcels,
+        buildings: vec![],
+        streets: vec![],
+        open_space: vec![],
+        boundaries: vec![],
+        activity_nodes: vec![],
+        metadata: NeighborhoodMeta {
+            source: "synthetic".into(),
+            fetched_at: "test".into(),
+            license: "test".into(),
+            layer_provenance: Default::default(),
+            label: "arterial-length fixture".into(),
+        },
+    }
+}
+
+#[test]
+fn arterial_classification_picks_the_longest_mst_edge_not_an_arbitrary_one() {
+    let nbhd = three_blocks_uneven_spacing();
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert_eq!(sub.new_streets.len(), 2, "3 collinear blocks -> MST has exactly 2 edges");
+    let arterial: Vec<_> = sub
+        .new_streets
+        .iter()
+        .filter(|s| s.classification.as_deref() == Some("arterial"))
+        .collect();
+    assert_eq!(arterial.len(), 1);
+
+    let m = 111_320.0;
+    let segment_length = |s: &street_smarts_core::nir::Street| {
+        let a = s.centerline.first().unwrap();
+        let b = s.centerline.last().unwrap();
+        let (ax, ay) = (a.lng * m, a.lat * m);
+        let (bx, by) = (b.lng * m, b.lat * m);
+        ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
+    };
+    let local: Vec<_> = sub.new_streets.iter().filter(|s| s.classification.as_deref() == Some("local")).collect();
+    assert_eq!(local.len(), 1, "the other MST edge should remain local");
+    assert!(
+        segment_length(arterial[0]) > segment_length(local[0]),
+        "the arterial-classified edge ({:.1}m) should be the longer of the two real MST edges, got local edge {:.1}m",
+        segment_length(arterial[0]),
+        segment_length(local[0])
+    );
+}
+
+#[test]
 fn params_roundtrip() {
-    let p = PathNetworkParams { loop_budget: 5.0, local_loop_budget: 2.0, path_width_m: 6.0 };
+    let p = PathNetworkParams {
+        loop_budget: 5.0,
+        local_loop_budget: 2.0,
+        path_width_m: 6.0,
+        arterial_count: 2.0,
+        arterial_width_m: 24.0,
+    };
     let v = p.as_vector();
     let back = PathNetworkParams::from_vector(&v);
     assert_eq!(back.loop_budget, 5.0);
     assert_eq!(back.local_loop_budget, 2.0);
     assert_eq!(back.path_width_m, 6.0);
+    assert_eq!(back.arterial_count, 2.0);
+    assert_eq!(back.arterial_width_m, 24.0);
 }
 
 #[test]
