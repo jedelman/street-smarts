@@ -3,13 +3,38 @@
 cadquery/OpenCascade -- the same B-rep kernel FreeCAD is built on; FreeCAD
 itself isn't installable in this environment) and render floor-plan and
 isometric views, plus a `.glb` for interactive viewing. Still a gut check
-on scale and density, not a finished architectural rendering -- but window
-and door
-openings ARE now real OpenCascade boolean cuts (`punch_openings`), driven
-by `p221_natural_doors_and_windows`'s pattern-derived placement, not
-decoration. What's still NOT here: real wall thickness on the EXTERIOR
-walls (a punch just pierces solid mass -- see `punch_openings`'s own
-caveat) and roof forms.
+on scale and density, not a finished architectural rendering.
+
+Window/door openings (`opening_records`/`opening_placement`, driven by
+`p221_natural_doors_and_windows`'s real pattern-derived placement) are
+FLAT DECALS now for the isometric PNG, not a real OpenCascade boolean cut
+-- a real, measured architecture change, not a cosmetic one. The original
+version cut a deep box out of each building's solid mass per opening
+(`punch_openings`, removed); measured directly on the real
+`clean_baseline` scenario, that boolean work was 61.93s of a 103.9s total
+render (~60%) -- by a wide margin the single most expensive thing this
+file did, for detail that only ever reached the flat isometric PNG anyway
+(the GLB always had to throw punched solids away and fall back to plain
+massing to stay under Cloudflare Workers' 25 MiB per-asset limit: 145,344
+triangles / ~25.4 MiB punched vs 956 triangles / 0.17 MiB unpunched, on
+the same 24 buildings). Replacing the cut with a thin, separately-colored
+QUAD (window/courtyard-window/door, matching
+`render_largest_building_floors`'s own 2D convention), drawn with plain
+numpy/matplotlib rather than a cadquery/OCC solid, removes the boolean
+entirely and collapses the isometric path's triangle count to roughly the
+unpunched number.
+
+The GLB stays exactly what it was before this change -- plain massing, no
+window/door detail -- on purpose, not by oversight: giving it the SAME
+decal detail was tried and measured (see `export_glb`'s own docstring),
+and even a thin box per opening, merged into one compound per color to
+rule out per-node overhead, still produced a ~28.5 MiB file (over budget
+again) at this fixture's real 7,765-opening count. Real per-opening 3D
+geometry is too much data for a 25 MiB budget regardless of how it's
+packaged; a flat quad is only free because the isometric path never turns
+it into a cadquery mesh at all. What's still NOT here: real wall
+thickness on the exterior walls (a decal sits proud of a zero-thickness
+wall, not in a real reveal) and roof forms.
 
 Massing is still, by default, one footprint swept straight up by one
 height per building -- a real EXTRUSION, not per-floor VOLUMES. The one
@@ -31,10 +56,11 @@ divide). Ground floor only, since no staircase pattern exists yet to reach
 an upper one.
 
 Also exports a single `.glb` (binary glTF) per scenario, colored the same
-as the isometric render, with every building's real punched openings --
-drop it into any standard glTF viewer (web three.js/`<model-viewer>`,
-Blender, VS Code's 3D preview, an online glTF viewer) directly, without
-re-running this pipeline just to look at the model again.
+as the isometric render's building massing (no window/door decals -- see
+above) -- drop it into any standard glTF viewer (web three.js/
+`<model-viewer>`, Blender, VS Code's 3D preview, an online glTF viewer)
+directly, without re-running this pipeline just to look at the model
+again.
 
 Input is the JSON a pattern pipeline run produces -- see
 `crates/street-smarts-patterns/examples/dump_pipeline.rs`, or
@@ -44,6 +70,7 @@ this script) across both baseline scenarios.
 import json
 import math
 import sys
+import time
 import warnings
 
 import cadquery as cq
@@ -60,7 +87,16 @@ DEFAULT_BUILDING_HEIGHT_M = 9.0  # ~3 stories, for pads P107 didn't shape
 STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
-OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness this massing model doesn't have
+OPENING_DECAL_OFFSET_M = 0.03  # how far a window/door decal sits proud of
+# the wall's own outward face -- enough to avoid z-fighting the wall's own
+# coplanar surface at render/tessellation precision, small enough to still
+# read as flush, not a separate floating panel. See opening_placement's
+# own docstring for why this replaced a real OpenCascade boolean cut, and
+# export_glb's own docstring for why this decal is isometric-PNG-only (a
+# numpy quad, no cadquery/OCC solid involved) -- real per-opening 3D
+# geometry, even just a thin box, is too much data for the GLB's 25 MiB
+# budget at this fixture's real opening density (measured: 7,765 openings
+# -> ~28.5 MiB either way).
 INTERIOR_DOOR_WIDTH_M = 0.9  # floor-plan door-gap width, drawn in-plane -- no wall thickness/height in a 2D plan
 INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
 DEFAULT_CONTEXT_HEIGHT_M = 6.0  # ~2 stories, for context buildings Overture has no height for
@@ -69,6 +105,14 @@ POCKET_MATCH_EPS_M = 0.05  # vertex-join tolerance for find_pocket_refill --
 # generous vs float noise from two independent local->lnglat conversions of
 # the SAME Rust f64s (the join is exact in principle, see that function's
 # own docstring), tiny vs any real building dimension.
+
+# Window/door colors -- defined here (not just down by render_largest_building_floors,
+# where they originated) so build_scene's own opening-decal path and the 2D
+# floor-plan path share the SAME real colors instead of two independently
+# maintained hex literals drifting apart.
+WINDOW_COLOR = "#4f7d96"
+COURTYARD_WINDOW_COLOR = "#7bafc4"
+DOOR_COLOR = "#b8602a"
 
 
 def project(lng, lat, origin_lng, origin_lat):
@@ -134,7 +178,7 @@ def find_pocket_refill(building_outer_xy, pocket_outer_xy):
     Returns the set of `ring_index` values (edge-start indices into
     `building_outer_xy`) for the short notch edges (the alcove's own
     side/back walls) -- used both by `build_scene`'s own refill step and
-    to tell `punch_openings` which edges are, after refill, an interior
+    to tell `opening_records` which edges are, after refill, an interior
     face rather than an exterior wall for any floor above ground. Empty
     set if `pocket_outer_xy` isn't this building's own pocket.
     """
@@ -155,11 +199,34 @@ def find_pocket_refill(building_outer_xy, pocket_outer_xy):
     }
 
 
-def punch_openings(solid, building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
-    """Cut `building`'s window/door openings (placed by
-    `p221_natural_doors_and_windows`) out of `solid` via a real OpenCascade
-    boolean subtraction -- this is what makes the isometric render show
-    real openings instead of a blank wall.
+def polygon_signed_area2_m2(ring_xy):
+    """Signed shoelace sum (twice the real area) of a ring already in
+    local meters -- positive iff `ring_xy` winds counter-clockwise. Used
+    only to derive a ring's own real outward-normal direction generically
+    (`opening_placement`'s own docstring) -- this file doesn't itself
+    enforce one winding convention for a hole ring vs its building's own
+    outer ring, so deriving it per-ring from the real data beats assuming
+    one."""
+    n = len(ring_xy)
+    if n < 3:
+        return 0.0
+    total = 0.0
+    for i in range(n):
+        x1, y1 = ring_xy[i]
+        x2, y2 = ring_xy[(i + 1) % n]
+        total += x1 * y2 - x2 * y1
+    return total
+
+
+def opening_placement(ring_xy, ring_sign, o):
+    """Real placement for one `Opening` -- edge point (`ring_index` + `t`),
+    vertical position (`floor * FLOOR_TO_FLOOR_M + sill_height_m`), and
+    real width/height. This used to feed a real OpenCascade boolean punch
+    (a deep box, cut out of the wall solid); now it feeds a flat decal
+    instead (see this file's own module doc for the real measured
+    reasons) -- kept as ONE function either way, since `render_isometric`'s
+    flat quad and `export_glb`'s thin decal box both need the exact same
+    real numbers, just turned into different final geometry.
 
     Each `Opening` references a wall edge by `ring_index`/`on_hole` into
     `building["polygon"]["outer"]` or `["holes"][0]` (the SAME rings the
@@ -169,88 +236,110 @@ def punch_openings(solid, building, origin_lng, origin_lat, skip_ring_indices=fr
     projection used, so reusing this scene's shared origin here is exact,
     not approximate).
 
-    A punch is an axis-aligned box, oriented along the wall edge's own
-    direction and centered at the opening's position, deep enough
-    (`OPENING_PUNCH_DEPTH_M`) to fully pierce the mass -- this pipeline has
-    no wall-thickness model, so "cut a hole all the way through a solid
-    block" is the honest abstraction, not a real window reveal (P223 Deep
-    Reveals, named but unverified -- see the operator's own module doc).
+    Returns `(mx, my, z_center, angle_deg, width, height, nx, ny)` --
+    `(nx, ny)` is the ring's own real OUTWARD unit normal at this edge,
+    derived from `ring_sign` (`polygon_signed_area2_m2`: positive means
+    CCW) so a decal offsets away from solid mass regardless of which way
+    this particular ring happens to wind. `None` if the referenced edge is
+    degenerate or out of range (real, not hypothetical -- the same cases
+    the old boolean punch had to skip).
+    """
+    n = len(ring_xy)
+    i = o["ring_index"]
+    if n < 2 or i >= n:
+        return None
+    ax, ay = ring_xy[i]
+    bx, by = ring_xy[(i + 1) % n]
+    dx, dy = bx - ax, by - ay
+    edge_len = math.hypot(dx, dy)
+    if edge_len < 1e-6:
+        return None
+    t = o["t"]
+    mx, my = ax + dx * t, ay + dy * t
+    # Outward normal: for a CCW ring, the -90 deg rotation of the edge
+    # direction points away from the ring's own interior (verified against
+    # a CCW unit square's own bottom edge: direction (1,0) -> outward
+    # (0,-1), i.e. downward, away from the square) -- +90 deg for a CW
+    # ring instead, since a hole ring commonly (but not, in this file,
+    # guaranteed to) wind opposite its building's own outer ring.
+    nx, ny = (dy / edge_len, -dx / edge_len) if ring_sign >= 0 else (-dy / edge_len, dx / edge_len)
+    angle_deg = math.degrees(math.atan2(dy, dx))
+    width = max(o["width_m"], 0.1)
+    height = max(o["head_height_m"] - o["sill_height_m"], 0.1)
+    z_bottom = o["floor"] * FLOOR_TO_FLOOR_M + o["sill_height_m"]
+    return mx, my, z_bottom + height / 2, angle_deg, width, height, nx, ny
 
-    All punches are subtracted in ONE `Shape.cut(*toCut)` call (OCC's
-    native multi-tool boolean, not cadquery's usual single-tool
-    `Workplane.cut`) -- pre-fusing hundreds of punches via pairwise
-    `.union()` first, or cutting them one at a time, both measured multiple
-    minutes on the largest P108-merged party-wall buildings (close to a
-    thousand openings on one real, non-box extruded solid); the grouped
-    multi-tool cut does the same ~1000-opening building in single-digit
-    seconds.
 
-    `skip_ring_indices` (outer-ring edges only, never holes): P124 Activity
-    Pockets runs BEFORE P221 in the real pipeline, so P221 places openings
-    against the already-notched ring and can put a floor>=1 opening on one
-    of the notch's own short edges. `build_scene`'s own pocket-refill step
-    fills that notch back in above ground level (see `find_pocket_refill`'s
-    own docstring) -- for a building it refilled, those specific edges are
-    an INTERIOR face at floor>=1 after the refill, not an exterior wall, so
-    punching there would cut a hole buried in (or tunneled through) solid
-    mass rather than a real opening. Floor-0 openings on the same edges are
-    untouched -- ground level really does keep the notch. Checked directly
-    against the real fixture: 0 of 17 real pockets currently produce a
-    floor>=1 opening on a notch edge (P221's own placement logic doesn't
-    happen to reach one here), so this is a real but not yet observed
-    failure mode -- kept as a cheap, always-correct guard rather than
-    something to revisit only once it actually bites.
+def opening_quad_corners(placement):
+    """`render_isometric`'s own use of `opening_placement`: the 4 real
+    corners (3D) of a flat rectangle sitting `OPENING_DECAL_OFFSET_M`
+    proud of the wall, in wall-plane winding order (matplotlib's
+    `Poly3DCollection` draws an n-gon face directly, no triangle split
+    needed for its own sake)."""
+    mx, my, z_center, angle_deg, width, height, nx, ny = placement
+    ang = math.radians(angle_deg)
+    ux, uy = math.cos(ang), math.sin(ang)
+    ox, oy = mx + nx * OPENING_DECAL_OFFSET_M, my + ny * OPENING_DECAL_OFFSET_M
+    half_w, half_h = width / 2, height / 2
+    z_lo, z_hi = z_center - half_h, z_center + half_h
+    return [
+        (ox - ux * half_w, oy - uy * half_w, z_lo),
+        (ox + ux * half_w, oy + uy * half_w, z_lo),
+        (ox + ux * half_w, oy + uy * half_w, z_hi),
+        (ox - ux * half_w, oy - uy * half_w, z_hi),
+    ]
+
+
+def opening_records(building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
+    """Every real placement + color for one building's `openings` --
+    `build_scene`'s own single pass over the real `Opening` data, computed
+    once and shared by both `render_isometric` (turns each into a flat
+    quad) and `export_glb` (turns each into a thin decal solid), instead
+    of each re-deriving position/orientation from scratch.
+
+    `skip_ring_indices` (outer-ring edges only, never holes): P124
+    Activity Pockets runs BEFORE P221 in the real pipeline, so P221 places
+    openings against the already-notched ring and can put a floor>=1
+    opening on one of the notch's own short edges. `build_scene`'s own
+    pocket-refill step fills that notch back in above ground level (see
+    `find_pocket_refill`'s own docstring) -- for a building it refilled,
+    those specific edges are an INTERIOR face at floor>=1 after the
+    refill, not an exterior wall, so a decal there would sit glued to a
+    face buried inside solid mass, invisible and wasted rather than a real
+    opening. Floor-0 openings on the same edges are untouched -- ground
+    level really does keep the notch. Checked directly against the real
+    fixture: 0 of 17 real pockets currently produce a floor>=1 opening on
+    a notch edge (P221's own placement logic doesn't happen to reach one
+    here), so this is a real but not yet observed failure mode -- kept as
+    a cheap, always-correct guard rather than something to revisit only
+    once it actually bites.
     """
     openings = building.get("openings") or []
     if not openings:
-        return solid
+        return []
 
     outer_ring = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    outer_sign = polygon_signed_area2_m2(outer_ring)
     holes = building["polygon"].get("holes") or []
     hole_ring = ring_to_xy(holes[0], origin_lng, origin_lat) if holes else None
+    hole_sign = polygon_signed_area2_m2(hole_ring) if hole_ring else 0.0
 
-    punch_solids = []
+    records = []
     for o in openings:
         on_hole = o.get("on_hole")
         if not on_hole and o.get("floor", 0) >= 1 and o["ring_index"] in skip_ring_indices:
             continue
         ring = hole_ring if on_hole else outer_ring
+        ring_sign = hole_sign if on_hole else outer_sign
         if not ring:
             continue
-        n = len(ring)
-        i = o["ring_index"]
-        if i >= n:
+        placement = opening_placement(ring, ring_sign, o)
+        if placement is None:
             continue
-        ax, ay = ring[i]
-        bx, by = ring[(i + 1) % n]
-        edge_len = math.hypot(bx - ax, by - ay)
-        if edge_len < 1e-6:
-            continue
-        t = o["t"]
-        mx, my = ax + (bx - ax) * t, ay + (by - ay) * t
-        angle_deg = math.degrees(math.atan2(by - ay, bx - ax))
-        width = max(o["width_m"], 0.1)
-        height = max(o["head_height_m"] - o["sill_height_m"], 0.1)
-        z_bottom = o["floor"] * FLOOR_TO_FLOOR_M + o["sill_height_m"]
-        try:
-            punch = (
-                cq.Workplane("XY")
-                .box(width, OPENING_PUNCH_DEPTH_M, height)
-                .rotate((0, 0, 0), (0, 0, 1), angle_deg)
-                .translate((mx, my, z_bottom + height / 2))
-            )
-            punch_solids.append(punch.val())
-        except Exception as e:
-            print(f"  ! opening punch build failed: {e}", file=sys.stderr)
-
-    if not punch_solids:
-        return solid
-    try:
-        result_shape = solid.val().cut(*punch_solids)
-        return cq.Workplane(obj=result_shape)
-    except Exception as e:
-        print(f"  ! opening cut failed for {building.get('id')}: {e}", file=sys.stderr)
-        return solid
+        is_door = o["kind"] == "door"
+        color_key = "opening_door" if is_door else ("opening_window_courtyard" if on_hole else "opening_window")
+        records.append((placement, color_key))
+    return records
 
 
 def shared_boundary(poly_a, poly_b, eps=0.05):
@@ -323,8 +412,13 @@ def build_scene(nbhd, context_path=None):
     origin_lng = sum(p["lng"] for p in all_pts) / len(all_pts)
     origin_lat = sum(p["lat"] for p in all_pts) / len(all_pts)
 
-    building_solids = []  # (solid, color_name) -- real punched openings, for the isometric view
-    building_solids_unpunched = []  # same footprints/heights, no window/door boolean cuts -- see export_glb's own docstring for why
+    building_solids = []  # (solid, color_name) -- unpunched: window/door
+    # openings are a separate flat-decal layer now (`opening_decal_records`
+    # below), not a boolean cut into this solid -- see this file's own
+    # module doc for the real measured reason. Both `render_isometric` and
+    # `export_glb` share this SAME list now; there is no more separate
+    # punched-vs-unpunched pair to keep in sync.
+    opening_decal_records = []  # [(placement, color_key), ...] -- see opening_records's own docstring
     building_ids_with_real_shape = set()
 
     # P124 Activity Pockets' own `open_space` entries (kind="pocket") --
@@ -339,13 +433,23 @@ def build_scene(nbhd, context_path=None):
     # `polygon.get("parts")` is always a single element for buildings this
     # pipeline emits (P107 never produces a multi-part Building) -- opening
     # ring_index/on_hole reference the building's own top-level outer/holes,
-    # so punch_openings assumes that single-part case; not handled in
+    # so opening_records assumes that single-part case; not handled in
     # general for a hypothetical multi-part building.
+    # Throwaway coarse profiling (not wired into any test, just this
+    # module's own stderr) -- attributes build_scene's own wall-clock time
+    # to its real phases, since a bare end-to-end script timing can't
+    # (confirmed: +/-50s sandbox noise swamped a single before/after
+    # comparison when the P124 refill was added). Kept cheap: time.perf_counter()
+    # calls around work already happening, no extra passes.
+    t_extrude = t_refill = t_openings = 0.0
+
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
+            _t0 = time.perf_counter()
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
+            t_extrude += time.perf_counter() - _t0
             if solid is None:
                 continue
 
@@ -369,6 +473,7 @@ def build_scene(nbhd, context_path=None):
             # special case in spirit even though it's implemented as one
             # here (no generalized abstraction built ahead of a second real
             # user for it).
+            _t0 = time.perf_counter()
             notch_edge_indices = set()
             outer_xy = ring_to_xy(part["outer"], origin_lng, origin_lat)
             for pocket in unclaimed_pockets:
@@ -397,10 +502,14 @@ def build_scene(nbhd, context_path=None):
                             )
                 unclaimed_pockets.remove(pocket)
                 break
+            t_refill += time.perf_counter() - _t0
 
-            building_solids_unpunched.append((solid, "building_shaped"))
-            punched = punch_openings(solid, b, origin_lng, origin_lat, skip_ring_indices=notch_edge_indices)
-            building_solids.append((punched, "building_shaped"))
+            building_solids.append((solid, "building_shaped"))
+            _t0 = time.perf_counter()
+            opening_decal_records.extend(
+                opening_records(b, origin_lng, origin_lat, skip_ring_indices=notch_edge_indices)
+            )
+            t_openings += time.perf_counter() - _t0
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
         if bid.endswith("_building"):
@@ -425,7 +534,6 @@ def build_scene(nbhd, context_path=None):
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 building_solids.append((solid, "building_unshaped"))
-                building_solids_unpunched.append((solid, "building_unshaped"))
 
     # Plazas / open space -- thin colored slabs at ground level. A P124
     # pocket gets one of these too (its own real footprint, distinctly
@@ -468,11 +576,18 @@ def build_scene(nbhd, context_path=None):
             except Exception:
                 pass
 
+    _t0 = time.perf_counter()
     context_solids = load_context_buildings(context_path, origin_lng, origin_lat) if context_path else []
+    t_context = time.perf_counter() - _t0
+
+    print(
+        f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s "
+        f"opening_records={t_openings:.2f}s context={t_context:.2f}s"
+    )
 
     return {
         "buildings": building_solids,
-        "buildings_unpunched": building_solids_unpunched,
+        "opening_decals": opening_decal_records,
         "plazas": plaza_solids,
         "streets": street_solids,
         "context": context_solids,
@@ -499,6 +614,9 @@ COLORS = {
     "context": "#5a5a5e",  # flat neutral gray -- deliberately duller than every
     # generated-site color so real Overture context reads as backdrop, not
     # competes with the pattern-language buildings it's surrounding.
+    "opening_window": WINDOW_COLOR,
+    "opening_window_courtyard": COURTYARD_WINDOW_COLOR,
+    "opening_door": DOOR_COLOR,
 }
 
 # Two-light setup, not one. A single directional light leaves every face
@@ -556,7 +674,16 @@ def render_isometric(scene, out_path, title):
     fig.patch.set_facecolor("#2a2a2e")
     ax.set_facecolor("#2a2a2e")
 
-    def add_group(items, alpha):
+    # Camera-framing bounds accumulate here as each group is actually
+    # drawn, instead of a SECOND full pass re-tessellating every
+    # street/plaza/building solid again afterward just to find min/max --
+    # that used to mean every real OpenCascade tessellation in this
+    # function ran twice. `context` is deliberately excluded (see its own
+    # comment below, unchanged) -- only `add_group`/`add_opening_decals`
+    # calls that pass `for_bounds=True` contribute.
+    bounds_verts = []
+
+    def add_group(items, alpha, for_bounds=False):
         for solid, kind in items:
             try:
                 verts, tris = solid_to_triangles(solid)
@@ -568,6 +695,33 @@ def render_isometric(scene, out_path, title):
             rgba = shade_faces(face_verts, base_hex, alpha)
             poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
             ax.add_collection3d(poly)
+            if for_bounds:
+                bounds_verts.append(verts)
+
+    def add_opening_decals(records, alpha=0.95, for_bounds=True):
+        """Flat, unshaded quads (no cadquery/OCC involved at all -- see
+        this file's own module doc for why a real boolean punch was
+        replaced with this) -- grouped by `color_key` since `shade_faces`/
+        a single `Poly3DCollection` call needs one color per call, and
+        window/courtyard-window/door each carry a real, distinct color
+        (matching `render_largest_building_floors`'s own 2D convention,
+        finally extended to this 3D view too). Drawn on top of (after) the
+        building group they belong to, at near-full opacity, so each one
+        reads as its own real element against the translucent wall behind
+        it rather than blending into it."""
+        if not records:
+            return
+        by_color = {}
+        for placement, color_key in records:
+            by_color.setdefault(color_key, []).append(opening_quad_corners(placement))
+        for color_key, quads in by_color.items():
+            face_verts = np.array(quads)  # (n, 4, 3)
+            base_rgb = np.array(mcolors.to_rgb(COLORS.get(color_key, "#999999")))
+            rgba = np.tile(np.append(base_rgb, alpha), (len(quads), 1))
+            poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="none")
+            ax.add_collection3d(poly)
+            if for_bounds:
+                bounds_verts.append(face_verts.reshape(-1, 3))
 
     # Real surrounding buildings first, most translucent of anything in the
     # scene -- backdrop, not subject. Camera framing below is deliberately
@@ -581,12 +735,12 @@ def render_isometric(scene, out_path, title):
     # translucent the scene turns to fog -- streets/plazas thinnest (they're
     # ground-plane slabs, least important to see "through"), buildings the
     # most opaque single layer but still see-through against neighbors.
-    add_group(scene["streets"], alpha=0.55)
-    add_group(scene["plazas"], alpha=0.6)
-    add_group(scene["buildings"], alpha=0.82)
+    add_group(scene["streets"], alpha=0.55, for_bounds=True)
+    add_group(scene["plazas"], alpha=0.6, for_bounds=True)
+    add_group(scene["buildings"], alpha=0.82, for_bounds=True)
+    add_opening_decals(scene.get("opening_decals", []))
 
-    all_solids = scene["streets"] + scene["plazas"] + scene["buildings"]
-    all_verts = np.concatenate([solid_to_triangles(s)[0] for s, _ in all_solids if True], axis=0)
+    all_verts = np.concatenate(bounds_verts, axis=0)
     xmin, ymin, zmin = all_verts.min(axis=0)
     xmax, ymax, zmax = all_verts.max(axis=0)
     max_range = max(xmax - xmin, ymax - ymin, 60) / 2
@@ -625,52 +779,60 @@ def export_glb(scene, out_path):
     viewers) directly, without re-running the Rust pipeline or cadquery to
     look at it again.
 
-    Uses `scene["buildings_unpunched"]`, NOT `scene["buildings"]` -- unlike
-    `render_isometric`, which just rasterizes whatever it's given into a
-    fixed-size PNG no matter how complex the source mesh, cadquery's GLTF
-    writer re-tessellates straight from the BREP geometry with (as far as
-    this file's own testing found) no way to request a coarser mesh --
-    `Assembly.save`'s own `tolerance`/`angularTolerance` kwargs, and
-    manually calling `shape.tessellate()` at a coarser value before
-    `asm.add()`, both produced byte-identical output regardless of the
-    value passed. Measured directly, not assumed: `clean_baseline`'s 24
-    buildings WITH `punch_openings`'s real window/door boolean cuts
-    produced 145,344 triangles and a ~25.4 MiB file (real courtyard
-    buildings with dozens of openings each -- every subtraction adds real
-    topological complexity, and it compounds); the exact same 24
-    buildings WITHOUT punching produced 956 triangles and 0.17 MiB.
-    `scene["context"]` (261 real Overture buildings, plain unfused boxes,
-    no instancing/geometry sharing across assembly members either) was
-    ALSO excluded the first time this was built, on the assumption it was
-    part of the size problem -- measuring it directly (below) showed it
-    wasn't, so it's included now: real surrounding massing (the same
-    Overture data `render_isometric` already draws for `clean_baseline`),
-    so the interactive model shows the generated design sitting in its
-    real site context too, not just floating in isolation.
+    Uses the SAME `scene["buildings"]` `render_isometric` does now --
+    unlike the ORIGINAL version of this function, which had to fall back
+    to a separate, plain (unpunched) massing list because cadquery's GLTF
+    writer re-tessellates straight from the BREP geometry with no way to
+    request a coarser mesh (`Assembly.save`'s own `tolerance`/
+    `angularTolerance` kwargs, and manually calling `shape.tessellate()`
+    at a coarser value before `asm.add()`, both produced byte-identical
+    output regardless of the value passed -- confirmed directly, not
+    assumed). Measured at the time: `clean_baseline`'s 24 buildings WITH a
+    real OpenCascade boolean punch per opening produced 145,344 triangles
+    and a ~25.4 MiB file; the exact same 24 buildings WITHOUT punching
+    produced 956 triangles and 0.17 MiB -- window/door boolean cuts were
+    the dominant cost, not the building count or `scene["context"]`'s 261
+    real Overture boxes (confirmed directly before re-adding those here,
+    not assumed safe by analogy -- see the git history around this
+    function for the full "261 context buildings alone were blamed, the
+    real culprit turned out to be punching" story, since neither the
+    culprit nor the false lead needs restating in full every time this
+    file is read).
 
-    First found the hard way: 261 context buildings alone were blamed and
-    excluded, but the resulting file was STILL ~26 MiB (over Cloudflare
-    Workers' hard 25 MiB per-asset limit) -- which silently failed the
-    Workers deploy step and skipped every step after it, including the
-    actual Pages deploy that serves the live site, so a real code change
-    shipped in CI green but never actually reached production. Fixed for
-    real only after measuring where the triangles were actually coming
-    from (punching, not context, and not context's ~3,100 simple box
-    triangles either -- confirmed directly before re-adding it here, not
-    assumed safe by analogy).
-
-    The isometric PNG export keeps full punched detail (`render_isometric`
-    still uses `scene["buildings"]`) -- only the downloadable/interactive
-    .glb trades real window/door cuts for a plain massing model, to stay
-    inside a hard external size limit rather than a soft budget. No interior walls
-    either way -- see `render_floor_plan`'s own module doc for why
-    interior partitions are drawn as a 2D plan instead of built into the
-    3D solid.
+    Openings are no longer a boolean cut into either render path (see this
+    file's own module doc for the real measured numbers behind that
+    change) -- `render_isometric` draws them as flat quads, cheaply,
+    outside cadquery entirely. This function does NOT also add a thin
+    cadquery decal box per opening, even though that geometry would have
+    been trivial to bolt on here too (same `opening_placement` numbers,
+    just a `.box()` instead of a flat quad) -- tried it first, measured
+    it, reverted it (no trace of that attempt is left in this file other
+    than this note -- the code itself was deleted, not commented out):
+    `clean_baseline`'s 35 buildings carry
+    7,765 real openings, and 7,765 real decal boxes (~93,180 triangles,
+    grouped into ONE `Compound` per color to rule out per-node glTF
+    overhead as the cause) still produced a ~28.5 MiB file in ~36s --
+    over Cloudflare Workers' 25 MiB hard cap, the exact failure mode this
+    function's own history already documents for a different cause (see
+    the git history around this function for that "261 context buildings
+    alone were blamed, the real culprit turned out to be punching" story).
+    Real per-opening 3D geometry is simply too much data at this
+    fixture's real opening density for a 25 MiB budget, whether it's cut
+    out of the wall, added as separate solids, or added as one merged
+    compound -- a `Compound` only removes per-node metadata overhead, not
+    the underlying triangle count, and the triangle count was always the
+    real cost (same lesson `punch_openings`'s own removal already
+    established). So the GLB stays exactly what it was before this file's
+    P124/decal work: plain massing, no window/door detail -- only the
+    isometric PNG, where a decal costs a numpy quad instead of a real OCC
+    solid, gets that detail. No interior walls either way -- see
+    `render_floor_plan`'s own module doc for why interior partitions are
+    drawn as a 2D plan instead of built into the 3D solid.
     """
     asm = cq.Assembly()
     n_added = 0
     for group, alpha, solids_key in (
-        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings_unpunched"),
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings"),
         ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
         for solid, kind in scene.get(solids_key, []):
@@ -680,6 +842,7 @@ def export_glb(scene, out_path):
                 asm.add(solid, name=f"{group}_{n_added}_{kind}", color=cq.Color(r, g, b, alpha))
             except Exception as e:
                 print(f"  ! glb: skipped a {group} piece: {e}", file=sys.stderr)
+
     if n_added == 0:
         print(f"  ! nothing to export for {out_path}, skipping")
         return
@@ -698,8 +861,11 @@ def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
 
     The first version of this tried to get there by unioning thin wall
     slabs into each building's extruded solid, then taking a horizontal
-    section through the result (same technique `punch_openings` uses for
-    exterior openings, just adding material instead of subtracting it).
+    section through the result (a real OpenCascade boolean, the same
+    technique this file's original opening-punch approach once used for
+    exterior openings -- see this file's own module doc for why that was
+    later replaced with a flat decal -- just adding material instead of
+    subtracting it here).
     That doesn't work: the extruded solid has no wall thickness and no
     room voids -- it's a single filled block covering the whole footprint
     -- so a wall slab built inside it is (almost) entirely already inside
@@ -784,9 +950,6 @@ def render_floor_plan(nbhd, origin_lng, origin_lat, floor, out_path, title):
     print(f"wrote {out_path}")
 
 
-WINDOW_COLOR = "#4f7d96"
-COURTYARD_WINDOW_COLOR = "#7bafc4"
-DOOR_COLOR = "#b8602a"
 COMMON_AREA_MARKER_COLOR = "#2e6b4f"
 # Neutral gray, deliberately outside the warm depth-gradient palette --
 # p133_staircase_as_a_stage's stair core is circulation, not a step in the
@@ -1092,15 +1255,28 @@ def main():
     context_path = sys.argv[3] if len(sys.argv) == 4 else None
     nbhd = load(nbhd_path)
     print(f"=== {nbhd_path} ===")
+
+    # Coarse per-phase profiling (see build_scene's own finer breakdown of
+    # its own time) -- throwaway stderr output, not a test or a stored
+    # baseline, added specifically because a single before/after
+    # end-to-end wall-clock comparison already turned out to be swamped by
+    # +/-50s sandbox noise (see the P124 refill work's own commit
+    # message) -- phase attribution is the only way to tell real cost from
+    # noise in this environment.
+    _t0 = time.perf_counter()
     scene = build_scene(nbhd, context_path=context_path)
+    _t_build_scene = time.perf_counter() - _t0
     print(
         f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
         f"streets: {len(scene['streets'])}, context: {len(scene['context'])}"
     )
 
+    _t0 = time.perf_counter()
     render_isometric(scene, f"{out_prefix}_isometric.png", nbhd_path.split("/")[-1])
+    _t_isometric = time.perf_counter() - _t0
 
     origin_lng, origin_lat = scene["origin"]
+    _t0 = time.perf_counter()
     render_floor_plan(nbhd, origin_lng, origin_lat, 0, f"{out_prefix}_floorplan_ground.svg", "floor plan (ground)")
     max_floors = max((b.get("floors") or 1) for b in nbhd.get("buildings", [])) if nbhd.get("buildings") else 1
     if max_floors >= 2:
@@ -1108,8 +1284,17 @@ def main():
             nbhd, origin_lng, origin_lat, 1, f"{out_prefix}_floorplan_upper.svg", "floor plan (floor 2)"
         )
     render_largest_building_floors(nbhd, origin_lng, origin_lat, f"{out_prefix}_floorplan_largest_building.svg")
+    _t_floorplans = time.perf_counter() - _t0
 
+    _t0 = time.perf_counter()
     export_glb(scene, f"{out_prefix}.glb")
+    _t_glb = time.perf_counter() - _t0
+
+    print(
+        f"phase timing: build_scene={_t_build_scene:.1f}s isometric={_t_isometric:.1f}s "
+        f"floorplans={_t_floorplans:.1f}s glb={_t_glb:.1f}s "
+        f"total={_t_build_scene + _t_isometric + _t_floorplans + _t_glb:.1f}s"
+    )
 
 
 if __name__ == "__main__":
