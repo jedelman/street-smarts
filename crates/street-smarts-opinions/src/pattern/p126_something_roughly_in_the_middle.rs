@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn a_node_near_the_plazas_middle_scores_full() {
-        let node = ActivityNode { id: "A1".into(), location: LngLat::new(0.0, 0.0), kind: ActivityKind::Civic, intensity: None, label: None };
+        let node = ActivityNode { id: "A1".into(), location: LngLat::new(0.0, 0.0), kind: ActivityKind::Civic, intensity: None, label: None, activity_fit: Default::default(), publicness: None };
         let n = nbhd(vec![plaza("PZ1", 30.0)], vec![node]);
         match P126SomethingRoughlyInTheMiddle.evaluate(&n) {
             OpinionOutput::Value { value, .. } => assert!((value - 1.0).abs() < 1e-6, "got {value}"),
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn a_far_node_scores_zero() {
         let m = 1.0 / 111_320.0;
-        let node = ActivityNode { id: "A1".into(), location: LngLat::new(500.0 * m, 500.0 * m), kind: ActivityKind::Civic, intensity: None, label: None };
+        let node = ActivityNode { id: "A1".into(), location: LngLat::new(500.0 * m, 500.0 * m), kind: ActivityKind::Civic, intensity: None, label: None, activity_fit: Default::default(), publicness: None };
         let n = nbhd(vec![plaza("PZ1", 30.0)], vec![node]);
         match P126SomethingRoughlyInTheMiddle.evaluate(&n) {
             OpinionOutput::Value { value, contributing_features, .. } => {

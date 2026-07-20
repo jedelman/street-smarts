@@ -6,7 +6,7 @@
 use crate::geometry::Polygon;
 use crate::provenance::ProvenanceTag;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// The top-level neighborhood document.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,6 +262,24 @@ pub struct ActivityNode {
     pub intensity: Option<f64>,
     #[serde(default)]
     pub label: Option<String>,
+    /// Open-ended fit scores, one entry per real activity dimension a
+    /// real signal exists for (e.g. "commerce", "gathering", "transit",
+    /// "play"), each in `[0.0, 1.0]`. Empty means no fit signal has been
+    /// assessed yet -- NOT zero fit for everything. Deliberately not a
+    /// fixed enum/classification the way `kind` is: a real place rarely
+    /// fits exactly one activity, and this lets a generator or a future
+    /// input source express that without committing to a single label.
+    #[serde(default)]
+    pub activity_fit: BTreeMap<String, f64>,
+    /// How public (`1.0`) vs. intimate/private (`0.0`) this node's own
+    /// setting reads -- independent of `Street.classification`, so it
+    /// doesn't wait on a real "arterial" street existing anywhere in the
+    /// generated network. `None` means no real signal exists yet, not a
+    /// fabricated midpoint -- see `p126_something_roughly_in_the_middle.rs`
+    /// and `p61_small_public_squares.rs`'s own module docs for what
+    /// currently sets (or deliberately leaves unset) this field.
+    #[serde(default)]
+    pub publicness: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -274,4 +292,42 @@ pub enum ActivityKind {
     Worship,
     Health,
     Other,
+}
+
+#[cfg(test)]
+mod activity_node_tests {
+    use super::*;
+    use crate::geometry::LngLat;
+
+    #[test]
+    fn old_json_with_no_activity_fit_or_publicness_deserializes_to_honest_defaults() {
+        let old_json = r#"{
+            "id": "A1",
+            "location": {"lng": 0.0, "lat": 0.0},
+            "kind": "civic"
+        }"#;
+        let node: ActivityNode = serde_json::from_str(old_json).expect("older ActivityNode JSON should still deserialize");
+        assert!(node.activity_fit.is_empty(), "no fit signal in the source JSON should mean an empty map, not a fabricated one");
+        assert_eq!(node.publicness, None, "no publicness signal in the source JSON should mean None, not a fabricated midpoint");
+    }
+
+    #[test]
+    fn activity_fit_and_publicness_round_trip_through_json() {
+        let mut fit = BTreeMap::new();
+        fit.insert("commerce".to_string(), 0.7);
+        fit.insert("gathering".to_string(), 0.4);
+        let node = ActivityNode {
+            id: "A1".into(),
+            location: LngLat::new(0.0, 0.0),
+            kind: ActivityKind::Civic,
+            intensity: None,
+            label: None,
+            activity_fit: fit.clone(),
+            publicness: Some(0.8),
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        let back: ActivityNode = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.activity_fit, fit);
+        assert_eq!(back.publicness, Some(0.8));
+    }
 }

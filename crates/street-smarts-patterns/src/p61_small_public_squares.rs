@@ -202,7 +202,14 @@ const ACTIVITY_NODE_JITTER_FRAC: f64 = 0.2;
 /// One real, jittered-off-center ActivityNode for a newly placed square --
 /// see this file's own "v0.7" module doc. `sq_local` is the square's own
 /// ring in the same local-meter frame `centroid`/`bbox` already use;
-/// `origin` converts back to real lng/lat.
+/// `origin` converts back to real lng/lat. `activity_fit` and
+/// `publicness` are left at their honest empty/`None` defaults -- this
+/// function only knows it placed a generic plaza marker, not what real
+/// activity belongs there or how public the setting reads; inventing
+/// plausible-looking values for either would be exactly the kind of
+/// fabrication this pipeline's opinions consistently refuse to do
+/// elsewhere (see `p33_night_life.rs`'s own module doc on the same
+/// principle for `use_category`).
 fn activity_node_for_square(id: String, sq_local: &[Pt2], origin: &LngLat, prng: &mut Prng) -> ActivityNode {
     let c = centroid(sq_local);
     let (min_pt, max_pt) = bbox(sq_local);
@@ -216,6 +223,8 @@ fn activity_node_for_square(id: String, sq_local: &[Pt2], origin: &LngLat, prng:
         kind: ActivityKind::Civic,
         intensity: None,
         label: None,
+        activity_fit: Default::default(),
+        publicness: None,
     }
 }
 
