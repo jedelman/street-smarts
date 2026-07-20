@@ -13,22 +13,22 @@
 //! > a precinct -- by great gateways where the major entering paths cross
 //! > the boundary.
 //!
-//! # A real, checkable proxy -- honestly `NoView` on real pipeline output
-//! today
+//! # A real, checkable proxy
 //!
 //! `Neighborhood.boundaries: Vec<Boundary>` is a real, typed,
 //! serializable field (`BoundaryKind::Natural`/`Infrastructural`/
-//! `Jurisdictional`) -- but as of this writing no generator anywhere in
-//! this pipeline populates it, the same class of real-field-no-producer
-//! gap as `Parcel.use_category: "commercial"` (see `p33_night_life.rs`'s
-//! own module doc) and `Neighborhood.activity_nodes`
-//! (`p126_something_roughly_in_the_middle.rs`). This opinion checks, for
-//! each real `Boundary`, whether a real street endpoint sits within
-//! `GATEWAY_THRESHOLD_M` (30m) of the boundary's own centerline --
-//! standing in for "a major entering path crosses the boundary here."
-//! `value` = fraction of boundaries with at least one such crossing
-//! street. Honestly `NoView` on every real pipeline output today, purely
-//! because `boundaries` is always empty -- not a detector bug.
+//! `Jurisdictional`). `path_network` (its own "v0.5" module doc) now
+//! populates one real site-perimeter `Boundary` per site -- the convex
+//! hull of every block's own outer-ring vertices -- closing the
+//! real-field-no-producer gap this opinion used to always hit (the same
+//! class of gap `Parcel.use_category: "commercial"` had, see
+//! `p33_night_life.rs`'s own module doc, and `Neighborhood.activity_nodes`
+//! had before `p126_something_roughly_in_the_middle.rs`'s own producer).
+//! This opinion checks, for each real `Boundary`, whether a real street
+//! endpoint sits within `GATEWAY_THRESHOLD_M` (30m) of the boundary's own
+//! centerline -- standing in for "a major entering path crosses the
+//! boundary here." `value` = fraction of boundaries with at least one
+//! such crossing street.
 
 use std::collections::BTreeMap;
 use street_smarts_core::geometry::point_to_polyline_m;

@@ -34,6 +34,7 @@ pub mod p133_staircase_as_a_stage;
 pub mod p221_natural_doors_and_windows;
 pub mod p61_small_public_squares;
 pub mod p197_thick_walls;
+pub mod cascade_contracts;
 pub mod orientation;
 pub mod pipeline;
 pub mod registry;
