@@ -11,6 +11,15 @@ decoration. What's still NOT here: real wall thickness on the EXTERIOR
 walls (a punch just pierces solid mass -- see `punch_openings`'s own
 caveat) and roof forms.
 
+Massing is still, by default, one footprint swept straight up by one
+height per building -- a real EXTRUSION, not per-floor VOLUMES. The one
+exception is P124 Activity Pockets: `build_scene`'s own per-building
+refill step (see its comment there and `find_pocket_refill`'s own
+docstring) re-adds the notch's own footprint above ground level so a
+pocket reads as a ground-floor alcove, not a floor-to-roof slot -- a
+targeted fix for one real feature, not a general per-floor footprint
+model.
+
 Interior rooms are a separate, 2D concern: `render_floor_plan` draws each
 building's `interior_cells` polygons directly (`p127_intimacy_gradient` /
 `p129_common_areas_at_the_heart` / `p131_the_flow_through_rooms`'s cell
@@ -56,6 +65,10 @@ INTERIOR_DOOR_WIDTH_M = 0.9  # floor-plan door-gap width, drawn in-plane -- no w
 INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
 DEFAULT_CONTEXT_HEIGHT_M = 6.0  # ~2 stories, for context buildings Overture has no height for
 CONTEXT_MIN_AREA_M2 = 8.0  # drop slivers/artifacts smaller than a garden shed
+POCKET_MATCH_EPS_M = 0.05  # vertex-join tolerance for find_pocket_refill --
+# generous vs float noise from two independent local->lnglat conversions of
+# the SAME Rust f64s (the join is exact in principle, see that function's
+# own docstring), tiny vs any real building dimension.
 
 
 def project(lng, lat, origin_lng, origin_lat):
@@ -101,7 +114,48 @@ def extrude_polygon(outer_ring, holes, height, origin_lng, origin_lat):
         return None
 
 
-def punch_openings(solid, building, origin_lng, origin_lat):
+def find_pocket_refill(building_outer_xy, pocket_outer_xy):
+    """Join a P124 Activity Pockets `open_space` entry (`kind: "pocket"`)
+    back to the real building it was carved from -- purely from geometry
+    this scene already has, no Rust schema change needed.
+
+    `p124_activity_pockets` (crates/street-smarts-patterns) splices the
+    pocket's own 4 corners directly into its parent building's outer ring
+    at the notch site, and the SAME 4 points (run through the SAME
+    local<->lnglat conversion, same origin) become the Pocket's own
+    `open_space` polygon -- so at least 3 of the pocket's 4 vertices are,
+    bit-for-bit, real vertices of the FINAL (post-notch) building ring this
+    scene already has. Requiring 3+ (not just 1) is what makes this safe
+    against a party-wall neighbor (P108-merged buildings can share one or
+    two incidental ring vertices, never a run of 3+) -- confirmed on the
+    real eastside-baseline fixture: 17/17 real pockets match exactly one
+    real building each, zero ambiguous matches.
+
+    Returns the set of `ring_index` values (edge-start indices into
+    `building_outer_xy`) for the short notch edges (the alcove's own
+    side/back walls) -- used both by `build_scene`'s own refill step and
+    to tell `punch_openings` which edges are, after refill, an interior
+    face rather than an exterior wall for any floor above ground. Empty
+    set if `pocket_outer_xy` isn't this building's own pocket.
+    """
+    idxs = []
+    for pp in pocket_outer_xy:
+        for i, bp in enumerate(building_outer_xy):
+            if math.hypot(pp[0] - bp[0], pp[1] - bp[1]) < POCKET_MATCH_EPS_M:
+                idxs.append(i)
+                break
+    if len(idxs) < 3:
+        return set()
+    idxs_sorted = sorted(idxs)
+    n = len(building_outer_xy)
+    return {
+        idxs_sorted[i]
+        for i in range(len(idxs_sorted) - 1)
+        if (idxs_sorted[i + 1] - idxs_sorted[i]) % n == 1
+    }
+
+
+def punch_openings(solid, building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
     """Cut `building`'s window/door openings (placed by
     `p221_natural_doors_and_windows`) out of `solid` via a real OpenCascade
     boolean subtraction -- this is what makes the isometric render show
@@ -130,6 +184,22 @@ def punch_openings(solid, building, origin_lng, origin_lat):
     thousand openings on one real, non-box extruded solid); the grouped
     multi-tool cut does the same ~1000-opening building in single-digit
     seconds.
+
+    `skip_ring_indices` (outer-ring edges only, never holes): P124 Activity
+    Pockets runs BEFORE P221 in the real pipeline, so P221 places openings
+    against the already-notched ring and can put a floor>=1 opening on one
+    of the notch's own short edges. `build_scene`'s own pocket-refill step
+    fills that notch back in above ground level (see `find_pocket_refill`'s
+    own docstring) -- for a building it refilled, those specific edges are
+    an INTERIOR face at floor>=1 after the refill, not an exterior wall, so
+    punching there would cut a hole buried in (or tunneled through) solid
+    mass rather than a real opening. Floor-0 openings on the same edges are
+    untouched -- ground level really does keep the notch. Checked directly
+    against the real fixture: 0 of 17 real pockets currently produce a
+    floor>=1 opening on a notch edge (P221's own placement logic doesn't
+    happen to reach one here), so this is a real but not yet observed
+    failure mode -- kept as a cheap, always-correct guard rather than
+    something to revisit only once it actually bites.
     """
     openings = building.get("openings") or []
     if not openings:
@@ -141,7 +211,10 @@ def punch_openings(solid, building, origin_lng, origin_lat):
 
     punch_solids = []
     for o in openings:
-        ring = hole_ring if o.get("on_hole") else outer_ring
+        on_hole = o.get("on_hole")
+        if not on_hole and o.get("floor", 0) >= 1 and o["ring_index"] in skip_ring_indices:
+            continue
+        ring = hole_ring if on_hole else outer_ring
         if not ring:
             continue
         n = len(ring)
@@ -254,6 +327,14 @@ def build_scene(nbhd, context_path=None):
     building_solids_unpunched = []  # same footprints/heights, no window/door boolean cuts -- see export_glb's own docstring for why
     building_ids_with_real_shape = set()
 
+    # P124 Activity Pockets' own `open_space` entries (kind="pocket") --
+    # matched to their parent building below, per pocket, via
+    # find_pocket_refill's own vertex join. A pocket is claimed (popped)
+    # once matched: P124's own real constraint is at most one pocket per
+    # building, confirmed on the real fixture (17/17 unique matches), so
+    # this also means a building can never be refilled twice.
+    unclaimed_pockets = [o for o in nbhd.get("open_space", []) if o.get("kind") == "pocket"]
+
     # Real P107-shaped buildings first (real height, may have a courtyard hole).
     # `polygon.get("parts")` is always a single element for buildings this
     # pipeline emits (P107 never produces a multi-part Building) -- opening
@@ -265,10 +346,61 @@ def build_scene(nbhd, context_path=None):
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
-            if solid is not None:
-                building_solids_unpunched.append((solid, "building_shaped"))
-                punched = punch_openings(solid, b, origin_lng, origin_lat)
-                building_solids.append((punched, "building_shaped"))
+            if solid is None:
+                continue
+
+            # Volumetric refill: a P124 notch is a GROUND-LEVEL alcove (see
+            # p124_activity_pockets.rs's own module doc -- Alexander's "small
+            # pocket of activity" reading is a street-level feature, not a
+            # light well), but `extrude_polygon` above just swept the
+            # (already-notched) ring straight up by the building's FULL
+            # height -- a naive single extrusion carves the notch through
+            # every floor, not just the ground one. There's no per-floor
+            # footprint field anywhere in this schema to read the "right"
+            # upper-floor shape from, and no pre-notch ring either (P124
+            # deliberately doesn't keep one -- every downstream Rust
+            # consumer needs the FINAL ring). Re-derive it instead from the
+            # pocket's own emitted geometry: extrude just the notch
+            # rectangle from one floor-to-floor height up to the roof, and
+            # fuse it back onto the base solid, so only the ground floor
+            # keeps the recess and every floor above reads as a normal
+            # solid facade -- the same "ground-level void under upper-floor
+            # mass" shape as Alexander's P119 Arcades, not yet a P124-only
+            # special case in spirit even though it's implemented as one
+            # here (no generalized abstraction built ahead of a second real
+            # user for it).
+            notch_edge_indices = set()
+            outer_xy = ring_to_xy(part["outer"], origin_lng, origin_lat)
+            for pocket in unclaimed_pockets:
+                pocket_xy = ring_to_xy(pocket["polygon"]["outer"], origin_lng, origin_lat)
+                edges = find_pocket_refill(outer_xy, pocket_xy)
+                if not edges:
+                    continue
+                notch_edge_indices = edges
+                if height > FLOOR_TO_FLOOR_M:
+                    # Assumes the pocket itself is exactly one
+                    # FLOOR_TO_FLOOR_M tall -- P124 carries no explicit
+                    # height field of its own, so this is a rendering-layer
+                    # assumption, not a Rust-derived fact.
+                    refill = extrude_polygon(
+                        pocket["polygon"]["outer"], [], height - FLOOR_TO_FLOOR_M, origin_lng, origin_lat
+                    )
+                    if refill is not None:
+                        refill = refill.translate((0, 0, FLOOR_TO_FLOOR_M))
+                        try:
+                            solid = solid.union(refill).clean()
+                        except Exception as e:
+                            print(
+                                f"  ! pocket refill union failed for {b.get('id')}, "
+                                f"rendering with the full-height notch instead: {e}",
+                                file=sys.stderr,
+                            )
+                unclaimed_pockets.remove(pocket)
+                break
+
+            building_solids_unpunched.append((solid, "building_shaped"))
+            punched = punch_openings(solid, b, origin_lng, origin_lat, skip_ring_indices=notch_edge_indices)
+            building_solids.append((punched, "building_shaped"))
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
         if bid.endswith("_building"):
@@ -295,14 +427,19 @@ def build_scene(nbhd, context_path=None):
                 building_solids.append((solid, "building_unshaped"))
                 building_solids_unpunched.append((solid, "building_unshaped"))
 
-    # Plazas / open space -- thin colored slabs at ground level.
+    # Plazas / open space -- thin colored slabs at ground level. A P124
+    # pocket gets one of these too (its own real footprint, distinctly
+    # colored -- see COLORS) IN ADDITION TO the volumetric refill above:
+    # the ground-level slab reads as the pocket's own activity surface, the
+    # refill is what makes the adjacent building's upper floors read as
+    # intact mass instead of a floor-to-roof slot.
     plaza_solids = []
     for o in nbhd.get("open_space", []):
         parts = o["polygon"].get("parts") or [{"outer": o["polygon"]["outer"], "holes": o["polygon"].get("holes", [])}]
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), PLAZA_THICKNESS_M, origin_lng, origin_lat)
             if solid is not None:
-                kind = o.get("kind") if o.get("kind") in ("undecided", "common") else "plaza"
+                kind = o.get("kind") if o.get("kind") in ("undecided", "common", "pocket") else "plaza"
                 plaza_solids.append((solid, kind))
 
     # Streets -- thin ribbons along the centerline, buffered by row_width_m.
@@ -351,6 +488,9 @@ COLORS = {
     "building_shaped": "#8a5a44",
     "building_unshaped": "#a3846a",
     "plaza": "#d9a441",
+    "pocket": "#c9713f",  # warm, between "building_shaped" and "plaza" --
+    # reads as related to both (it's carved from the one, opens onto the
+    # other) rather than a third unrelated hue.
     "common": "#a3b18a",
     "undecided": "#b8602a",
     "local": "#6b6259",
@@ -741,6 +881,15 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
     openings, so the comparison across floors is honest about what's real
     (the facade) and what isn't modeled yet (the upper-floor room layout),
     rather than just repeating the ground floor's partition upward.
+
+    Known real gap since `build_scene`'s own P124 pocket refill was added:
+    every floor's outline here is drawn from `b["polygon"]["outer"]` (the
+    one, already-notched ring this schema has) -- so a building with a
+    real pocket shows the notch in EVERY 2D panel, ground floor through
+    roof, while the 3D massing (which fills the notch back in above ground
+    level) does not. No 2D per-floor footprint exists to draw instead; this
+    is a known, not-yet-fixed disagreement between the two views, same
+    honesty-over-silence spirit as this file's other documented gaps.
     """
     buildings = nbhd.get("buildings", [])
     if not buildings:
