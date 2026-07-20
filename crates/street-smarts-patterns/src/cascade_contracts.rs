@@ -588,4 +588,18 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
               windows checked; 74% have real street/open-space activity within 25m). Floor set \
               safely below that.",
     },
+    CascadeContract {
+        generator: "p124_activity_pockets",
+        generator_pattern: 124,
+        opinion: "p124_activity_pockets",
+        opinion_pattern: 124,
+        check: CascadeCheck::MinValue(0.15),
+        why: "Same-number self-pair: p124_activity_pockets (generator) is the only real producer \
+              of OpenSpaceKind::Pocket -- a real notch carved from a bordering building's own \
+              footprint at a real Plaza's edge; p124_activity_pockets (opinion) checks the \
+              fraction of real Plazas with at least one real adjacent Pocket. Measured on the \
+              real fixture: NoView -> Value 0.169 (89 real plazas checked; 15 (17%) have at least \
+              one real Pocket within 3m of their own boundary; 17 real pockets total). Floor set \
+              safely below that.",
+    },
 ];

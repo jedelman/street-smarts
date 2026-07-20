@@ -245,6 +245,14 @@ pub enum OpenSpaceKind {
     /// smaller, informal, and belongs to a single cluster rather than the
     /// neighborhood at large.
     Common,
+    /// A small, partly enclosed real notch carved from an adjacent
+    /// building's own footprint at a point where it borders a real
+    /// `Plaza` -- Alexander's P124 Activity Pockets. Distinct from
+    /// `Plaza` itself (the square's own open area) and from `Common`
+    /// (informal cluster-scale shared land): this is deliberately small,
+    /// attached to one specific building, and real geometry subtracted
+    /// from that building's own mass, not an independently placed patch.
+    Pocket,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

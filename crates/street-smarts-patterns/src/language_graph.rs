@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 15-step sequence -- exactly the "read-and-infer" cost
+//! same 16-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 15-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 16-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -103,8 +103,14 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "shapes every pad for daylight depth using P96's story count for real height; needs P108's merged footprints and P96's story assignment",
     },
     PatternNode {
+        id: "p124_activity_pockets", alexander_number: Some(124),
+        requires: &["p107_wings_of_light", "p61_small_public_squares"],
+        completes: &[],
+        why: "carves a real pocket from buildings bordering a real Plaza; needs P107's real final footprints and P61's real Plazas, and must run before P197/P127/P221 read the final footprint",
+    },
+    PatternNode {
         id: "p197_thick_walls", alexander_number: Some(197), requires: &["p107_wings_of_light"], completes: &[],
-        why: "assigns every real P107 building a real wall_thickness_m, capped relative to its own footprint; every downstream stage clones-and-mutates from here, so the field survives untouched",
+        why: "assigns every real P107/P124 building a real wall_thickness_m, capped relative to its own footprint; every downstream stage clones-and-mutates from here, so the field survives untouched. Doesn't strictly REQUIRE p124_activity_pockets to have run (P124 is a real but skippable step, not every fixture has a building close enough to a Plaza to qualify) -- just needs to run after it if it did, which pipeline.rs's own real call order already guarantees",
     },
     PatternNode {
         id: "p127_intimacy_gradient", alexander_number: Some(127), requires: &["p107_wings_of_light"], completes: &[],

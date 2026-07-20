@@ -712,7 +712,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light → P197 Thick Walls (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light → P124 Activity Pockets → P197 Thick Walls (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1753,9 +1753,20 @@
         allTraces.push({ operator_name: "p107_wings_of_light", headline: `Skipped (${e.message || e})`, steps: [] });
       }
 
-      // 9. P197 Thick Walls, once -- assigns every real P107 building a
-      // real wall_thickness_m, capped relative to its own footprint. Not
-      // fatal if it fails (a real, expected skip if no buildings exist).
+      // 9. P124 Activity Pockets, once -- carves a small real pocket from
+      // up to max_pockets_per_plaza buildings bordering each real Plaza.
+      // Must run before P197/P127/P221, all of which need the final
+      // building footprint. Not fatal if no building qualifies.
+      try {
+        currentJson = runStep(currentJson, "*", "p124_activity_pockets", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p124_activity_pockets", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 10. P197 Thick Walls, once -- assigns every real P107/P124
+      // building a real wall_thickness_m, capped relative to its own
+      // footprint. Not fatal if it fails (a real, expected skip if no
+      // buildings exist).
       try {
         currentJson = runStep(currentJson, "*", "p197_thick_walls", seed);
       } catch (e) {
