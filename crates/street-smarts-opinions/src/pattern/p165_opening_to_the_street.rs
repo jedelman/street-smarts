@@ -180,6 +180,7 @@ mod tests {
             height_m: Some(9.0), typology: Some("p107_solid_v01".into()),
             year_built: None, parcel_id: None, floors: Some(3), openings,
             interior_cells: vec![],
+            wall_thickness_m: None,
         }
     }
 

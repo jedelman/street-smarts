@@ -115,6 +115,16 @@ pub struct Building {
     /// only in this version -- see `InteriorCell.floor`.
     #[serde(default)]
     pub interior_cells: Vec<InteriorCell>,
+    /// Real exterior-wall depth in meters, applied uniformly around this
+    /// building's own footprint. `None` until an operator that assigns
+    /// real wall depth (`p197_thick_walls`) has run -- every existing
+    /// fixture round-trips unchanged. Before this field existed, a
+    /// `Building`'s outer ring and its `Opening`s modeled a zero-depth
+    /// membrane (see `render.py`'s own documented caveat, and
+    /// `p197_thick_walls`'s own opinion module doc for the real gap this
+    /// closes).
+    #[serde(default)]
+    pub wall_thickness_m: Option<f64>,
 }
 
 /// One cell of a building's interior partition. Deliberately FORM-only --
@@ -329,5 +339,40 @@ mod activity_node_tests {
         let back: ActivityNode = serde_json::from_str(&json).unwrap();
         assert_eq!(back.activity_fit, fit);
         assert_eq!(back.publicness, Some(0.8));
+    }
+}
+
+#[cfg(test)]
+mod building_wall_thickness_tests {
+    use super::*;
+    use crate::geometry::{LngLat, Polygon};
+
+    #[test]
+    fn old_json_with_no_wall_thickness_deserializes_to_honest_none() {
+        let old_json = r#"{
+            "id": "B1",
+            "polygon": {"outer": [
+                {"lng": 0.0, "lat": 0.0}, {"lng": 0.0001, "lat": 0.0}, {"lng": 0.0001, "lat": 0.0001}
+            ]}
+        }"#;
+        let b: Building = serde_json::from_str(old_json).expect("older Building JSON should still deserialize");
+        assert_eq!(b.wall_thickness_m, None, "no thickness signal in the source JSON should mean None, not a fabricated default");
+    }
+
+    #[test]
+    fn wall_thickness_m_round_trips_through_json() {
+        let b = Building {
+            id: "B1".into(),
+            polygon: Polygon::from_ring(vec![
+                LngLat::new(0.0, 0.0), LngLat::new(0.0001, 0.0),
+                LngLat::new(0.0001, 0.0001), LngLat::new(0.0, 0.0001), LngLat::new(0.0, 0.0),
+            ]),
+            height_m: None, typology: None, year_built: None, parcel_id: None,
+            floors: None, openings: vec![], interior_cells: vec![],
+            wall_thickness_m: Some(0.3),
+        };
+        let json = serde_json::to_string(&b).unwrap();
+        let back: Building = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.wall_thickness_m, Some(0.3));
     }
 }

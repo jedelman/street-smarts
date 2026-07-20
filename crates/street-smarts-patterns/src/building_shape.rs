@@ -201,6 +201,7 @@ impl PatternOperator for BuildingShape {
                 floors: None,
                 openings: vec![],
                 interior_cells: vec![],
+                wall_thickness_m: None,
             });
 
             // Update the parcel's use_category to indicate a building exists.

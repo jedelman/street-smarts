@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 14-stage pipeline and risking
+//! each independently computing the same 15-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 14
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 15
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -27,6 +27,7 @@ use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTh
 use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
 use street_smarts_patterns::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
+use street_smarts_patterns::p197_thick_walls::{P197Params, P197ThickWalls};
 use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
@@ -60,7 +61,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 14-stage corrected pipeline against `root` via
+/// Runs the real 15-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -107,6 +108,10 @@ pub fn run_corrected_pipeline_via_ledger(
     try_run(store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Right after P107 -- every downstream stage clones-and-mutates the
+    // buildings P107 produced, so wall_thickness_m survives untouched.
+    // See pipeline.rs's own step 9 doc.
+    try_run(store, &P197ThickWalls, "*", &P197Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P127IntimacyGradient, "*", &P127Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P129CommonAreasAtTheHeart, "*", &P129Params::defaults().as_map(), seed, &mut cur, &mut commits);

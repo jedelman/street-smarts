@@ -243,6 +243,7 @@ mod tests {
             floors: Some(1),
             openings: vec![],
             interior_cells: cells,
+            wall_thickness_m: None,
         }
     }
 

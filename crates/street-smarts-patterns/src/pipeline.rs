@@ -47,32 +47,38 @@
 //!      regardless of which block a pad came from, and no longer applies
 //!      its own setback on top of a P95/P108 pad's own gap (see p107's
 //!      "v0.2" module doc).
-//!   9. P127 Intimacy Gradient (once, site-scale): partitions every
+//!   9. P197 Thick Walls (once, site-scale): assigns every real building a
+//!      real, nonzero `wall_thickness_m`, capped relative to its own real
+//!      footprint. Runs right after P107 -- every downstream stage clones
+//!      and mutates the buildings P107 produced, so this field survives
+//!      untouched to the end. Deliberately scalar-only, not carved
+//!      geometry -- see p197_thick_walls's own module doc.
+//!   10. P127 Intimacy Gradient (once, site-scale): partitions every
 //!      building's ground floor into a depth-ordered sequence of cells
 //!      (public wall/entrance bay -> deepest point). Runs right after P107
 //!      -- canonical numbering (107 < 127) needs no reordering here. See
 //!      `p127_intimacy_gradient`'s own module doc for the full sourced
 //!      sequence Alexander's own text lays out (127 -> 128 -> 129 -> 130 ->
 //!      131 -> 132 -> 133...).
-//!   10. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   11. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
 //!      change, see the module's own doc for why. Kept next to P127
 //!      instead of Alexander's own post-P129 position since nothing about
 //!      it depends on run order relative to P129.
-//!   11. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!   12. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity.
-//!   12. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   13. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   13. P221 (once, site-scale): place real window/door openings on every
+//!   14. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   14. P133 Staircase as a Stage (once, site-scale): carves a real
+//!   15. P133 Staircase as a Stage (once, site-scale): carves a real
 //!      stair-core strip out of the common-area cell of every multi-story
 //!      building, open to the room it interrupts. Runs AFTER P221, not
 //!      right after P131 where Alexander's own numbering would put it --
@@ -99,6 +105,7 @@ use crate::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Param
 use crate::p130_entrance_room::{P130EntranceRoom, P130Params};
 use crate::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
+use crate::p197_thick_walls::{P197Params, P197ThickWalls};
 use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
 use crate::p37_house_cluster::{P37HouseCluster, P37Params};
@@ -303,6 +310,17 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub107) = P107WingsOfLight.apply(&nbhd, "*", &P107Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub107);
         trace.push(P107WingsOfLight.name());
+    }
+
+    // P197 Thick Walls (once, site-scale): assigns every real building a
+    // real wall_thickness_m, capped relative to its own footprint. Runs
+    // right after P107 (once real final building footprints exist) --
+    // every downstream stage clones-and-mutates from here, so the field
+    // survives to the end of the pipeline untouched. See
+    // p197_thick_walls's own module doc.
+    if let Ok(sub197) = P197ThickWalls.apply(&nbhd, "*", &P197Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub197);
+        trace.push(P197ThickWalls.name());
     }
 
     if let Ok(sub127) = P127IntimacyGradient.apply(&nbhd, "*", &P127Params::defaults(), seed) {

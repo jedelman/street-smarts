@@ -184,6 +184,7 @@ mod tests {
             parcel_id: None, floors: Some(2),
             openings: vec![Opening { kind: OpeningKind::Window, ring_index: 0, on_hole: false, t: 0.5, width_m: 1.2, sill_height_m: 0.9, head_height_m: 2.1, floor: 0 }],
             interior_cells: vec![],
+            wall_thickness_m: None,
         }
     }
 

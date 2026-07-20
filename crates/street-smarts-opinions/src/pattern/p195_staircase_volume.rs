@@ -163,6 +163,7 @@ mod tests {
                 polygon: Polygon::from_ring(rect_ring(stair_width, 4.0)),
                 depth: 0.5, is_common: false, kind: "stair".into(), connects_to: vec![], floor: 0,
             }],
+            wall_thickness_m: None,
         }
     }
 

@@ -600,6 +600,7 @@ mod tests {
             floors: Some(2),
             openings: vec![],
             interior_cells: vec![],
+            wall_thickness_m: None,
         }
     }
 
@@ -712,6 +713,7 @@ mod tests {
             floors: Some(2),
             openings: vec![],
             interior_cells: vec![],
+            wall_thickness_m: None,
         };
         let n = nbhd(vec![b], vec![]);
         let sub = P127IntimacyGradient

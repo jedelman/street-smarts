@@ -712,7 +712,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light → P197 Thick Walls (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1753,12 +1753,21 @@
         allTraces.push({ operator_name: "p107_wings_of_light", headline: `Skipped (${e.message || e})`, steps: [] });
       }
 
+      // 9. P197 Thick Walls, once -- assigns every real P107 building a
+      // real wall_thickness_m, capped relative to its own footprint. Not
+      // fatal if it fails (a real, expected skip if no buildings exist).
+      try {
+        currentJson = runStep(currentJson, "*", "p197_thick_walls", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p197_thick_walls", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
       const finalNbhd = JSON.parse(currentJson);
       const dt = (performance.now() - t0).toFixed(0);
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107+P197 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {

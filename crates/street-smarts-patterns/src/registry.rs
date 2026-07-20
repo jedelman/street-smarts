@@ -13,6 +13,7 @@ use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
 use crate::p130_entrance_room::P130EntranceRoom;
 use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 use crate::p133_staircase_as_a_stage::P133StaircaseAsAStage;
+use crate::p197_thick_walls::P197ThickWalls;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
@@ -54,7 +55,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// The full ordering rationale used to be duplicated here AND in
 /// `pipeline.rs`'s module doc -- two files' worth of prose describing the
-/// same 14-step sequence, exactly the "read instead of look up" cost
+/// same 15-step sequence, exactly the "read instead of look up" cost
 /// PATTERN_LANGUAGE_SIMULATION.md §3.4 named. It now lives in ONE place,
 /// queryable instead of read-and-infer: `language_graph::LANGUAGE`, whose
 /// `requires`/`why` fields are checked by `validate_order` against the
@@ -72,7 +73,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// for the real, tested sequence, and the web UI's "Run full pipeline"
 /// button for the same orchestration client-side.
 ///
-/// `crate::pipeline::run_corrected_pipeline` runs all fourteen steps end to end
+/// `crate::pipeline::run_corrected_pipeline` runs all fifteen steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -96,6 +97,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P29DensityRings),
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
+        Box::new(P197ThickWalls),
         Box::new(P127IntimacyGradient),
         Box::new(P130EntranceRoom),
         Box::new(P129CommonAreasAtTheHeart),

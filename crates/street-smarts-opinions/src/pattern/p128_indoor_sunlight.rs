@@ -288,6 +288,7 @@ mod tests {
                 connects_to: vec![],
                 floor: 0,
             }],
+            wall_thickness_m: None,
         }
     }
 

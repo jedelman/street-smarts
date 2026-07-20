@@ -180,6 +180,7 @@ mod tests {
                 vec![]
             },
             interior_cells: vec![],
+            wall_thickness_m: None,
         }
     }
 

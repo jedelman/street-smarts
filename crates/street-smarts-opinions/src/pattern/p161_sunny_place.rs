@@ -178,6 +178,7 @@ mod tests {
             id: id.into(), polygon: Polygon::from_ring(rect_ring(cx, cy, 10.0, 10.0)),
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None,
             floors: None, openings: vec![], interior_cells: vec![],
+            wall_thickness_m: None,
         }
     }
 
