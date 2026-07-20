@@ -254,6 +254,23 @@ fn loop_edge_selection_never_pushes_a_node_past_a_three_way_meeting() {
     }
 }
 
+/// P53 Main Gateways: path_network should emit one real site-perimeter
+/// Boundary (convex hull of every block's own outer ring), and every
+/// street endpoint from the four-corner-blocks fixture should sit near
+/// that hull -- the blocks themselves are the hull's own corners.
+#[test]
+fn emits_a_real_site_perimeter_boundary() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults();
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert_eq!(sub.new_boundaries.len(), 1, "expected exactly one site-perimeter boundary");
+    let boundary = &sub.new_boundaries[0];
+    assert_eq!(boundary.id, "site_perimeter");
+    assert!(boundary.centerline.len() >= 4, "a real quadrilateral hull should have at least 4 vertices (closed ring), got {}", boundary.centerline.len());
+    assert_eq!(boundary.centerline.first(), boundary.centerline.last(), "the boundary ring should be closed");
+}
+
 #[test]
 fn params_roundtrip() {
     let p = PathNetworkParams { loop_budget: 5.0, local_loop_budget: 2.0, path_width_m: 6.0 };

@@ -67,6 +67,19 @@
 //! mean moving or re-routing block centroids, out of scope here.
 //! Skipped-for-degree candidates are counted and reported in the trace.
 //!
+//! # v0.5: real site-perimeter Boundary, closing P53's real gap
+//!
+//! `Neighborhood.boundaries` is a real, typed field -- before this, no
+//! operator anywhere in this pipeline ever populated it (the same class
+//! of real-field-no-producer gap `p61_small_public_squares` closed for
+//! `activity_nodes`). This operator already runs site-scale over every
+//! `BLOCK_n` parcel, so it now also computes the real convex hull of
+//! every block's own outer-ring vertices and emits it as one
+//! `Boundary { kind: Jurisdictional }` -- a real, computable site
+//! perimeter, not a fabricated one. Real, honest limitation: a convex
+//! hull is exact for a convex site and an over-approximation for a
+//! concave one (see this operator's own trace caveat).
+//!
 //! What it does NOT do yet:
 //! - Connect to the existing street grid (Princess Anne Rd, etc.) — needs
 //!   knowledge of which boundary parcels touch existing streets
@@ -77,14 +90,14 @@
 //!   `Street` entity with an auto-id)
 
 use crate::parameters::{ParamSpec, Parameters};
-use crate::planar::{average_centroid, kruskal_mst, lnglat_to_local, local_to_lnglat, Pt2};
+use crate::planar::{average_centroid, convex_hull, kruskal_mst, lnglat_to_local, local_to_lnglat, Pt2};
 use crate::prng::Prng;
 use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, Parcel, Street};
+use street_smarts_core::nir::{Boundary, BoundaryKind, Neighborhood, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
 use street_smarts_core::world::World;
 
@@ -261,6 +274,29 @@ impl PathNetwork {
         }
         let origin = LngLat::new(all_lng / n as f64, all_lat / n as f64);
 
+        // P53 Main Gateways: the real convex hull of every BLOCK_n parcel's
+        // own outer-ring vertices -- a real, computable site perimeter, not
+        // a fabricated one. See this file's own "v0.5" module doc.
+        let hull_points: Vec<Pt2> = blocks.values()
+            .flat_map(|parcels| parcels.iter())
+            .flat_map(|p| p.polygon.outer.iter())
+            .map(|q| lnglat_to_local(q, &origin))
+            .collect();
+        let hull_local = convex_hull(&hull_points);
+        let site_boundary = if hull_local.len() >= 3 {
+            let mut ring_wgs: Vec<LngLat> = hull_local.iter().map(|&p| local_to_lnglat(p, &origin)).collect();
+            if let Some(first) = ring_wgs.first().copied() {
+                ring_wgs.push(first); // close the ring, same convention Street/Polygon rings use
+            }
+            Some(Boundary {
+                id: "site_perimeter".into(),
+                centerline: ring_wgs,
+                kind: BoundaryKind::Jurisdictional,
+            })
+        } else {
+            None
+        };
+
         // Compute each block's centroid in local meters AND lng/lat.
         let mut block_ids: Vec<String> = blocks.keys().cloned().collect();
         block_ids.sort(); // deterministic order
@@ -399,6 +435,10 @@ impl PathNetwork {
             skipped_for_four_way
         ));
         steps.push(format!("Emitted {} Street segments at {}m right-of-way", streets.len(), params.path_width_m as u32));
+        steps.push(match &site_boundary {
+            Some(b) => format!("Computed a real site-perimeter Boundary ({} vertices, convex hull of every block's own outer ring).", b.centerline.len()),
+            None => "Fewer than 3 hull points -- no real site perimeter computed.".into(),
+        });
 
         let trace = SubdivisionTrace {
             operator_name: "path_network".into(),
@@ -427,6 +467,9 @@ impl PathNetwork {
                 "Does not touch P50's near_90_fraction sub-score -- the angle at which edges meet a \
                  node is a function of block position (set upstream by block_grouping), not \
                  something this edge-selection pass controls.".into(),
+                "The site-perimeter Boundary is the convex hull of every block's own outer ring -- \
+                 real for a convex or roughly-convex site, but a real concave site's actual edge \
+                 would sit inside this hull in places, not exactly on it.".into(),
             ],
             seed: 0,
             params: params.as_map(),
@@ -438,6 +481,7 @@ impl PathNetwork {
             new_buildings: vec![],
             new_streets: streets,
             new_activity_nodes: vec![],
+            new_boundaries: site_boundary.into_iter().collect(),
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],

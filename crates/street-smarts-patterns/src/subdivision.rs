@@ -52,6 +52,13 @@ pub struct Subdivision {
     /// all.
     #[serde(default)]
     pub new_activity_nodes: Vec<street_smarts_core::nir::ActivityNode>,
+    /// New boundaries (a real, meaningful edge -- a site perimeter, a
+    /// jurisdictional line). `path_network` populates one real site-
+    /// perimeter `Boundary` for P53 Main Gateways; before that, no
+    /// operator in this pipeline ever populated `Neighborhood.boundaries`
+    /// at all.
+    #[serde(default)]
+    pub new_boundaries: Vec<street_smarts_core::nir::Boundary>,
     /// IDs of source parcels removed from the neighborhood when applying.
     #[serde(default)]
     pub replaced_parcel_ids: Vec<String>,
@@ -265,12 +272,16 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
     let mut new_activity_nodes = nbhd.activity_nodes.clone();
     new_activity_nodes.extend(sub.new_activity_nodes.iter().cloned());
 
+    let mut new_boundaries = nbhd.boundaries.clone();
+    new_boundaries.extend(sub.new_boundaries.iter().cloned());
+
     let mut out = nbhd.clone();
     out.parcels = new_parcels;
     out.open_space = new_open_space;
     out.buildings = new_buildings;
     out.streets = new_streets;
     out.activity_nodes = new_activity_nodes;
+    out.boundaries = new_boundaries;
     out.metadata.label = format!(
         "{} — modified by {} (seed {})",
         out.metadata.label, sub.trace.operator_name, sub.trace.seed
