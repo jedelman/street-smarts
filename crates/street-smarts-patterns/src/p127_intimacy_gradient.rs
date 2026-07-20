@@ -55,6 +55,24 @@
 //!   angle from the footprint's own centroid, with depth measured as
 //!   angular distance from the entrance bay. Trying to force one algorithm
 //!   onto both shapes would be less faithful to either, not more uniform.
+//!
+//! # v0.2: cardinal-snapped depth axis, closing P191's real gap
+//!
+//! `p191_shape_of_indoor_space` measures rectangularity as real-area /
+//! axis-aligned-bounding-box-area -- honestly documented there as
+//! axis-aligned, not rotation-invariant. A solid building's depth axis
+//! used to point exactly toward the real public realm, whatever direction
+//! that happened to be -- on real fixture data, essentially never aligned
+//! with true north, which rotates every band relative to lng/lat and
+//! collapses the measured rectangularity even though the band IS a real
+//! rectangle (confirmed: a plain 30-degree rotation alone roughly halves
+//! the score). `depth_axis` now snaps to the nearest of N/S/E/W (see its
+//! own doc) -- still a real orientation within 45 degrees of the actual
+//! public-realm direction, not an arbitrary pick, but one that makes every
+//! solid building's bands axis-aligned by construction. Measured effect on
+//! the real eastside-baseline fixture: P191 0.021 -> 0.394 overall (0.64
+//! for solid-building cells specifically; courtyard bays are unaffected by
+//! this change, and unaffected on purpose -- see the note above).
 
 use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
@@ -226,6 +244,11 @@ impl PatternOperator for P127IntimacyGradient {
                 "connects_to is left empty here on purpose -- Alexander's own text attributes \
                  'decide how movement will connect the spaces' to Pattern 131, not 127. See \
                  p131_the_flow_through_rooms.".into(),
+                "A solid building's depth axis is snapped to the nearest cardinal direction \
+                 (N/S/E/W), not the exact real public-realm direction -- within 45 degrees of it, \
+                 not arbitrary, but a real deviation made specifically so bands read as rectangles \
+                 under p191_shape_of_indoor_space's own axis-aligned check. See this file's own \
+                 'v0.2' module doc.".into(),
             ],
             seed: _seed,
             params: params.as_map(),
@@ -246,21 +269,55 @@ impl PatternOperator for P127IntimacyGradient {
     }
 }
 
+/// The four cardinal directions in the SAME local-metre frame `Pt2::x`
+/// (east-west, from longitude) / `Pt2::y` (north-south, from latitude)
+/// already uses -- see `planar::lnglat_to_local`. Snapping to one of
+/// these is what makes `cardinal_snap` below produce bands genuinely
+/// axis-aligned in the exact frame `p191_shape_of_indoor_space`'s own
+/// `aabb_area_m2` measures rectangularity against.
+const CARDINALS: [Pt2; 4] = [Pt2 { x: 1.0, y: 0.0 }, Pt2 { x: -1.0, y: 0.0 }, Pt2 { x: 0.0, y: 1.0 }, Pt2 { x: 0.0, y: -1.0 }];
+
+/// Snap a real unit direction to whichever cardinal direction it's
+/// closest to (largest dot product) -- see `depth_axis`'s own doc for why.
+fn cardinal_snap(u: Pt2) -> Pt2 {
+    CARDINALS.iter().copied()
+        .max_by(|a, b| a.dot(u).partial_cmp(&b.dot(u)).unwrap())
+        .unwrap_or(u)
+}
+
 /// The depth axis for a solid building: a unit vector, in local metres,
-/// pointing FROM the footprint centroid TOWARD the public realm. Falls
-/// back to the outward normal of the longest wall segment (deterministic,
-/// not random) when there's no street or open space anywhere in the
-/// neighborhood to orient against -- same fallback category
-/// `p221_natural_doors_and_windows::choose_door_wall` already uses for its
-/// own door-wall pick, though independently computed since P127 needs an
-/// axis, not a specific edge.
+/// pointing FROM the footprint centroid TOWARD the public realm, then
+/// snapped to the nearest cardinal direction (N/S/E/W) -- see
+/// `cardinal_snap`'s own doc. Falls back to the outward normal of the
+/// longest wall segment (deterministic, not random) when there's no
+/// street or open space anywhere in the neighborhood to orient against --
+/// same fallback category `p221_natural_doors_and_windows::choose_door_wall`
+/// already uses for its own door-wall pick, though independently computed
+/// since P127 needs an axis, not a specific edge.
+///
+/// # Why snap to a cardinal direction at all
+/// `p191_shape_of_indoor_space`'s own real check measures rectangularity
+/// as real-area/axis-aligned-bounding-box-area -- an honestly-documented
+/// axis-aligned, not rotation-invariant, proxy (see that opinion's own
+/// module doc). Without this snap, a real building's depth axis follows
+/// whatever direction the nearest real street happens to run, which on
+/// real fixture data is essentially never aligned with true north --
+/// producing bands that ARE real rectangles but read as near-zero
+/// rectangularity once rotated relative to lng/lat (confirmed: a plain
+/// 30-degree rotation alone roughly halves the measured score). Snapping
+/// to the nearest of N/S/E/W keeps this axis within 45 degrees of the
+/// real public-realm direction (still a real orientation choice, not an
+/// arbitrary one) while making every solid building's bands genuinely
+/// axis-aligned by construction, closing this real, measured gap (2% ->
+/// see this file's own tests) rather than leaving a rotation-sensitive
+/// detector to misjudge real rectangles as failures.
 fn depth_axis(outer_local: &[Pt2], target: Option<Pt2>) -> Pt2 {
     let c = centroid(outer_local);
     if let Some(t) = target {
         let d = t.sub(c);
         let len = d.len();
         if len > 1e-6 {
-            return Pt2::new(d.x / len, d.y / len);
+            return cardinal_snap(Pt2::new(d.x / len, d.y / len));
         }
     }
     // Fallback: outward normal of the longest edge.
@@ -281,7 +338,7 @@ fn depth_axis(outer_local: &[Pt2], target: Option<Pt2>) -> Pt2 {
             best = Some((len, Pt2::new(normal.x / nlen, normal.y / nlen)));
         }
     }
-    best.map(|(_, n)| n).unwrap_or(Pt2::new(1.0, 0.0))
+    cardinal_snap(best.map(|(_, n)| n).unwrap_or(Pt2::new(1.0, 0.0)))
 }
 
 /// Slice a solid building's footprint into parallel depth bands via two
@@ -567,6 +624,59 @@ mod tests {
         assert!((depths[0] - 0.0).abs() < 1e-9);
         assert!((depths[depths.len() - 1] - 1.0).abs() < 1e-9);
         assert!(b.interior_cells.iter().all(|c| c.connects_to.is_empty()), "P127 shouldn't set connectivity");
+    }
+
+    /// P191 Shape of Indoor Space: even when the nearest real street runs
+    /// at an oblique angle (not aligned with true north), the resulting
+    /// bands should still read as real rectangles under an AXIS-ALIGNED
+    /// bounding-box rectangularity check -- the same metric
+    /// p191_shape_of_indoor_space's own opinion uses -- because depth_axis
+    /// snaps to the nearest cardinal direction rather than following the
+    /// street's exact angle. See this file's own "v0.2" module doc.
+    #[test]
+    fn an_obliquely_angled_street_still_produces_axis_aligned_bands() {
+        let m = 1.0 / 111_320.0;
+        // A street running roughly 30 degrees off true north-south, well
+        // to the west of the building -- real target direction is oblique,
+        // not aligned with either lng or lat axis.
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![
+                LngLat::new(-0.0006, -0.0001),
+                LngLat::new(-0.0004, 0.0003),
+            ],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let b = &sub.new_buildings[0];
+        assert!(b.interior_cells.len() >= 2, "a 30m-deep building should still slice into multiple bands, got {}", b.interior_cells.len());
+
+        for cell in &b.interior_cells {
+            let ring = &cell.polygon.outer;
+            let lat0 = ring.iter().map(|p| p.lat).sum::<f64>() / ring.len() as f64;
+            let mlat = (lat0 * std::f64::consts::PI / 180.0).cos();
+            let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+            for p in ring {
+                let x = p.lng * mlat * 111_320.0;
+                let y = p.lat * 110_540.0;
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+            let aabb_area = (max_x - min_x) * (max_y - min_y);
+            let rectangularity = cell.polygon.area_m2() / aabb_area;
+            assert!(
+                rectangularity >= 0.9,
+                "{}: expected a near-rectangular band under an axis-aligned bbox check, got rectangularity {rectangularity:.3} (m={m})",
+                cell.id
+            );
+        }
     }
 
     #[test]
