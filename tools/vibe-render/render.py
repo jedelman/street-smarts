@@ -105,6 +105,11 @@ POCKET_MATCH_EPS_M = 0.05  # vertex-join tolerance for find_pocket_refill --
 # generous vs float noise from two independent local->lnglat conversions of
 # the SAME Rust f64s (the join is exact in principle, see that function's
 # own docstring), tiny vs any real building dimension.
+ACTIVITY_MARKER_RADIUS_M = 0.6  # a small post, not a building -- real
+# ActivityNode data has a point location and a kind, nothing else
+# geometric (no footprint, no height); this is a rendering-layer choice
+# of HOW to show a point, not a value read from the pipeline.
+ACTIVITY_MARKER_HEIGHT_M = 2.5
 
 # Window/door colors -- defined here (not just down by render_largest_building_floors,
 # where they originated) so build_scene's own opening-decal path and the 2D
@@ -576,6 +581,31 @@ def build_scene(nbhd, context_path=None):
             except Exception:
                 pass
 
+    # Activity nodes -- real point markers (P61 Small Public Squares, P124
+    # Activity Pockets both produce these) that this renderer never drew at
+    # all before now, not even as a missing sub-field: `Neighborhood.
+    # activity_nodes` was never referenced anywhere in this file. Cheap
+    # (21 real nodes on the clean_baseline fixture, vs. the 7,765 openings
+    # that forced a real budget decision) -- a small square post, real
+    # height, real footprint, colored by the node's own real `kind`
+    # (ActivityKind, confirmed against the Rust enum -- see COLORS' own
+    # comment). No design ambiguity worth agonizing over here the way
+    # openings/interiors had real cost tradeoffs to weigh.
+    activity_solids = []
+    for a in nbhd.get("activity_nodes", []):
+        loc = a.get("location")
+        if not loc:
+            continue
+        x, y = project(loc["lng"], loc["lat"], origin_lng, origin_lat)
+        r = ACTIVITY_MARKER_RADIUS_M
+        square = [(x - r, y - r), (x + r, y - r), (x + r, y + r), (x - r, y + r)]
+        try:
+            solid = cq.Workplane("XY").polyline(square).close().extrude(ACTIVITY_MARKER_HEIGHT_M)
+            kind = a.get("kind") or "other"
+            activity_solids.append((solid, f"activity_{kind}"))
+        except Exception as e:
+            print(f"  ! activity marker build failed: {e}", file=sys.stderr)
+
     _t0 = time.perf_counter()
     context_solids = load_context_buildings(context_path, origin_lng, origin_lat) if context_path else []
     t_context = time.perf_counter() - _t0
@@ -590,6 +620,7 @@ def build_scene(nbhd, context_path=None):
         "opening_decals": opening_decal_records,
         "plazas": plaza_solids,
         "streets": street_solids,
+        "activity_markers": activity_solids,
         "context": context_solids,
         "origin": (origin_lng, origin_lat),
     }
@@ -617,6 +648,19 @@ COLORS = {
     "opening_window": WINDOW_COLOR,
     "opening_window_courtyard": COURTYARD_WINDOW_COLOR,
     "opening_door": DOOR_COLOR,
+    # ActivityNode markers -- one real color per ActivityKind variant
+    # (street-smarts-core::nir::ActivityKind, `#[serde(rename_all =
+    # "snake_case")]`, confirmed directly against the Rust enum, not
+    # guessed) -- deliberately a saturated, un-earthy palette distinct
+    # from the site's own warm massing colors, since these are meant to
+    # read as point markers, not blend into the buildings/ground.
+    "activity_commerce": "#c2542f",
+    "activity_civic": "#2e6b4f",
+    "activity_transit": "#4f7d96",
+    "activity_school": "#b8933a",
+    "activity_worship": "#7a5ea8",
+    "activity_health": "#c23f5a",
+    "activity_other": "#8a8a8a",
 }
 
 # Two-light setup, not one. A single directional light leaves every face
@@ -739,6 +783,7 @@ def render_isometric(scene, out_path, title):
     add_group(scene["plazas"], alpha=0.6, for_bounds=True)
     add_group(scene["buildings"], alpha=0.82, for_bounds=True)
     add_opening_decals(scene.get("opening_decals", []))
+    add_group(scene.get("activity_markers", []), alpha=0.95, for_bounds=True)
 
     all_verts = np.concatenate(bounds_verts, axis=0)
     xmin, ymin, zmin = all_verts.min(axis=0)
@@ -833,6 +878,7 @@ def export_glb(scene, out_path):
     n_added = 0
     for group, alpha, solids_key in (
         ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings"),
+        ("activity", 0.95, "activity_markers"),
         ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
         for solid, kind in scene.get(solids_key, []):
@@ -1268,7 +1314,8 @@ def main():
     _t_build_scene = time.perf_counter() - _t0
     print(
         f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
-        f"streets: {len(scene['streets'])}, context: {len(scene['context'])}"
+        f"streets: {len(scene['streets'])}, activity_markers: {len(scene.get('activity_markers', []))}, "
+        f"context: {len(scene['context'])}"
     )
 
     _t0 = time.perf_counter()
