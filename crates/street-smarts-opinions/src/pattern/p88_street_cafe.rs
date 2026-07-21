@@ -17,8 +17,12 @@
 //! parcel within `adjacency_threshold_m` (default 15m, tighter than
 //! P32's 20m since a cafe needs direct street frontage, not just
 //! nearby access) of a Local OR Pedestrian classified street (either
-//! reads as "busy" at this pipeline's scale; no Arterial classification
-//! exists to distinguish further).
+//! reads as "busy" at this pipeline's scale). `path_network.rs`'s own
+//! "v0.6" addition also produces real `Arterial`-classified streets now,
+//! deliberately excluded here (by construction -- this check filters for
+//! exactly `"local"`/`"pedestrian"`): a cafe fronting a real arterial
+//! reads as highway-adjacent, not the intimate "busy street" Alexander's
+//! text describes.
 //!
 //! `value` = fraction of commercial parcels with real street frontage
 //! within that threshold. Cannot check "intimate multi-room" (no

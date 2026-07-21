@@ -15,8 +15,10 @@
 //!
 //! # A real, checkable proxy
 //!
-//! `p131_the_flow_through_rooms`/`p132` already tag a loop-closing
-//! `InteriorCell` `kind: "passage"`. This opinion checks that a real
+//! `p131_the_flow_through_rooms` already tags a loop-closing
+//! `InteriorCell` `kind: "passage"` (folding in Alexander's own Pattern
+//! 132 Short Passages rule directly -- see p131's own module doc for why
+//! there's no separate P132 operator). This opinion checks that a real
 //! passage cell connects to TWO OR MORE other cells (`connects_to.len()
 //! >= 2`) -- a real through-route with openings at both ends, not a
 //! single-connection dead-end stub.

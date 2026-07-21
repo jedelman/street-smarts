@@ -15,13 +15,18 @@
 //!
 //! `path_network.rs` (this pipeline's real generator for this pattern,
 //! despite the file not being named `p52_*`) classifies every street it
-//! produces as `Local` or `Pedestrian` -- see `p49_looped_local_roads.rs`
-//! for the same real distinction this opinion's sibling already relies
-//! on. For every real intersection (streets sharing a coordinate-snapped
+//! produces as `Local`, `Pedestrian`, or (its own "v0.6" addition) real
+//! `Arterial` streets -- see `p49_looped_local_roads.rs` for the
+//! Local/Pedestrian distinction this opinion's sibling already relies on.
+//! This check is deliberately scoped to Pedestrian/Local crossings only:
+//! for every real intersection (streets sharing a coordinate-snapped
 //! endpoint, same node-finding approach as `p49`/`p50`) where a
 //! `Pedestrian`-classified street meets a `Local`-classified one, this
 //! checks the crossing angle against 90 degrees -- directly testing
-//! "cross roads perpendicularly," not "run alongside them."
+//! "cross roads perpendicularly," not "run alongside them." Arterial
+//! crossings aren't part of this claim (Alexander's own text is about
+//! pedestrian paths threading a local road network, not the arterial
+//! backbone itself) and aren't counted here.
 //!
 //! `value` = mean of `(1 - |angle - 90| / 90)` across every real
 //! pedestrian/local crossing, clamped to `[0, 1]`. `NoView` if the
