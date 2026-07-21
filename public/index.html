@@ -583,6 +583,22 @@
   }
   .downloads a:hover { background: var(--highlight); border-color: var(--ink); }
 
+  /* Real camera-placement buttons for the cluster_interior model-viewer --
+     same visual language as .downloads a (border/pill), not a styled
+     <select>, since there's only ever a couple of real rooms to offer. */
+  .camera-views { margin: .75rem 0 0; display: flex; flex-wrap: wrap; gap: .4rem; font-size: 0.82rem; }
+  .camera-views button {
+    font: inherit;
+    color: var(--ink);
+    background: white;
+    padding: .15rem .6rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .camera-views button:hover { background: var(--highlight); border-color: var(--ink); }
+  .camera-views button[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }
+
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
   .pair figure.render { margin: 0; }
@@ -656,16 +672,72 @@
     </figure>
 
     <figure class="render">
-      <model-viewer src="/vibe-render/cluster_interior.glb" poster="/vibe-render/cluster_interior_isometric.png" alt="3D model of one real building cluster from the clean-baseline site, showing ground-floor interior partition walls through a translucent exterior shell -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
+      <model-viewer id="cluster-interior-mv" src="/vibe-render/cluster_interior.glb" poster="/vibe-render/cluster_interior_isometric.png" alt="3D model of one real building cluster from the clean-baseline site, showing ground-floor interior partition walls through a translucent exterior shell -- drag to orbit" camera-controls touch-action="pan-y" min-camera-orbit="auto auto 0.05m" environment-image="neutral" shadow-intensity="1" shadow-softness="1" exposure="1.1" loading="lazy" reveal="auto"></model-viewer>
+      <div class="camera-views" id="cluster-interior-camera-views" hidden>
+        <button type="button" data-view="exterior" aria-pressed="true">Exterior</button>
+      </div>
       <figcaption>
         <h3>One cluster, with interiors</h3>
         <p>The same real <code>clean_baseline</code> pipeline output, cropped to ONE real building cluster (<code>tools/vibe-render/extract_cluster.py</code>: the building with the most real neighbors within 60m, plus everything else -- other buildings, open space, streets -- within that same 60m of its centroid; no field in the schema names a "cluster" directly, so this is a real geometric proxy, not a fabricated grouping). At this scale, real 3D geometry for <code>p127_intimacy_gradient</code>'s ground-floor <code>InteriorCell</code> ring becomes affordable (a real, additive extrusion per cell edge, the same technique as the roof cap above, not a boolean) -- something the whole-site model above can't do (7,765 real window/door openings alone already push that budget past Cloudflare's 25 MiB limit; interior walls on top of that isn't affordable there). The exterior shell is rendered translucent here specifically so the partitions are visible through it. Ground floor only, one real story -- <code>InteriorCell.floor</code> is hard-coded 0 everywhere in this schema, so there's no upper-floor interior data to show; no stairs (P133 only carries a 2D stair-core footprint, no tread/riser geometry exists to render), no furniture, no room labels, no doors cut into the partitions -- Alexander's own pattern language describes spatial relationships, not a prescribed use, and this project doesn't invent a program the pipeline has no way to know.</p>
+        <p>The "Room" buttons above jump the SAME real, live <code>&lt;model-viewer&gt;</code> camera to sit inside one real <code>InteriorCell</code>, aimed back out along whichever real direction has the most open real room depth to sit in (<code>tools/vibe-render/render.py</code>'s own <code>interior_camera_views</code>/<code>_best_interior_view_direction</code>) -- a real hardware-accelerated WebGL camera placed in the real model, not a separate pre-rendered image. No furniture, textures, or a real sky/sun environment yet -- just real structure and real daylight-colored glazing, honestly plain rather than dressed up.</p>
         <div class="downloads">
           <span class="label">3D model:</span>
           <a href="/vibe-render/cluster_interior.glb" download>.glb</a>
         </div>
       </figcaption>
     </figure>
+    <script>
+      (function () {
+        var mv = document.getElementById('cluster-interior-mv');
+        var nav = document.getElementById('cluster-interior-camera-views');
+        if (!mv || !nav) return;
+        var exteriorBtn = nav.querySelector('[data-view="exterior"]');
+        var defaultOrbit = null;
+        var defaultTarget = null;
+
+        function setPressed(btn) {
+          nav.querySelectorAll('button').forEach(function (b) {
+            b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+          });
+        }
+
+        exteriorBtn.addEventListener('click', function () {
+          if (defaultOrbit) {
+            mv.cameraOrbit = defaultOrbit;
+            mv.cameraTarget = defaultTarget;
+          }
+          setPressed(exteriorBtn);
+        });
+
+        mv.addEventListener('load', function () {
+          if (defaultOrbit) return; // real initial pose, captured once
+          var o = mv.getCameraOrbit();
+          var t = mv.getCameraTarget();
+          defaultOrbit = o.theta + 'rad ' + o.phi + 'rad ' + o.radius + 'm';
+          defaultTarget = t.x + 'm ' + t.y + 'm ' + t.z + 'm';
+
+          fetch('/vibe-render/cluster_interior_interior_views.json')
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (views) {
+              if (!views.length) return;
+              views.forEach(function (view, i) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = 'Room ' + (i + 1) + ' (' + view.building_id.replace(/_building$/, '') + ')';
+                btn.setAttribute('aria-pressed', 'false');
+                btn.addEventListener('click', function () {
+                  mv.cameraTarget = view.camera_target;
+                  mv.cameraOrbit = view.camera_orbit;
+                  setPressed(btn);
+                });
+                nav.appendChild(btn);
+              });
+              nav.hidden = false;
+            })
+            .catch(function () { /* real views just won't offer themselves -- exterior still works */ });
+        });
+      })();
+    </script>
 
     <!-- Archived: the "Barrio breakdown: MALL_CORE" figure and the
          Stratified/FieldGuided seeding-mode comparison pair. Real markup,

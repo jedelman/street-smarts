@@ -154,5 +154,12 @@ if [ -n "$PUBLISH_DIR" ]; then
   # type is published automatically without touching this script again.
   # index.html links against these exact filenames.
   cp "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb "$PUBLISH_DIR/" 2>/dev/null
+  # NOT part of the blanket copy above -- real *.json in $OUT_DIR also
+  # includes each scenario's own full pipeline dump (cluster_interior.json,
+  # clean_baseline.json, multi-MB), which was never meant to be a public
+  # asset. Only *_interior_views.json (render.py's own real <model-viewer>
+  # camera-target/camera-orbit numbers -- see interior_camera_views' own
+  # docstring) is a real, small, intentionally public artifact.
+  cp "$OUT_DIR"/*_interior_views.json "$PUBLISH_DIR/" 2>/dev/null
   ls "$PUBLISH_DIR"
 fi

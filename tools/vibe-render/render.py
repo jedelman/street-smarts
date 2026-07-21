@@ -202,20 +202,47 @@ INTERIOR_WALL_HEIGHT_M = 2.7  # a plausible real interior ceiling height --
 # (3.5m) so a partition wall reads as an interior wall, not a second
 # full-height exterior wall -- same "plausible, honestly labeled, not a
 # cited number" category as p95_building_complex's own pad_inset_m.
-INTERIOR_WALL_THICKNESS_M = 0.12  # thinner than the real exterior
-# wall_thickness_m (p197_thick_walls' own default 0.3m) -- a partition,
-# not load-bearing exterior construction.
+MIN_INTERIOR_WALL_THICKNESS_M = 0.12  # only used as a fallback -- see
+# interior_wall_thickness_for's own docstring for the real, preferred path.
+FLOOR_PLATE_THICKNESS_M = 0.2  # a plausible real floor/ceiling slab depth
+# (thin, no waffle/beam detail modeled) -- same "plausible, honestly
+# labeled" category as the constants above, not a cited figure.
 
 
-def interior_partition_solids(cell_ring_xy, wall_height_m=INTERIOR_WALL_HEIGHT_M, wall_thickness_m=INTERIOR_WALL_THICKNESS_M):
+def interior_wall_thickness_for(building):
+    """Real interior partition thickness for one building -- half its own
+    real P197 `wall_thickness_m` (a plausible architectural convention: an
+    interior partition doesn't carry the insulation/weatherproofing layers
+    a full exterior wall assembly does, so roughly half that assembly's
+    depth is a reasonable real figure -- p197_thick_walls' own module doc
+    already says the same thing about ITS number: a plausible construction
+    figure, not Alexander's own cited dimension either way). Falls back to
+    `MIN_INTERIOR_WALL_THICKNESS_M` only when `p197_thick_walls` never ran
+    on this real building (`wall_thickness_m` is `None`) -- real per-
+    building data always wins when it exists.
+    """
+    wt = building.get("wall_thickness_m")
+    if wt:
+        return max(MIN_INTERIOR_WALL_THICKNESS_M, wt * 0.5)
+    return MIN_INTERIOR_WALL_THICKNESS_M
+
+
+def interior_partition_solids(cell_ring_xy, wall_height_m=INTERIOR_WALL_HEIGHT_M,
+                               wall_thickness_m=MIN_INTERIOR_WALL_THICKNESS_M, z_offset_m=0.0):
     """Real, additive thin wall slabs along ONE `InteriorCell`'s own real
     polygon boundary (`p127_intimacy_gradient`'s own real depth-ordered
     partition) -- one real EXTRUSION per edge, no boolean, the same
     additive technique already used for the roof cap and (in the Rust
-    generator itself) P124's bump. Ground floor only, one story, no
-    ceiling -- `InteriorCell.floor` is hard-coded 0 everywhere in this
-    schema (see its own doc comment), so anything above a single real
-    story would be fabricated, not rendered.
+    generator itself) P124's bump.
+
+    `InteriorCell.floor` is hard-coded 0 everywhere in this schema (see
+    its own doc comment) -- there's no real per-floor room program to
+    read, only this one real ground-floor layout. `z_offset_m` is how
+    `build_scene` repeats this SAME real layout at every real floor level
+    of the building it belongs to (see `build_scene`'s own docstring for
+    why that's the honest treatment of a real gap, not fabrication): a
+    non-zero value here doesn't mean a different real floor plan exists at
+    that height, just that this call is placing the one real layout there.
 
     Adjacent cells sharing a real boundary edge each draw their own wall
     there -- a real, honest double-wall simplification for a first slice,
@@ -241,10 +268,39 @@ def interior_partition_solids(cell_ring_xy, wall_height_m=INTERIOR_WALL_HEIGHT_M
         ]
         try:
             solid = cq.Workplane("XY").polyline(quad).close().extrude(wall_height_m)
+            if z_offset_m:
+                solid = solid.translate((0, 0, z_offset_m))
             solids.append(solid)
         except Exception as e:
             print(f"  ! skipped an interior wall segment (extrude failed: {e})", file=sys.stderr)
     return solids
+
+
+def footprint_slab_solid(outer_xy, holes_xy, thickness_m, z_offset_m=0.0):
+    """A thin horizontal slab across one real footprint (already local XY
+    meters) -- the same multi-wire-on-one-workplane hole technique
+    `extrude_polygon` uses, just taking XY directly since every caller
+    here already has it computed. Used for `include_interior_walls`'s real
+    per-floor floor plates -- see `build_scene`'s own docstring for why
+    those exist. Reuses the building's own real OUTER ring for every
+    floor's plate -- this schema has no per-floor footprint field either
+    (the same real gap `roof_cap_solid`'s own docstring notes at the
+    roof), so a real footprint that doesn't change floor to floor is the
+    honest, not fabricated, choice."""
+    if len(outer_xy) < 3:
+        return None
+    wp = cq.Workplane("XY").polyline(outer_xy).close()
+    for hole_xy in holes_xy:
+        if len(hole_xy) >= 3:
+            wp = wp.polyline(hole_xy).close()
+    try:
+        solid = wp.extrude(thickness_m)
+        if z_offset_m:
+            solid = solid.translate((0, 0, z_offset_m))
+        return solid
+    except Exception as e:
+        print(f"  ! skipped a floor plate (extrude failed: {e})", file=sys.stderr)
+        return None
 
 
 def load(path):
@@ -318,6 +374,96 @@ def find_pocket_refill(building_outer_xy, pocket_outer_xy):
         for i in range(len(idxs_sorted) - 1)
         if (idxs_sorted[i + 1] - idxs_sorted[i]) % n == 1
     }
+
+
+def _point_to_segment_dist(px, py, ax, ay, bx, by):
+    """Real Euclidean distance from point `(px, py)` to segment `(a, b)`
+    (already local meters) -- standard clamped-projection formula, used by
+    `_min_dist_point_to_ring` to find a real InteriorCell's own exterior-
+    facing edge without requiring exact vertex coincidence."""
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    if length2 < 1e-12:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length2))
+    cx, cy = ax + t * dx, ay + t * dy
+    return math.hypot(px - cx, py - cy)
+
+
+def _min_dist_point_to_ring(px, py, ring_xy):
+    """Real minimum distance from `(px, py)` to any edge of `ring_xy`
+    (already local meters, closed implicitly like every other ring in
+    this file)."""
+    n = len(ring_xy)
+    return min(
+        _point_to_segment_dist(px, py, ring_xy[i][0], ring_xy[i][1], ring_xy[(i + 1) % n][0], ring_xy[(i + 1) % n][1])
+        for i in range(n)
+    )
+
+
+def _ray_exit_distance(cx, cy, dirx, diry, ring_xy, max_dist=60.0):
+    """Real distance from `(cx, cy)` to where a ray in direction `(dirx,
+    diry)` (unit vector) first exits the closed polygon `ring_xy` --
+    standard ray/segment intersection against every real edge, smallest
+    positive `t` wins. `max_dist` if the ray never exits within that
+    range (degenerate ring). Used by `_best_interior_view_direction` to
+    find how much real open room space lies in a given direction."""
+    best = max_dist
+    n = len(ring_xy)
+    for i in range(n):
+        ax, ay = ring_xy[i]
+        bx, by = ring_xy[(i + 1) % n]
+        ex, ey = bx - ax, by - ay
+        denom = dirx * ey - diry * ex
+        if abs(denom) < 1e-9:
+            continue
+        t = ((ax - cx) * ey - (ay - cy) * ex) / denom
+        s = ((ax - cx) * diry - (ay - cy) * dirx) / denom
+        if t > 1e-6 and 0.0 <= s <= 1.0:
+            best = min(best, t)
+    return best
+
+
+def _best_interior_view_direction(cx, cy, cell_xy, outward_xy, n_samples=24):
+    """The real direction from a room's own centroid `(cx, cy)` that gives
+    an "inside looking out" camera the most legible composition -- swept
+    over `n_samples` directions around the compass, scored by how much
+    real open room space (`_ray_exit_distance`, against the room's OWN
+    real polygon) lies that way, biased toward directions that also point
+    somewhat toward the room's own real exterior wall (`outward_xy`, from
+    `interior_view_candidates`'s own edge-normal calculation).
+
+    Exists because the raw wall normal alone produced a bad shot on the
+    real fixture: an InteriorCell's own real depth band can be shallow
+    (confirmed: as little as ~5m) relative to how far a camera needs to
+    pull back to read as "inside a room" rather than "pressed against a
+    wall" -- facing that normal directly put the camera behind or inside
+    the real exterior wall solid. The room's own real LONG axis (an
+    elongated p127_intimacy_gradient band, common along a building's
+    public-facing side) has real open depth a camera can actually sit
+    inside; empirically confirmed (real screenshots, not assumed) to read
+    as a legible interior corridor/room shot where the raw wall-normal
+    direction read as a flat close-up of a single wall face. The
+    `outward_xy` bias keeps the choice from swinging a full 180 degrees
+    into a direction that faces away from any real window entirely.
+
+    Returns `(direction_xy, ray_distance_m)` -- the real open-space depth
+    in the chosen direction, so a caller can size a camera radius that
+    stays inside that real room instead of pulling back into whatever's
+    beyond it.
+    """
+    best_dir, best_dist, best_score = outward_xy, 0.0, -1.0
+    for i in range(n_samples):
+        angle = 2 * math.pi * i / n_samples
+        dirx, diry = math.cos(angle), math.sin(angle)
+        dist = _ray_exit_distance(cx, cy, dirx, diry, cell_xy)
+        alignment = dirx * outward_xy[0] + diry * outward_xy[1]
+        score = dist * (0.5 + 0.5 * max(0.0, alignment))
+        if score > best_score:
+            best_score = score
+            best_dir = (dirx, diry)
+            best_dist = dist
+    return best_dir, best_dist
 
 
 def polygon_signed_area2_m2(ring_xy):
@@ -671,15 +817,55 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
             # only ever built when a caller explicitly opts in (see
             # build_scene's own docstring); every existing scenario leaves
             # `nbhd["buildings"][*]["interior_cells"]` untouched here.
+            #
+            # `InteriorCell.floor` is hard-coded 0 in this schema -- there's
+            # only ever ONE real computed room layout per building, not a
+            # different one per story. Rather than draw that single layout
+            # floating at one height inside an otherwise-empty floor-to-roof
+            # volume (what this used to do, and what made the whole cluster
+            # read as a "pie tin" -- thin partitions with nothing above or
+            # below them), the SAME real layout is repeated at every real
+            # floor level (`b["floors"]`, falling back to `height /
+            # FLOOR_TO_FLOOR_M` when that field is absent) -- an honestly-
+            # labeled real approximation (see interior_partition_solids' own
+            # docstring), not a claim that a different plan exists up there.
+            # A thin real floor plate at each level (skipping floor 0, which
+            # already sits on the real ground) gives the stack an actual
+            # floor-to-floor read instead of walls alone floating in air.
             if include_interior_walls:
-                _t0 = time.perf_counter()
-                for cell in b.get("interior_cells") or []:
-                    cell_xy = ring_to_xy(cell["polygon"]["outer"], origin_lng, origin_lat)
-                    if len(cell_xy) < 3:
-                        continue
-                    for wall_solid in interior_partition_solids(cell_xy):
-                        interior_wall_solids.append((wall_solid, "interior_wall"))
-                t_interior += time.perf_counter() - _t0
+                cells = b.get("interior_cells") or []
+                if cells:
+                    _t0 = time.perf_counter()
+                    wall_thickness = interior_wall_thickness_for(b)
+                    real_floor_count = b.get("floors") or max(1, round(height / FLOOR_TO_FLOOR_M))
+                    holes_xy = [ring_to_xy(h, origin_lng, origin_lat) for h in part.get("holes", [])]
+                    for floor_idx in range(real_floor_count):
+                        z_offset = floor_idx * FLOOR_TO_FLOOR_M
+                        remaining = height - z_offset
+                        if remaining <= 0.05:
+                            break
+                        # Capped at the building's own real remaining height
+                        # so a top floor's walls don't poke up through the
+                        # roof cap above them -- a real geometric
+                        # constraint, matching roof_cap_solid's own eave/
+                        # ridge relationship, not a guess.
+                        floor_wall_height = min(INTERIOR_WALL_HEIGHT_M, remaining - FLOOR_PLATE_THICKNESS_M)
+                        if floor_wall_height <= 0:
+                            continue
+                        for cell in cells:
+                            cell_xy = ring_to_xy(cell["polygon"]["outer"], origin_lng, origin_lat)
+                            if len(cell_xy) < 3:
+                                continue
+                            for wall_solid in interior_partition_solids(
+                                cell_xy, wall_height_m=floor_wall_height,
+                                wall_thickness_m=wall_thickness, z_offset_m=z_offset,
+                            ):
+                                interior_wall_solids.append((wall_solid, "interior_wall"))
+                        if floor_idx >= 1:
+                            slab = footprint_slab_solid(outer_xy, holes_xy, FLOOR_PLATE_THICKNESS_M, z_offset_m=z_offset)
+                            if slab is not None:
+                                interior_wall_solids.append((slab, "floor_plate"))
+                    t_interior += time.perf_counter() - _t0
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
         if bid.endswith("_building"):
@@ -806,6 +992,10 @@ COLORS = {
     # far from the warm-brown exterior family so a real InteriorCell partition
     # reads as a distinct, interior element seen through the translucent shell,
     # not another shade of the same building mass.
+    "floor_plate": "#9c9482",  # a real, gray-tan concrete-slab tone -- close
+    # enough to "interior_wall" to read as part of the same real stacked-
+    # interior system, distinct enough (cooler, grayer) not to be confused
+    # with a vertical partition when seen edge-on between floors.
     "plaza": "#d9a441",
     "pocket": "#c9713f",  # warm, between "building_shaped" and "plaza" --
     # reads as related to both (it's carved from the one, opens onto the
@@ -885,6 +1075,55 @@ def shade_faces(face_verts, base_hex, alpha):
     return rgba
 
 
+def draw_solid_group(ax, items, alpha, bounds_accum=None):
+    """Tessellate and draw one real `(solid, kind)` list onto `ax` --
+    shared by `render_isometric` and `render_interior_view` so both draw
+    real geometry through the exact same shading/coloring path, not two
+    copies that could quietly drift apart. `bounds_accum`, if given, is
+    the SAME camera-framing accumulation list `render_isometric` already
+    used (an `append`-only list of vertex arrays) -- `render_interior_view`
+    passes `None` since it frames its own fixed, tight bounds instead of
+    fitting the whole scene.
+    """
+    for solid, kind in items:
+        try:
+            verts, tris = solid_to_triangles(solid)
+        except Exception as e:
+            print(f"  ! tessellate failed: {e}", file=sys.stderr)
+            continue
+        face_verts = verts[tris]
+        base_hex = COLORS.get(kind, "#999999")
+        rgba = shade_faces(face_verts, base_hex, alpha)
+        poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
+        ax.add_collection3d(poly)
+        if bounds_accum is not None:
+            bounds_accum.append(verts)
+
+
+def draw_opening_decals(ax, records, alpha=0.95, bounds_accum=None):
+    """Flat, unshaded quads (no cadquery/OCC involved at all -- see this
+    file's own module doc for why a real boolean punch was replaced with
+    this) -- grouped by `color_key` since `shade_faces`/a single
+    `Poly3DCollection` call needs one color per call, and window/
+    courtyard-window/door each carry a real, distinct color (matching
+    `render_largest_building_floors`'s own 2D convention). Shared by
+    `render_isometric` and `render_interior_view` -- see `draw_solid_
+    group`'s own docstring for why."""
+    if not records:
+        return
+    by_color = {}
+    for placement, color_key in records:
+        by_color.setdefault(color_key, []).append(opening_quad_corners(placement))
+    for color_key, quads in by_color.items():
+        face_verts = np.array(quads)  # (n, 4, 3)
+        base_rgb = np.array(mcolors.to_rgb(COLORS.get(color_key, "#999999")))
+        rgba = np.tile(np.append(base_rgb, alpha), (len(quads), 1))
+        poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="none")
+        ax.add_collection3d(poly)
+        if bounds_accum is not None:
+            bounds_accum.append(face_verts.reshape(-1, 3))
+
+
 def render_isometric(scene, out_path, title):
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection="3d")
@@ -896,49 +1135,15 @@ def render_isometric(scene, out_path, title):
     # street/plaza/building solid again afterward just to find min/max --
     # that used to mean every real OpenCascade tessellation in this
     # function ran twice. `context` is deliberately excluded (see its own
-    # comment below, unchanged) -- only `add_group`/`add_opening_decals`
-    # calls that pass `for_bounds=True` contribute.
+    # comment below, unchanged) -- only calls that pass a real
+    # `bounds_accum` list contribute.
     bounds_verts = []
 
     def add_group(items, alpha, for_bounds=False):
-        for solid, kind in items:
-            try:
-                verts, tris = solid_to_triangles(solid)
-            except Exception as e:
-                print(f"  ! tessellate failed: {e}", file=sys.stderr)
-                continue
-            face_verts = verts[tris]
-            base_hex = COLORS.get(kind, "#999999")
-            rgba = shade_faces(face_verts, base_hex, alpha)
-            poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
-            ax.add_collection3d(poly)
-            if for_bounds:
-                bounds_verts.append(verts)
+        draw_solid_group(ax, items, alpha, bounds_accum=bounds_verts if for_bounds else None)
 
     def add_opening_decals(records, alpha=0.95, for_bounds=True):
-        """Flat, unshaded quads (no cadquery/OCC involved at all -- see
-        this file's own module doc for why a real boolean punch was
-        replaced with this) -- grouped by `color_key` since `shade_faces`/
-        a single `Poly3DCollection` call needs one color per call, and
-        window/courtyard-window/door each carry a real, distinct color
-        (matching `render_largest_building_floors`'s own 2D convention,
-        finally extended to this 3D view too). Drawn on top of (after) the
-        building group they belong to, at near-full opacity, so each one
-        reads as its own real element against the translucent wall behind
-        it rather than blending into it."""
-        if not records:
-            return
-        by_color = {}
-        for placement, color_key in records:
-            by_color.setdefault(color_key, []).append(opening_quad_corners(placement))
-        for color_key, quads in by_color.items():
-            face_verts = np.array(quads)  # (n, 4, 3)
-            base_rgb = np.array(mcolors.to_rgb(COLORS.get(color_key, "#999999")))
-            rgba = np.tile(np.append(base_rgb, alpha), (len(quads), 1))
-            poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="none")
-            ax.add_collection3d(poly)
-            if for_bounds:
-                bounds_verts.append(face_verts.reshape(-1, 3))
+        draw_opening_decals(ax, records, alpha, bounds_accum=bounds_verts if for_bounds else None)
 
     # Real surrounding buildings first, most translucent of anything in the
     # scene -- backdrop, not subject. Camera framing below is deliberately
@@ -994,6 +1199,222 @@ def render_isometric(scene, out_path, title):
     z_aspect = min(0.35, true_z_aspect * HEIGHT_EXAGGERATION)
     ax.set_box_aspect((1, 1, z_aspect))
     ax.view_init(elev=35, azim=-60)
+    ax.set_axis_off()
+    ax.set_title(title, fontsize=13, color="#f6f3ed")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    print(f"wrote {out_path}")
+
+
+INTERIOR_VIEW_RADIUS_M = 9.0  # how far the tight interior-view camera
+# frames in every direction from its own aim point -- big enough to show
+# the room the camera sits in AND real geometry past the exterior wall
+# (plaza/street/neighboring building), small enough to stay a real close-
+# up, not another wide shot of the whole cluster.
+
+
+def interior_view_candidates(nbhd, origin_lng, origin_lat, max_views=2):
+    """Pick up to `max_views` real (building, cell, floor_idx) rooms to
+    frame an "inside looking out" shot around -- real p127_intimacy_
+    gradient InteriorCell data, not staged positions. Prefers each real
+    building's own "entrance" cell (`kind == "entrance"`, the one this
+    schema itself already treats as the public-facing room -- see
+    p110_main_entrance/p127's own docs) since that's the cell most likely
+    to sit against a real exterior wall with real p221 window/door
+    openings on it; falls back to the minimum-depth cell when a building
+    has no cell tagged "entrance". Always floor 0 -- the one real floor
+    p127 itself computed a layout for (see interior_partition_solids' own
+    docstring for why every OTHER floor in the render is the same real
+    layout, just repeated).
+
+    Ranks candidate buildings by real height (tallest first) -- the
+    tallest real building in a cluster is also the one `p117_sheltering_
+    roof` gives the most real interior volume above these rooms, so its
+    own shot has the most real context. Returns a list of dicts with keys
+    `building`, `cell`, `floor_idx`, `room_xy` (real cell centroid, local
+    meters), `outward_xy` (real unit direction to aim the camera along --
+    `_best_interior_view_direction`'s own pick, not simply the wall's own
+    outward normal; see its docstring for why) -- empty if no building in
+    `nbhd` carries any real `interior_cells`.
+    """
+    candidates = []
+    ranked = sorted(
+        (b for b in nbhd.get("buildings", []) if b.get("interior_cells")),
+        key=lambda b: b.get("height_m") or 0.0,
+        reverse=True,
+    )
+    for b in ranked[:max_views]:
+        cells = b["interior_cells"]
+        cell = next((c for c in cells if c.get("kind") == "entrance"), None)
+        if cell is None:
+            cell = min(cells, key=lambda c: c.get("depth", 1.0))
+        outer_xy = ring_to_xy(b["polygon"]["outer"], origin_lng, origin_lat)
+        cell_xy = ring_to_xy(cell["polygon"]["outer"], origin_lng, origin_lat)
+        if len(outer_xy) < 3 or len(cell_xy) < 3:
+            continue
+        ccx = sum(p[0] for p in cell_xy) / len(cell_xy)
+        ccy = sum(p[1] for p in cell_xy) / len(cell_xy)
+        # The room's own real exterior-facing edge -- a depth-0 InteriorCell
+        # is built from a strip against the building's own outer ring (see
+        # p127_intimacy_gradient's own module doc), so one of its own edges
+        # runs along (or very near) the ring. Found by real point-to-segment
+        # distance from each of the cell's own edge midpoints to the ring
+        # (`_min_dist_point_to_ring`), not by requiring exact vertex
+        # coincidence (`shared_boundary`'s own technique, tried first here
+        # and confirmed to miss real cases: any building whose depth-0 band
+        # is built as an inset offset rather than a literal ring-vertex
+        # reuse has NO exactly-coincident edge, even though it obviously
+        # still has a real wall side). Its outward normal is the real wall
+        # direction this shot should face -- far more reliable than a
+        # building-centroid-to-room-centroid guess, which pointed the wrong
+        # way whenever a room's own real shape wasn't centered on its
+        # building (confirmed visually: the centroid heuristic framed a
+        # shot looking almost edge-on down a long real facade instead of
+        # through it).
+        n = len(cell_xy)
+        best = None
+        for i in range(n):
+            ax, ay = cell_xy[i]
+            bx, by = cell_xy[(i + 1) % n]
+            # Skip degenerate (near-zero-length) edges outright -- a real
+            # ring can carry a repeated vertex (confirmed on the real
+            # fixture: one InteriorCell ring had an exact duplicate point),
+            # and a zero-length "edge" trivially has distance 0 to itself,
+            # which would otherwise always win the comparison below without
+            # being a real wall side at all.
+            if math.hypot(bx - ax, by - ay) < 1e-6:
+                continue
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            d = _min_dist_point_to_ring(mx, my, outer_xy)
+            if best is None or d < best[0]:
+                best = (d, ax, ay, bx, by)
+        if best is None:
+            continue
+        _, ex1, ey1, ex2, ey2 = best
+        edx, edy = ex2 - ex1, ey2 - ey1
+        edge_len = math.hypot(edx, edy)
+        nx, ny = edy / edge_len, -edx / edge_len  # perpendicular to the edge
+        if (ccx - (ex1 + ex2) / 2) * nx + (ccy - (ey1 + ey2) / 2) * ny > 0:
+            nx, ny = -nx, -ny  # point AWAY from the room's own centroid
+        view_dir, view_dist = _best_interior_view_direction(ccx, ccy, cell_xy, (nx, ny))
+        # A camera radius sized to the real open space in the chosen
+        # direction -- a fixed radius either sat inside a solid (a shallow
+        # real room) or pulled back out of the room entirely (a deep real
+        # one), confirmed on both real candidate rooms in this fixture.
+        # Clamped to a sane real range either way.
+        radius_m = max(1.5, min(8.0, view_dist * 0.55))
+        candidates.append({
+            "building": b, "cell": cell, "floor_idx": 0,
+            "room_xy": (ccx, ccy), "outward_xy": view_dir, "radius_m": radius_m,
+        })
+    return candidates
+
+
+INTERIOR_VIEW_EYE_HEIGHT_M = 1.6  # a plausible real eye height, matching
+# INTERIOR_VIEW_RADIUS_M's own "plausible, honestly labeled" category.
+
+
+def interior_camera_views(candidates):
+    """Real `<model-viewer>` `camera-target`/`camera-orbit` strings for
+    each `interior_view_candidates` entry -- lets a real hardware-
+    accelerated WebGL camera be placed inside the SAME real `.glb` this
+    file already publishes, instead of this file trying to fake a
+    perspective render itself (`render_interior_view`'s own mplot3d
+    camera has no true free eye position -- see its own docstring). The
+    caller (the gallery page) still does the actual rendering; this is
+    just real numbers, honestly derived from the same real room data.
+
+    `export_glb`'s own root node carries a real -90-degree rotation about
+    X (`cadquery`'s own Z-up-to-glTF-Y-up convention, confirmed by reading
+    the exported `.glb`'s own node transform directly, not assumed) --
+    `(x_local, y_local, z_local) -> (x_local, z_local, -y_local)` -- so
+    every real local coordinate here is run through that same mapping
+    before being handed to model-viewer, which places its camera in the
+    GLB's own final (post-rotation) space.
+
+    `theta`/`phi` follow model-viewer's own real spherical convention
+    (confirmed directly against a live model-viewer instance via a
+    headless-browser screenshot, not assumed from documentation alone):
+    at `phi=90deg` the camera sits at `target + radius * (sin(theta), 0,
+    cos(theta))`, so a camera meant to sit on the ROOM's own interior side
+    of `direction_xy` (looking back along it) needs `theta = atan2(-dx,
+    dy)`. `phi=82deg` (not a literal 90) tilts the camera very slightly
+    down from dead-level -- an eye-level view reads as looking slightly
+    into the floor/room rather than dead flat at the horizon, confirmed
+    against the same live screenshots.
+    """
+    views = []
+    for c in candidates:
+        rx, ry = c["room_xy"]
+        dirx, diry = c["outward_xy"]
+        floor_z = c["floor_idx"] * FLOOR_TO_FLOOR_M
+        target_gltf = (rx, floor_z + INTERIOR_VIEW_EYE_HEIGHT_M, -ry)
+        theta_deg = math.degrees(math.atan2(-dirx, diry)) % 360
+        views.append({
+            "building_id": c["building"]["id"],
+            "camera_target": f"{target_gltf[0]:.2f}m {target_gltf[1]:.2f}m {target_gltf[2]:.2f}m",
+            "camera_orbit": f"{theta_deg:.1f}deg 82deg {c['radius_m']:.2f}m",
+        })
+    return views
+
+
+def render_interior_view(scene, candidate, out_path, title):
+    """A tight-cropped camera around ONE real interior room, aimed toward
+    its own real exterior wall -- real geometry only (the same solids
+    `render_isometric` draws), no synthetic room, no invented furniture or
+    vantage point beyond where this real InteriorCell actually sits.
+
+    Not a true first-person perspective render -- mplot3d's camera always
+    orbits the CENTER of the current axis limits at a fixed elev/azim, it
+    has no free eye position independent of that. The "inside looking
+    out" effect here comes entirely from framing: axis limits cropped
+    tightly around one real room (see `INTERIOR_VIEW_RADIUS_M`), a low
+    `elev` (near eye level, not the wide-shot `elev=35` `render_isometric`
+    uses), and `azim` aimed along the room's own real outward direction --
+    an honest technique given the tool, not a claim this is raytraced.
+    """
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection="3d")
+    fig.patch.set_facecolor("#2a2a2e")
+    ax.set_facecolor("#2a2a2e")
+
+    draw_solid_group(ax, scene.get("interior_walls", []), alpha=0.95)
+    draw_solid_group(ax, scene["buildings"], alpha=0.3)
+    draw_opening_decals(ax, scene.get("opening_decals", []), alpha=0.95)
+    draw_solid_group(ax, scene.get("plazas", []), alpha=0.5)
+    draw_solid_group(ax, scene.get("activity_markers", []), alpha=0.85)
+
+    (rx, ry) = candidate["room_xy"]
+    (dirx, diry) = candidate["outward_xy"]
+    # Aim at the room's own real centroid, not offset toward the exterior
+    # wall -- an InteriorCell's own real depth band is often only a few
+    # meters deep (confirmed on the real fixture: as little as ~5m), so
+    # any offset large enough to matter relative to `INTERIOR_VIEW_RADIUS_M`
+    # already lands past the real wall, pressing the framed box up against
+    # a single wall face instead of showing the room. Centering on the
+    # room itself, with `INTERIOR_VIEW_RADIUS_M` wide enough to reach past
+    # the exterior wall on its own, reads as standing inside looking out.
+    floor_z = candidate["floor_idx"] * FLOOR_TO_FLOOR_M
+    ax.set_xlim(rx - INTERIOR_VIEW_RADIUS_M, rx + INTERIOR_VIEW_RADIUS_M)
+    ax.set_ylim(ry - INTERIOR_VIEW_RADIUS_M, ry + INTERIOR_VIEW_RADIUS_M)
+    # Vertical range: one real story (floor to the plate/roof above it),
+    # not a fraction of the horizontal radius -- the room's own real
+    # floor-to-floor height is the honest vertical extent to show, matching
+    # what `interior_partition_solids` actually built at this floor.
+    z_lo, z_hi = floor_z, floor_z + FLOOR_TO_FLOOR_M
+    ax.set_zlim(z_lo, z_hi)
+    # True proportional aspect (same technique render_isometric uses) --
+    # a flat (1, 1, 1) cube here stretched the real ~3.5m vertical range to
+    # match the ~18m horizontal one, which is what made the first version
+    # of this shot look like it was pressed flat against a single wall.
+    z_aspect = (z_hi - z_lo) / (2 * INTERIOR_VIEW_RADIUS_M)
+    ax.set_box_aspect((1, 1, z_aspect))
+    # Camera sits opposite the room's own outward direction, looking
+    # toward it -- see this function's own docstring for mplot3d's
+    # orbit-around-axis-center camera model.
+    azim = math.degrees(math.atan2(-diry, -dirx))
+    ax.view_init(elev=8, azim=azim)
     ax.set_axis_off()
     ax.set_title(title, fontsize=13, color="#f6f3ed")
     fig.tight_layout()
@@ -1541,10 +1962,29 @@ def main():
     export_glb(scene, f"{out_prefix}.glb")
     _t_glb = time.perf_counter() - _t0
 
+    _t0 = time.perf_counter()
+    n_interior_views = 0
+    if include_interior_walls:
+        candidates = interior_view_candidates(nbhd, origin_lng, origin_lat)
+        for i, candidate in enumerate(candidates):
+            render_interior_view(
+                scene, candidate, f"{out_prefix}_interior_view_{i}.png",
+                f"{candidate['building']['id']} -- inside looking out",
+            )
+            n_interior_views += 1
+        # Real <model-viewer> camera-target/camera-orbit numbers for the
+        # SAME real rooms, so the gallery page can place a real hardware-
+        # accelerated WebGL camera inside the interactive .glb instead of
+        # relying only on this file's own flat mplot3d renders above --
+        # see interior_camera_views' own docstring for the coordinate math.
+        with open(f"{out_prefix}_interior_views.json", "w") as f:
+            json.dump(interior_camera_views(candidates), f, indent=2)
+    _t_interior_views = time.perf_counter() - _t0
+
     print(
         f"phase timing: build_scene={_t_build_scene:.1f}s isometric={_t_isometric:.1f}s "
-        f"floorplans={_t_floorplans:.1f}s glb={_t_glb:.1f}s "
-        f"total={_t_build_scene + _t_isometric + _t_floorplans + _t_glb:.1f}s"
+        f"floorplans={_t_floorplans:.1f}s glb={_t_glb:.1f}s interior_views({n_interior_views})={_t_interior_views:.1f}s "
+        f"total={_t_build_scene + _t_isometric + _t_floorplans + _t_glb + _t_interior_views:.1f}s"
     )
 
 
