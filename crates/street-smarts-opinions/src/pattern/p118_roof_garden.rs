@@ -12,12 +12,16 @@
 //!
 //! # A real, honest gap -- not a proxy
 //!
-//! Same real gap as `p116_cascade_of_roofs.rs`/`p117_sheltering_roof.rs`:
-//! this pipeline models no roof geometry at all, flat or otherwise, and
-//! has no roof-access data either. This opinion exists, with a real
-//! citation, specifically to be honest about that: it always returns
-//! `NoView` with the real reason, rather than inventing a proxy that
-//! isn't real data.
+//! `p117_sheltering_roof` now assigns every real building a real
+//! `Building.roof` (see its own module doc), but always a sloped
+//! `RoofShape::Shed` -- never `Flat`. This pattern's own doc is explicit
+//! that a real roof garden needs P116/P117 to land first (`RoofShape::
+//! Flat` exists in the schema specifically reserved for this future use),
+//! but a flat, walkable section isn't produced yet, and there's no
+//! roof-access data (a real path from an interior cell out onto the
+//! roof) either. This opinion exists, with a real citation, specifically
+//! to be honest about that: it always returns `NoView` with the real
+//! reason, rather than inventing a proxy that isn't real data.
 
 use street_smarts_core::nir::Neighborhood;
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
@@ -46,9 +50,9 @@ impl Opinion for P118RoofGarden {
     fn evaluate(&self, _n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
         OpinionOutput::NoView {
-            reason: "This pipeline models no roof geometry (flat or otherwise) and no roof-access \
-                     data -- nothing exists in the schema to check a roof-garden claim against. See \
-                     this opinion's own module doc."
+            reason: "p117_sheltering_roof only ever assigns a sloped Shed roof, never Flat, and \
+                     there's no roof-access data -- nothing to check a real roof-garden claim \
+                     against yet. See this opinion's own module doc."
                 .into(),
             runtime_ms: timer.elapsed_ms(),
         }

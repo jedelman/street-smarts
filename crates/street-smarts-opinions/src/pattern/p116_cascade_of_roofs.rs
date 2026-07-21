@@ -13,14 +13,19 @@
 //!
 //! # A real, honest gap -- not a proxy
 //!
-//! Every claim here is about roof FORM (pitch, height, cascading) --
-//! and this pipeline models no roof geometry at all. Every building is a
-//! flat-topped extrusion (see `tools/vibe-render/render.py`'s own
-//! explicit "no roof forms" caveat); `Building` has no roof-shape, roof-
-//! pitch, or roof-height field to check against. This opinion exists,
-//! with a real citation, specifically to be honest about that: it always
-//! returns `NoView` with the real reason, rather than inventing a proxy
-//! that isn't real data.
+//! `p117_sheltering_roof` now assigns every real building a real
+//! `Building.roof` (a shed roof, see its own module doc), so this
+//! pipeline is no longer entirely without roof geometry -- but that
+//! operator deliberately assigns ONE roof segment per whole building,
+//! not the per-WING cascade this pattern specifically asks for ("the
+//! floors step down toward the ends of wings, and... the roof,
+//! accordingly, forms a cascade"). Checking THIS claim for real would
+//! need `RoofForm` to carry per-wing segments keyed to
+//! `p127_intimacy_gradient`'s own cell graph, which doesn't exist yet --
+//! a real, separate, larger lift, not something P117's own single-segment
+//! roof can stand in for. This opinion exists, with a real citation,
+//! specifically to be honest about that: it always returns `NoView` with
+//! the real reason, rather than inventing a proxy that isn't real data.
 
 use street_smarts_core::nir::Neighborhood;
 use street_smarts_core::opinion::{Opinion, OpinionFamily, OpinionOutput, SourceCitation};
@@ -49,9 +54,9 @@ impl Opinion for P116CascadeOfRoofs {
     fn evaluate(&self, _n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
         OpinionOutput::NoView {
-            reason: "This pipeline models no roof geometry at all -- every building is a flat-topped \
-                     extrusion, with no roof-shape, pitch, or height field to check a cascade claim \
-                     against. See this opinion's own module doc."
+            reason: "p117_sheltering_roof now assigns every building ONE real roof segment, not the \
+                     real per-wing cascade this pattern needs -- RoofForm has no per-wing segment \
+                     field yet. See this opinion's own module doc."
                 .into(),
             runtime_ms: timer.elapsed_ms(),
         }

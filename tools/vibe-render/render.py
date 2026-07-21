@@ -34,7 +34,21 @@ geometry is too much data for a 25 MiB budget regardless of how it's
 packaged; a flat quad is only free because the isometric path never turns
 it into a cadquery mesh at all. What's still NOT here: real wall
 thickness on the exterior walls (a decal sits proud of a zero-thickness
-wall, not in a real reveal) and roof forms.
+wall, not in a real reveal).
+
+Roof forms exist now for real, for the P117 Sheltering Roof / P162 North
+Face slice specifically: `roof_cap_solid` builds a real triangular-wedge
+shed roof over each building with a real `Building.roof` (a plain
+EXTRUSION of a 2D triangular cross-section, not a boolean -- see its own
+docstring for why that's the cheap primitive here, the mirror image of
+the openings lesson above). Measured directly on the real `clean_baseline`
+scenario: +0.18s of build_scene's own ~1.0s (real, bounded, not
+per-opening-scaled), total render time 3.8s -> 4.6s, `.glb` size
+694,724 -> 795,004 bytes -- still far under the 25 MiB budget. P116
+Cascade of Roofs' own real per-wing cascade, P118 Roof Garden, and P119
+Arcades/P166 Gallery Surround's own canopy geometry are NOT built here --
+see `p117_sheltering_roof.rs`'s own module doc for why those stay
+deferred, real gaps.
 
 Massing is still, by default, one footprint swept straight up by one
 height per building -- a real EXTRUSION, not per-floor VOLUMES. The one
@@ -132,6 +146,54 @@ def ring_to_xy(ring, origin_lng, origin_lat):
     if len(pts) >= 2 and pts[0] == pts[-1]:
         pts = pts[:-1]
     return pts
+
+
+def roof_cap_solid(outer_ring, eave_height_m, ridge_height_m, origin_lng, origin_lat):
+    """A real shed-roof cap for `p117_sheltering_roof`'s own `RoofForm`
+    (`crates/street-smarts-core/src/nir.rs`) -- always `slope_azimuth_deg
+    == 0.0` (true north) today, so this only ever builds a north-low,
+    south-high slope; a real general-azimuth version isn't built yet since
+    nothing produces any other bearing.
+
+    A real triangular-wedge EXTRUSION, not a boolean: the roof's own 2D
+    cross-section in the north-south/vertical (Y-Z) plane is a triangle --
+    (south, ridge_height_m), (south, eave_height_m), (north, eave_height_m)
+    -- meeting the wall top exactly at the low (north) eave and rising to
+    the ridge at the south edge, extruded along the east-west axis. Same
+    cheap primitive every wall extrusion already uses (`extrude_polygon`),
+    not a `.cut()`/`.union()` -- this pipeline's own real, measured lesson
+    (see this file's own module doc) is that a real boolean per building,
+    multiplied across a real fixture, is what actually costs real render
+    time; a plain extrusion doesn't carry that cost.
+
+    Approximates the building's own real footprint by its real, true-
+    north-aligned bounding box for the roof cap specifically (the wall
+    extrusion below it still uses the EXACT real footprint, unchanged) --
+    an honest simplification, not hidden: building a roof cap that follows
+    a real non-rectangular footprint's own exact outline needs a genuinely
+    non-planar ruled surface, a real, larger lift deferred along with P116
+    Cascade of Roofs' own per-wing segments (see p117_sheltering_roof.rs's
+    own module doc). `None` if the footprint or the real eave-to-ridge
+    rise is degenerate.
+    """
+    pts = ring_to_xy(outer_ring, origin_lng, origin_lat)
+    if len(pts) < 3:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)  # true north = +y; y_min = south (ridge), y_max = north (eave)
+    if x_max - x_min < 1e-6 or y_max - y_min < 1e-6 or ridge_height_m <= eave_height_m:
+        return None
+    try:
+        profile = cq.Workplane("YZ").polyline(
+            [(y_min, ridge_height_m), (y_min, eave_height_m), (y_max, eave_height_m)]
+        ).close()
+        solid = profile.extrude(x_max - x_min).translate((x_min, 0, 0))
+        return solid
+    except Exception as e:
+        print(f"  ! skipped a roof cap (extrude failed: {e})", file=sys.stderr)
+        return None
 
 
 def load(path):
@@ -450,7 +512,7 @@ def build_scene(nbhd, context_path=None):
     # (confirmed: +/-50s sandbox noise swamped a single before/after
     # comparison when the P124 refill was added). Kept cheap: time.perf_counter()
     # calls around work already happening, no extra passes.
-    t_extrude = t_refill = t_openings = 0.0
+    t_extrude = t_refill = t_openings = t_roof = 0.0
 
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
@@ -515,6 +577,25 @@ def build_scene(nbhd, context_path=None):
             t_refill += time.perf_counter() - _t0
 
             building_solids.append((solid, "building_shaped"))
+
+            # P117 Sheltering Roof's own real RoofForm (crates/street-smarts-
+            # core/src/nir.rs) -- a real triangular-wedge shed-roof cap sitting
+            # ABOVE the wall extrusion above (eave_height_m == this building's
+            # own real height_m, so the cap starts exactly where the walls
+            # already end), added as an independent solid rather than
+            # unioned into `solid` -- see roof_cap_solid's own docstring for
+            # why a plain extrusion, not a boolean, is the right real cost
+            # here.
+            _t0 = time.perf_counter()
+            roof = b.get("roof")
+            if roof is not None:
+                roof_solid = roof_cap_solid(
+                    part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
+                )
+                if roof_solid is not None:
+                    building_solids.append((roof_solid, "roof"))
+            t_roof += time.perf_counter() - _t0
+
             _t0 = time.perf_counter()
             opening_decal_records.extend(
                 opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
@@ -616,7 +697,7 @@ def build_scene(nbhd, context_path=None):
     t_context = time.perf_counter() - _t0
 
     print(
-        f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s "
+        f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s roof={t_roof:.2f}s "
         f"opening_records={t_openings:.2f}s context={t_context:.2f}s"
     )
 
@@ -638,6 +719,9 @@ def build_scene(nbhd, context_path=None):
 COLORS = {
     "building_shaped": "#8a5a44",
     "building_unshaped": "#a3846a",
+    "roof": "#5c3a2e",  # a real, darker shingled-roof brown -- distinct from
+    # "building_shaped" but clearly related (same warm-brown family), not an
+    # unrelated hue, matching "pocket"'s own reasoning above.
     "plaza": "#d9a441",
     "pocket": "#c9713f",  # warm, between "building_shaped" and "plaza" --
     # reads as related to both (it's carved from the one, opens onto the
