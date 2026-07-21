@@ -596,11 +596,13 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         opinion_pattern: 117,
         check: CascadeCheck::MinValue(0.8),
         why: "Same-number self-pair: p117_sheltering_roof (generator) is the only real producer of \
-              Building.roof -- a real shed roof, ridge = the building's own height_m, eave = \
-              Alexander's own literal P117 6'0\"-6'6\" figure; p117_sheltering_roof (opinion) checks \
-              that every real roofed building is sloped with a real eave in that same literal range. \
-              Measured on the real fixture: NoView -> Value 1.000 (35/35 real buildings). Floor set \
-              safely below that.",
+              Building.roof -- a real shed roof, eave = the building's own real height_m, ridge = \
+              that plus a real, modest roof_rise_m (NOT Alexander's own literal P117 entrance-eave \
+              figure -- see the generator's own module doc for why that figure doesn't apply at \
+              whole-building scale, a real correction made after an earlier version of this pair got \
+              it wrong); p117_sheltering_roof (opinion) checks that every real roofed building is \
+              sloped with a real, meaningful rise. Measured on the real fixture: NoView -> Value \
+              1.000 (35/35 real buildings). Floor set safely below that.",
     },
     CascadeContract {
         generator: "p117_sheltering_roof",
@@ -615,12 +617,14 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
               between 117 and 162, and this contract doesn't claim one. The real relationship is this \
               pipeline's own design finding: p117_sheltering_roof is the only real producer of \
               Building.roof, and its one real asymmetric shed roof (low side set to true north) \
-              honestly satisfies BOTH patterns' own independently-cited claims at once (P117's \
-              'sloped, eaves down low' and P162's specifically-north 'cascade... down to the ground') \
-              -- see p117_sheltering_roof's own module doc for the real reasoning. Measured on the \
-              real fixture: NoView -> Value 1.000 (35/35 real roofed buildings have a real asymmetric \
-              shed roof facing true north with a low side at or below 50% of the ridge height). Floor \
-              set safely below that.",
+              honestly satisfies the DIRECTIONAL half of both patterns' own independently-cited \
+              claims at once (P117's 'sloped, eaves down low' and P162's specifically-north claim) -- \
+              p162_north_face's own opinion doc is explicit this only checks WHICH side is low, not \
+              whether it reaches the ground, since p117's roof is a small cap near the building's own \
+              top, not a ground-touching cascade. See p117_sheltering_roof's own module doc for the \
+              real reasoning. Measured on the real fixture: NoView -> Value 1.000 (35/35 real roofed \
+              buildings have a real asymmetric shed roof facing true north). Floor set safely below \
+              that.",
     },
     // p124_activity_pockets has no self-pair contract here (yet). It had
     // one when the generator carved a notch INWARD (Value 0.169 on the

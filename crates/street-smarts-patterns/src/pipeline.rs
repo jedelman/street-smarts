@@ -60,10 +60,10 @@
 //!      subtract_convex + union_pieces (the same reassembly-reliability
 //!      problem P95/P133 already hit).
 //!   10. P117 Sheltering Roof (once, site-scale): assigns every real
-//!      building with a real `height_m` a real shed roof (ridge = its own
-//!      height_m, eave = Alexander's own literal 1.8288-1.9812m P117
-//!      figure), sloping down to true north -- also closes P162 North
-//!      Face's own specifically-north claim by the same real geometry.
+//!      building with a real `height_m` a real shed roof (eave = its own
+//!      real height_m, ridge = that plus a real, modest roof_rise_m),
+//!      sloping down to true north -- also closes P162 North Face's own
+//!      specifically-north claim by the same real geometry.
 //!      Runs after P107/P124 (only needs real height, not footprint or
 //!      wall thickness) and before P197 so wall thickness applies to the
 //!      final, roofed building the same as everything else downstream.

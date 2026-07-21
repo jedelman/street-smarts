@@ -1,5 +1,5 @@
 //! P117 Sheltering Roof — the roof should be visible, sloped, and felt
-//! as real shelter, with eaves brought down low at entrances.
+//! as real shelter.
 //!
 //! From Alexander, *A Pattern Language*, Pattern 117 (p. 569), via
 //! patternlanguage.cc/Patterns/Sheltering-Roof-(117):
@@ -15,21 +15,25 @@
 //!
 //! `p117_sheltering_roof` (the generator, `street-smarts-patterns`) is the
 //! only real producer of `Building.roof` -- see its own module doc for why
-//! it always assigns a real `RoofShape::Shed` (never `Flat`) with a real
-//! `eave_height_m`. This opinion checks, for every building with a real
-//! roof: is it sloped (any shape but `Flat` -- "entire surface visible"),
-//! and does its own `eave_height_m` fall within Alexander's own literal
-//! 6'0"-6'6" (1.8288-1.9812m) figure ("eaves down low")? `value` =
-//! fraction of roofed buildings where both hold.
+//! it always assigns a real `RoofShape::Shed` (never `Flat`), with the
+//! roof's low (eave) edge at the building's own real `height_m` and the
+//! high (ridge) edge a real `roof_rise_m` above that. This opinion checks,
+//! for every building with a real roof: is it sloped (any shape but
+//! `Flat` -- "entire surface visible"), and does it have a real, meaningful
+//! rise (`ridge_height_m - eave_height_m >= MIN_MEANINGFUL_RISE_M`) rather
+//! than a degenerate near-zero slope? `value` = fraction of roofed
+//! buildings where both hold.
 //!
 //! Cannot check "make its entire surface visible" as an actual unobstructed
 //! sightline claim (no viewpoint/occlusion data in this schema) -- treated
 //! as satisfied by any real slope, the same proxy category as this
-//! project's other geometry-stands-in-for-experience checks. Cannot verify
-//! the low eave is specifically AT the entrance either -- see the
-//! generator's own module doc for why that's a real, named gap between
-//! what P117's text asks and what this operator's single whole-building
-//! shed roof actually produces.
+//! project's other geometry-stands-in-for-experience checks. Cannot check
+//! Alexander's own literal 6'0"-6'6" low-eave figure at all: that figure
+//! describes a local, porch-like condition "at places like the entrance,"
+//! not a whole-building wall height -- `p117_sheltering_roof`'s own module
+//! doc explains why an earlier version of this pair wrongly treated it as
+//! one, and the real correction (eave = the building's own real height_m,
+//! not an absolute ~1.9m).
 
 use std::collections::BTreeMap;
 use street_smarts_core::nir::{Neighborhood, RoofShape};
@@ -38,8 +42,10 @@ use street_smarts_core::timer::Timer;
 
 pub struct P117ShelteringRoof;
 
-const MIN_EAVE_M: f64 = 1.8288; // 6'0"
-const MAX_EAVE_M: f64 = 1.9812; // 6'6"
+/// A real sanity floor on roof rise -- not from Alexander's own text
+/// (which gives no rise figure at whole-building scale), just a proxy for
+/// "genuinely sloped," not "technically nonzero."
+const MIN_MEANINGFUL_RISE_M: f64 = 0.3;
 
 impl Opinion for P117ShelteringRoof {
     fn name(&self) -> &'static str {
@@ -76,9 +82,10 @@ impl Opinion for P117ShelteringRoof {
 
         for (b, roof) in &roofed {
             let sloped = roof.shape != RoofShape::Flat;
-            let eave_in_range = roof.eave_height_m >= MIN_EAVE_M && roof.eave_height_m <= MAX_EAVE_M;
-            let ok = sloped && eave_in_range;
-            details.insert(format!("{}.eave_height_m", b.id), format!("{:.2}", roof.eave_height_m));
+            let rise = roof.ridge_height_m - roof.eave_height_m;
+            let real_rise = rise >= MIN_MEANINGFUL_RISE_M;
+            let ok = sloped && real_rise;
+            details.insert(format!("{}.roof_rise_m", b.id), format!("{rise:.2}"));
             if ok {
                 n_ok += 1;
             } else {
@@ -90,14 +97,13 @@ impl Opinion for P117ShelteringRoof {
         let mut sub_scores: BTreeMap<String, f64> = BTreeMap::new();
         sub_scores.insert("sheltering_roof_fraction".into(), value);
         details.insert("n_roofed_buildings".into(), roofed.len().to_string());
-        details.insert("min_eave_m".into(), format!("{MIN_EAVE_M:.4}"));
-        details.insert("max_eave_m".into(), format!("{MAX_EAVE_M:.4}"));
+        details.insert("min_meaningful_rise_m".into(), format!("{MIN_MEANINGFUL_RISE_M:.2}"));
 
         OpinionOutput::Value {
             value,
             method_summary: format!(
-                "{} real roofed building(s) checked; {} ({:.0}%) are sloped with a real eave in \
-                 Alexander's own literal 6'0\"-6'6\" ({MIN_EAVE_M:.2}-{MAX_EAVE_M:.2}m) range.",
+                "{} real roofed building(s) checked; {} ({:.0}%) are sloped with a real, \
+                 meaningful roof rise (>= {MIN_MEANINGFUL_RISE_M:.2}m).",
                 roofed.len(), n_ok, value * 100.0
             ),
             sub_scores,
@@ -106,9 +112,10 @@ impl Opinion for P117ShelteringRoof {
                 "\"Make its entire surface visible\" is treated as satisfied by any real slope -- \
                  this schema has no viewpoint/occlusion data to check an actual unobstructed \
                  sightline.".into(),
-                "Doesn't verify the low eave sits specifically AT the building's own real entrance \
-                 -- see p117_sheltering_roof's own generator module doc for this real, named gap."
-                    .into(),
+                "Cannot check Alexander's own literal 6'0\"-6'6\" low-eave figure -- that describes \
+                 a local, porch-like condition at the entrance, not a whole-building wall height. \
+                 See p117_sheltering_roof's own generator module doc for the real correction \
+                 history.".into(),
             ],
             contributing_features: flagged,
             runtime_ms: timer.elapsed_ms(),
@@ -162,8 +169,8 @@ mod tests {
     }
 
     #[test]
-    fn a_shed_roof_with_the_real_default_eave_scores_full() {
-        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 9.0, eave_height_m: 1.9, slope_azimuth_deg: 0.0 };
+    fn a_shed_roof_with_the_real_default_rise_scores_full() {
+        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
         let n = nbhd(vec![building("B1", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, .. } => assert!((value - 1.0).abs() < 1e-9, "got {value}"),
@@ -173,7 +180,7 @@ mod tests {
 
     #[test]
     fn a_flat_roof_is_flagged_not_sloped() {
-        let roof = RoofForm { shape: RoofShape::Flat, ridge_height_m: 9.0, eave_height_m: 1.9, slope_azimuth_deg: 0.0 };
+        let roof = RoofForm { shape: RoofShape::Flat, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
         let n = nbhd(vec![building("FLAT", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, contributing_features, .. } => {
@@ -185,9 +192,9 @@ mod tests {
     }
 
     #[test]
-    fn an_eave_outside_alexanders_literal_range_is_flagged() {
-        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 9.0, eave_height_m: 3.0, slope_azimuth_deg: 0.0 };
-        let n = nbhd(vec![building("TOOHIGH", Some(roof))]);
+    fn a_near_zero_rise_is_flagged_not_meaningfully_sloped() {
+        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 9.05, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
+        let n = nbhd(vec![building("BARELY", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, .. } => assert!((value - 0.0).abs() < 1e-9, "got {value}"),
             other => panic!("expected Value, got {other:?}"),

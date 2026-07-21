@@ -1,6 +1,5 @@
 //! P117 Sheltering Roof — assigns every real building a real, sloped shed
-//! roof with a genuinely low eave, closing this pipeline's "no roof
-//! geometry at all" gap.
+//! roof, closing this pipeline's "no roof geometry at all" gap.
 //!
 //! From Alexander, *A Pattern Language*, Pattern 117 (p. 569), via
 //! patternlanguage.cc/Patterns/Sheltering-Roof-(117):
@@ -32,13 +31,39 @@
 //! `RoofShape::Shed` (one real sloped plane, high on one side and low on
 //! the other) does, when its low side is set to true north -- this
 //! pipeline's real lng/lat makes "true north" an exact bearing
-//! (`slope_azimuth_deg = 0.0`), not an approximation. That single real
-//! form honestly satisfies BOTH patterns at once: P117's "sloped, entire
-//! surface visible, eaves down low" (any sloped form qualifies) and
-//! P162's specifically-north claim (only an asymmetric, north-low form
-//! does) -- see `RoofShape`'s own doc comment in `nir.rs` for why
-//! `Gable`/`Hip`/`Flat` are reserved, not fabricated, options nothing
-//! here produces yet.
+//! (`slope_azimuth_deg = 0.0`), not an approximation.
+//!
+//! # A real correction: `eave_height_m` is relative to the building, not
+//! # an absolute ground height
+//!
+//! An earlier version of this operator set `eave_height_m` to Alexander's
+//! own literal P117 figure (6'0"-6'6", ~1.9m) as an ABSOLUTE height above
+//! the site datum -- which is architecturally wrong for any real
+//! multi-story building: it would mean the entire north WALL is only
+//! ~1.9m tall, with everything above it replaced by roof slope, rather
+//! than a normal multi-story facade with a real roof CAP on top.
+//! Alexander's own "as low as 6'0"" figure describes a LOCAL condition
+//! "at places like the entrance" (a covered porch/overhang), not a claim
+//! that a whole building's north wall should be person-height -- a real,
+//! different (and not-yet-built) feature closer to P119 Arcades' own
+//! projecting-canopy family than to this operator's whole-building roof
+//! slope. Caught before this ever reached the renderer, by reasoning
+//! through what render.py would actually have to draw (a "building" that
+//! is mostly a giant ramp) rather than just checking the numbers
+//! round-tripped.
+//!
+//! Corrected: `eave_height_m` is now always the building's own real
+//! `height_m` (the low/north side sits at the SAME height every other
+//! wall in this pipeline already reaches), and `ridge_height_m` is
+//! `height_m + roof_rise_m` -- the roof adds a real, modest amount of
+//! extra height above the nominal building height, the standard
+//! architectural reading of "building height" (eave/parapet height, with
+//! the ridge rising somewhat above it). `roof_rise_m` is a plausible real
+//! roof-pitch figure -- NOT Alexander's own literal entrance-eave number
+//! (which describes a different, local condition this whole-building
+//! single-slope form doesn't reach) -- same category as `p95_building_
+//! complex`'s `pad_inset_m` or `p221_natural_doors_and_windows`'s
+//! `sill_frac`.
 //!
 //! # What this deliberately does NOT do
 //! - **No per-wing cascade.** Alexander's P116 Cascade of Roofs asks for
@@ -53,23 +78,18 @@
 //!   schema for P118 Roof Garden's own future use, but P118's own opinion
 //!   doc is explicit that it needs P116/117 to land first -- this
 //!   operator never assigns `Flat`.
-//! - **No canopy/arcade geometry.** P119 Arcades and P166 Gallery
-//!   Surround are a different real primitive (a projecting canopy at a
-//!   building's edge, not a roof slope) -- out of scope here.
-//! - **Doesn't verify the eave is specifically AT the entrance.**
-//!   Alexander's own P117 text ties the low eave to "places like the
-//!   entrance," but this operator's shed roof is low on the north side
-//!   regardless of which wall the entrance (P110/P130) actually faces --
-//!   a real, honestly-unclaimed gap between the two patterns' own
-//!   specific asks, not silently assumed to coincide.
+//! - **No canopy/arcade/porch geometry.** P119 Arcades, P166 Gallery
+//!   Surround, and a real "low eave at the entrance" reading of P117
+//!   itself are all a different real primitive (a projecting canopy at a
+//!   building's edge, not a whole-roof slope) -- out of scope here, see
+//!   the correction above.
 //!
-//! `eave_height_m` is Alexander's own literal P117 figure (6'0"-6'6", his
-//! text's own words) -- not a placeholder, same category as
-//! `p133_staircase_as_a_stage`'s `stair_width_m`. `ridge_height_m` is
-//! never an independent parameter: it's always the building's own real
-//! `height_m` (P96/P107's own real assignment), so the roof's high edge
-//! matches whatever height this pipeline already gave the building, not
-//! a second, disconnected number.
+//! `ridge_height_m`/`eave_height_m` are never independent parameters:
+//! `eave_height_m` is always the building's own real `height_m` (P96/
+//! P107's own real assignment), and `ridge_height_m` is derived from it
+//! plus `roof_rise_m` -- so the roof's low edge always matches whatever
+//! height this pipeline already gave the building, not a second,
+//! disconnected number.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
@@ -79,33 +99,36 @@ use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P117Params {
-    /// Real height of the roof's own low (north) eave -- Alexander's own
-    /// literal 6'0"-6'6" (1.8288-1.9812m) P117 figure.
-    pub eave_height_m: f64,
+    /// Real additional height the roof's own ridge adds above the
+    /// building's own real `height_m` -- a plausible real roof-pitch
+    /// figure, not Alexander's own literal entrance-eave number (see this
+    /// module's own doc for why that figure doesn't apply at whole-building
+    /// scale).
+    pub roof_rise_m: f64,
 }
 
 impl Parameters for P117Params {
     fn schema() -> Vec<ParamSpec> {
         vec![ParamSpec::float(
-            "eave_height_m",
-            "Real height of the roof's own low north eave -- Alexander's literal P117 6'0\"-6'6\" figure.",
-            1.8288,
-            1.9812,
-            1.9,
+            "roof_rise_m",
+            "Real additional height the roof's own ridge adds above the building's own real height_m.",
+            1.0,
+            4.0,
+            2.0,
         )
         .with_unit("m")]
     }
     fn defaults() -> Self {
-        Self { eave_height_m: 1.9 }
+        Self { roof_rise_m: 2.0 }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.eave_height_m]
+        vec![self.roof_rise_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
         let mut p = Self::defaults();
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) {
-            p.eave_height_m = s.clamp(*x);
+            p.roof_rise_m = s.clamp(*x);
         }
         p
     }
@@ -120,7 +143,7 @@ impl PatternOperator for P117ShelteringRoof {
         "p117_sheltering_roof"
     }
     fn description(&self) -> &'static str {
-        "Assigns every real building a real shed roof, sloped down to true north, per P117 Sheltering Roof and P162 North Face."
+        "Assigns every real building a real shed roof, ridge above its own height_m, sloped down to true north, per P117 Sheltering Roof and P162 North Face."
     }
     fn source(&self) -> SourceCitation {
         SourceCitation {
@@ -145,26 +168,17 @@ impl PatternOperator for P117ShelteringRoof {
         let mut new_buildings: Vec<Building> = Vec::new();
         let mut replaced: Vec<String> = Vec::new();
         let mut n_skipped_no_height = 0usize;
-        let mut n_skipped_too_short = 0usize;
 
         for b in &nbhd.buildings {
             let Some(height_m) = b.height_m else {
                 n_skipped_no_height += 1;
                 continue;
             };
-            if height_m <= params.eave_height_m {
-                // A shed roof needs a real ridge strictly above its own
-                // eave -- a building this short can't take one without an
-                // inverted (eave-above-ridge) slope, which isn't a real
-                // roof. Honest skip, not a forced degenerate shape.
-                n_skipped_too_short += 1;
-                continue;
-            }
             let mut nb = b.clone();
             nb.roof = Some(RoofForm {
                 shape: RoofShape::Shed,
-                ridge_height_m: height_m,
-                eave_height_m: params.eave_height_m,
+                ridge_height_m: height_m + params.roof_rise_m,
+                eave_height_m: height_m,
                 slope_azimuth_deg: 0.0,
             });
             new_buildings.push(nb);
@@ -172,11 +186,7 @@ impl PatternOperator for P117ShelteringRoof {
         }
 
         if new_buildings.is_empty() {
-            return Err(format!(
-                "p117_sheltering_roof: no real building tall enough for a real shed roof above the \
-                 {:.2}m eave height -- run P96/P107 first, or lower eave_height_m.",
-                params.eave_height_m
-            ));
+            return Err("p117_sheltering_roof: no real building has a real height_m yet -- run P96/P107 first.".into());
         }
 
         let trace = SubdivisionTrace {
@@ -184,19 +194,18 @@ impl PatternOperator for P117ShelteringRoof {
             operator_source: self.source(),
             headline: format!("Roofed {} real building(s) with a real shed roof sloping to true north.", new_buildings.len()),
             steps: vec![format!(
-                "{} real building(s) roofed (ridge = each building's own real height_m, eave = \
-                 {:.2}m); {} skipped (no real height_m yet), {} skipped (too short for a real \
-                 eave-below-ridge slope).",
-                new_buildings.len(), params.eave_height_m, n_skipped_no_height, n_skipped_too_short
+                "{} real building(s) roofed (eave = each building's own real height_m, ridge = \
+                 that plus {:.2}m of real roof rise); {} skipped (no real height_m yet).",
+                new_buildings.len(), params.roof_rise_m, n_skipped_no_height
             )],
             caveats: vec![
                 "One shed roof per whole building -- P116 Cascade of Roofs' own real 'steps down \
                  following the social hierarchy below' claim needs per-wing roof segments this \
                  operator doesn't build yet; see this operator's own module doc.".into(),
-                "Doesn't verify the low (north) eave actually sits at the building's own real \
-                 entrance -- P117's own text ties the low eave to the entrance specifically, this \
-                 operator's shed roof is low on the north side regardless of which wall the real \
-                 entrance faces.".into(),
+                "roof_rise_m is a plausible real roof-pitch figure, not Alexander's own literal \
+                 P117 entrance-eave number -- that figure describes a local, porch-like condition \
+                 this whole-building single-slope form doesn't reach. See this operator's own \
+                 module doc for the real correction history.".into(),
             ],
             seed,
             params: params.as_map(),
@@ -222,7 +231,7 @@ impl PatternOperator for P117ShelteringRoof {
 mod tests {
     use super::*;
     use street_smarts_core::geometry::{LngLat, Polygon};
-    use street_smarts_core::nir::{NeighborhoodMeta};
+    use street_smarts_core::nir::NeighborhoodMeta;
 
     fn m() -> f64 { 111_320.0 }
 
@@ -271,8 +280,10 @@ mod tests {
         assert_eq!(sub.replaced_building_ids, vec!["B1".to_string()]);
         let roof = sub.new_buildings[0].roof.as_ref().expect("real roof assigned");
         assert_eq!(roof.shape, RoofShape::Shed);
-        assert!((roof.ridge_height_m - 9.0).abs() < 1e-9);
-        assert!((roof.eave_height_m - 1.9).abs() < 1e-9);
+        // Eave sits at the building's own real height -- NOT Alexander's
+        // literal ~1.9m entrance figure (see this module's own doc for why).
+        assert!((roof.eave_height_m - 9.0).abs() < 1e-9);
+        assert!((roof.ridge_height_m - 11.0).abs() < 1e-9, "ridge should be height_m + default roof_rise_m (2.0)");
         assert!((roof.slope_azimuth_deg - 0.0).abs() < 1e-9);
         assert!(roof.ridge_height_m > roof.eave_height_m, "ridge must sit above eave for a real slope");
     }
@@ -284,18 +295,10 @@ mod tests {
     }
 
     #[test]
-    fn a_building_too_short_for_a_real_eave_below_ridge_slope_is_skipped() {
-        // 1.5m tall -- below the default 1.9m eave height, so a real shed
-        // slope (ridge strictly above eave) isn't possible.
-        let n = nbhd(vec![building("TINY", Some(1.5))]);
-        assert!(P117ShelteringRoof.apply(&n, "*", &P117Params::defaults(), 0).is_err());
-    }
-
-    #[test]
     fn params_roundtrip() {
-        let p = P117Params { eave_height_m: 1.85 };
+        let p = P117Params { roof_rise_m: 3.0 };
         let v = p.as_vector();
         let back = P117Params::from_vector(&v);
-        assert_eq!(back.eave_height_m, 1.85);
+        assert_eq!(back.roof_rise_m, 3.0);
     }
 }
