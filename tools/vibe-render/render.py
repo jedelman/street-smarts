@@ -111,6 +111,13 @@ OPENING_DECAL_OFFSET_M = 0.03  # how far a window/door decal sits proud of
 # geometry, even just a thin box, is too much data for the GLB's 25 MiB
 # budget at this fixture's real opening density (measured: 7,765 openings
 # -> ~28.5 MiB either way).
+OPENING_PUNCH_DEPTH_M = 3.0  # generous -- pierces any real wall thickness
+# this massing model doesn't carve as an actual cavity (P197's own
+# wall_thickness_m is a uniform SCALAR, not real carved geometry -- see
+# its own module doc). Only used by `punch_openings`, the opt-in real-
+# boolean path gated behind `build_scene`'s own `punch_real_openings`
+# (see its docstring for why a real cluster-scale scenario can afford
+# what the whole-site scenario measurably can't).
 INTERIOR_DOOR_WIDTH_M = 0.9  # floor-plan door-gap width, drawn in-plane -- no wall thickness/height in a 2D plan
 INTERIOR_WALL_MIN_LENGTH_M = 1.2  # shorter than this + a door gap leaves no real wall -- skip it
 DEFAULT_CONTEXT_HEIGHT_M = 6.0  # ~2 stories, for context buildings Overture has no height for
@@ -424,7 +431,7 @@ def _ray_exit_distance(cx, cy, dirx, diry, ring_xy, max_dist=60.0):
     return best
 
 
-def _best_interior_view_direction(cx, cy, cell_xy, outward_xy, n_samples=24):
+def _best_interior_view_direction(cx, cy, cell_xy, outward_xy, window_dirs=(), n_samples=24):
     """The real direction from a room's own centroid `(cx, cy)` that gives
     an "inside looking out" camera the most legible composition -- swept
     over `n_samples` directions around the compass, scored by how much
@@ -447,6 +454,17 @@ def _best_interior_view_direction(cx, cy, cell_xy, outward_xy, n_samples=24):
     `outward_xy` bias keeps the choice from swinging a full 180 degrees
     into a direction that faces away from any real window entirely.
 
+    `window_dirs`: real unit directions (from this same centroid) toward
+    each real `p221_natural_doors_and_windows` window opening on this
+    room's own exterior wall (`interior_view_candidates`'s own
+    computation, via the SAME `opening_placement` numbers `punch_openings`
+    uses) -- a direction that points close to an ACTUAL real window gets
+    a real multiplicative bonus (up to 2x at a perfect match), so the
+    camera favors a real window over merely-open room space with no
+    window in it. Doors are deliberately excluded by the caller: a "look
+    out" shot aimed at a door doesn't show the outside the way a window
+    does.
+
     Returns `(direction_xy, ray_distance_m)` -- the real open-space depth
     in the chosen direction, so a caller can size a camera radius that
     stays inside that real room instead of pulling back into whatever's
@@ -458,7 +476,10 @@ def _best_interior_view_direction(cx, cy, cell_xy, outward_xy, n_samples=24):
         dirx, diry = math.cos(angle), math.sin(angle)
         dist = _ray_exit_distance(cx, cy, dirx, diry, cell_xy)
         alignment = dirx * outward_xy[0] + diry * outward_xy[1]
-        score = dist * (0.5 + 0.5 * max(0.0, alignment))
+        window_alignment = max(
+            (dirx * wx + diry * wy for wx, wy in window_dirs), default=0.0
+        )
+        score = dist * (0.5 + 0.5 * max(0.0, alignment)) * (1.0 + max(0.0, window_alignment))
         if score > best_score:
             best_score = score
             best_dir = (dirx, diry)
@@ -610,6 +631,104 @@ def opening_records(building, origin_lng, origin_lat, skip_ring_indices=frozense
     return records
 
 
+def opening_punch_solid(placement):
+    """A real, deep, axis-aligned-in-its-own-wall-frame box for a real
+    OpenCascade boolean SUBTRACTION -- reuses the exact same real
+    `opening_placement()` numbers the flat-decal path already computes
+    (same position, angle, width, height), just turned into a solid
+    instead of a numpy quad. `None` if the box itself fails to build
+    (real, not hypothetical -- degenerate width/height can still reach
+    here from real data)."""
+    mx, my, z_center, angle_deg, width, height, _nx, _ny = placement
+    try:
+        return (
+            cq.Workplane("XY")
+            .box(width, OPENING_PUNCH_DEPTH_M, height)
+            .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+            .translate((mx, my, z_center))
+            .val()
+        )
+    except Exception:
+        return None
+
+
+def punch_openings(solid, building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
+    """Cut every real window/door opening out of `solid` via ONE grouped
+    OCC multi-tool boolean cut (`Shape.cut(*tools)`, not cadquery's
+    single-tool `Workplane.cut` -- the same real perf lesson this file's
+    own history already learned: pairwise `.union()`/one-at-a-time cuts
+    both measured multiple minutes on a real ~1000-opening party-wall
+    building, the grouped multi-tool cut does the same building in
+    single-digit seconds).
+
+    This is the SAME real technique `punch_openings` used before commit
+    416beb3 replaced it with flat decals for the whole-site scenario (see
+    this file's own module doc, and that commit's own message, for the
+    real measured reason: 7,765 openings, ~62s of cut time, a GLB over
+    Cloudflare's 25 MiB cap even after the massing itself was thrown
+    away). `build_scene`'s own `punch_real_openings` flag only turns this
+    on for a real building CLUSTER (a handful of buildings, hundreds not
+    thousands of openings) -- see its docstring for the real numbers that
+    gate different from the whole-site case.
+
+    `.clean()` after the cut (same call `build_scene`'s own P124 pocket
+    cutback already uses) merges the many small coplanar face fragments a
+    boolean cut leaves behind -- real triangle-count cleanup, not
+    cosmetic; measured directly on the real fixture's single densest
+    building (`p108_merged_24_building`, 274 real openings): 4,756 -> 4,452
+    triangles (~6% fewer), for ~0.2s of extra real work. A coarser
+    `tessellate()` tolerance, unlike `.clean()`, does NOT help here --
+    retested directly against this specific punched-boolean geometry (not
+    just inherited from the flat-massing finding in `export_glb`'s own
+    docstring): every real face this cut produces is already planar, so
+    OCC has nothing left to approximate regardless of the tolerance asked
+    for (confirmed: tolerances from 0.5 to 5.0 all tessellated to the
+    exact same 4,452 triangles).
+
+    A real lossy triangle-mesh decimation pass (`trimesh` +
+    `fast-simplification`, quadric error decimation) was also tried on
+    this same real punched mesh and REJECTED, not just skipped: OCC's own
+    tessellated output here isn't watertight as a plain triangle soup
+    (real T-junctions between independently-tessellated faces, confirmed
+    via `trimesh.Trimesh.is_watertight`), and quadric decimation assumes
+    a manifold mesh to preserve volume against -- measured real volume
+    drift of 18-45% at every decimation ratio tried, on a shape that's
+    supposed to be an exact real building footprint. That's real
+    geometric corruption, not simplification, so this file does not
+    depend on either package for it.
+    """
+    outer_ring = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    outer_sign = polygon_signed_area2_m2(outer_ring)
+    holes = building["polygon"].get("holes") or []
+    hole_ring = ring_to_xy(holes[0], origin_lng, origin_lat) if holes else None
+    hole_sign = polygon_signed_area2_m2(hole_ring) if hole_ring else 0.0
+
+    punch_solids = []
+    for o in building.get("openings") or []:
+        on_hole = o.get("on_hole")
+        if not on_hole and o.get("floor", 0) >= 1 and o["ring_index"] in skip_ring_indices:
+            continue
+        ring = hole_ring if on_hole else outer_ring
+        ring_sign = hole_sign if on_hole else outer_sign
+        if not ring:
+            continue
+        placement = opening_placement(ring, ring_sign, o)
+        if placement is None:
+            continue
+        punch = opening_punch_solid(placement)
+        if punch is not None:
+            punch_solids.append(punch)
+
+    if not punch_solids:
+        return solid
+    try:
+        cut = solid.val().cut(*punch_solids).clean()
+        return cq.Workplane(obj=cut)
+    except Exception as e:
+        print(f"  ! opening punch cut failed for {building.get('id')}: {e}", file=sys.stderr)
+        return solid
+
+
 def shared_boundary(poly_a, poly_b, eps=0.05):
     """Find the coincident edge two adjacent `InteriorCell` polygons share
     -- both p127_intimacy_gradient's band/bay cuts and its loop-closing
@@ -670,17 +789,43 @@ def load_context_buildings(path, origin_lng, origin_lat):
     return solids
 
 
-def build_scene(nbhd, context_path=None, include_interior_walls=False):
+def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_real_openings=False):
     """`include_interior_walls`: real, opt-in -- OFF by default so every
     existing scenario (clean_baseline included, since p127_intimacy_
     gradient runs on every real building site-wide, not just a showcase
     cluster) renders exactly as it always has, byte-for-byte, unless a
     caller explicitly asks for the interior-detail treatment (see
     `interior_partition_solids`'s own docstring, and `main`'s own
-    `--interiors` flag). When on, `render_isometric`/`export_glb` both
-    key off whether `scene["interior_walls"]` is non-empty to lower the
-    exterior shell's own alpha and draw partitions on top -- no separate
-    render-time flag needed there, the scene data itself is the signal.
+    `--interiors` flag). When on, `render_isometric`/`export_glb` both key
+    off whether `scene["interior_walls"]` is non-empty and draw partitions
+    on top of the exterior shell -- no separate render-time flag needed
+    there, the scene data itself is the signal. The shell's own alpha
+    depends on `scene["punched_openings"]` too: lowered (translucent) when
+    there's no real punched opening to see through yet, solid once there
+    is -- see `render_isometric`'s own matching comment for why.
+
+    `punch_real_openings`: also real, also opt-in, also OFF by default --
+    cuts every real window/door opening through each building's own solid
+    mass (`punch_openings`) instead of drawing a flat decal
+    (`opening_records`), so a real punched-through building actually lets
+    daylight (and, when `include_interior_walls` is also on, the real
+    interior_wall geometry sitting behind it) show through. `main`'s own
+    `--interiors` flag sets this alongside `include_interior_walls` --
+    the two together are what "the single cluster gives us interiors AND
+    exteriors with punch-throughs" means in practice, since a punched
+    exterior with no interior geometry behind it would just show empty
+    space, and vice versa. Gated separately from `include_interior_walls`
+    in this function's own signature anyway (not one combined flag) so
+    each stays independently testable.
+
+    Kept OFF for clean_baseline for the same real, measured reason
+    `punch_openings`'s own docstring documents: whole-site opening counts
+    (7,765 on the real fixture) make a real boolean cut per opening cost
+    ~62s and blow the GLB's 25 MiB budget even after the massing itself
+    gets thrown away -- a real cluster's opening count (808 on the real
+    fixture) is a different cost regime, not just a smaller version of
+    the same one; see this function's own real measurements in the git
+    history around when this flag was added for the actual numbers.
     """
     parcels = site_parcels(nbhd)
     if not parcels:
@@ -691,13 +836,15 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
     origin_lng = sum(p["lng"] for p in all_pts) / len(all_pts)
     origin_lat = sum(p["lat"] for p in all_pts) / len(all_pts)
 
-    building_solids = []  # (solid, color_name) -- unpunched: window/door
-    # openings are a separate flat-decal layer now (`opening_decal_records`
-    # below), not a boolean cut into this solid -- see this file's own
-    # module doc for the real measured reason. Both `render_isometric` and
-    # `export_glb` share this SAME list now; there is no more separate
-    # punched-vs-unpunched pair to keep in sync.
-    opening_decal_records = []  # [(placement, color_key), ...] -- see opening_records's own docstring
+    building_solids = []  # (solid, color_name) -- real punched openings
+    # when punch_real_openings=True (see punch_openings's own docstring);
+    # otherwise unpunched, with window/door openings drawn as a separate
+    # flat-decal layer instead (`opening_decal_records` below). Both
+    # `render_isometric` and `export_glb` share this SAME list either way.
+    opening_decal_records = []  # [(placement, color_key), ...] -- see
+    # opening_records's own docstring. Left EMPTY when punch_real_openings
+    # is on -- a flat decal glued to (or floating near) a real punched
+    # void would be redundant at best, visibly wrong at worst.
     interior_wall_solids = []  # [(solid, "interior_wall"), ...] -- real
     # p127_intimacy_gradient InteriorCell partitions, only ever populated
     # when include_interior_walls=True.
@@ -723,7 +870,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
     # (confirmed: +/-50s sandbox noise swamped a single before/after
     # comparison when the P124 refill was added). Kept cheap: time.perf_counter()
     # calls around work already happening, no extra passes.
-    t_extrude = t_refill = t_openings = t_roof = t_interior = 0.0
+    t_extrude = t_refill = t_openings = t_roof = t_interior = t_punch = 0.0
 
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
@@ -787,6 +934,18 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
                 break
             t_refill += time.perf_counter() - _t0
 
+            # Real boolean punch-through -- only when a caller explicitly
+            # opted in (see build_scene's own punch_real_openings
+            # docstring). Runs BEFORE the roof cap is added below (the
+            # roof is a separate solid, never a punch target) and before
+            # `solid` is appended, so both render_isometric and export_glb
+            # (which share this SAME building_solids list) see the real
+            # punched result either way -- no separate wiring needed.
+            if punch_real_openings:
+                _t0 = time.perf_counter()
+                solid = punch_openings(solid, b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
+                t_punch += time.perf_counter() - _t0
+
             building_solids.append((solid, "building_shaped"))
 
             # P117 Sheltering Roof's own real RoofForm (crates/street-smarts-
@@ -807,11 +966,12 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
                     building_solids.append((roof_solid, "roof"))
             t_roof += time.perf_counter() - _t0
 
-            _t0 = time.perf_counter()
-            opening_decal_records.extend(
-                opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
-            )
-            t_openings += time.perf_counter() - _t0
+            if not punch_real_openings:
+                _t0 = time.perf_counter()
+                opening_decal_records.extend(
+                    opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
+                )
+                t_openings += time.perf_counter() - _t0
 
             # p127_intimacy_gradient's own real InteriorCell partitions --
             # only ever built when a caller explicitly opts in (see
@@ -963,7 +1123,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
 
     print(
         f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s roof={t_roof:.2f}s "
-        f"opening_records={t_openings:.2f}s interior={t_interior:.2f}s context={t_context:.2f}s"
+        f"opening_records={t_openings:.2f}s punch={t_punch:.2f}s interior={t_interior:.2f}s context={t_context:.2f}s"
     )
 
     return {
@@ -975,6 +1135,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False):
         "activity_markers": activity_solids,
         "context": context_solids,
         "origin": (origin_lng, origin_lat),
+        "punched_openings": punch_real_openings,
     }
 
 
@@ -1075,7 +1236,7 @@ def shade_faces(face_verts, base_hex, alpha):
     return rgba
 
 
-def draw_solid_group(ax, items, alpha, bounds_accum=None):
+def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22", linewidth=0.2):
     """Tessellate and draw one real `(solid, kind)` list onto `ax` --
     shared by `render_isometric` and `render_interior_view` so both draw
     real geometry through the exact same shading/coloring path, not two
@@ -1084,6 +1245,16 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None):
     used (an `append`-only list of vertex arrays) -- `render_interior_view`
     passes `None` since it frames its own fixed, tight bounds instead of
     fitting the whole scene.
+
+    `edgecolor`/`linewidth` are overridable because a real boolean-punched
+    solid (`punch_openings`) tessellates into far more triangles than a
+    plain extrusion -- the SAME faint per-triangle edge that reads as a
+    clean outline on a simple massing box turns into visible wireframe
+    clutter once there are real punched-opening facets to outline too
+    (confirmed visually, not assumed -- see the git history around when
+    `punch_real_openings` was added). `render_isometric` passes a fainter
+    edge for the buildings group specifically when `scene["punched_
+    openings"]` is set.
     """
     for solid, kind in items:
         try:
@@ -1094,7 +1265,7 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None):
         face_verts = verts[tris]
         base_hex = COLORS.get(kind, "#999999")
         rgba = shade_faces(face_verts, base_hex, alpha)
-        poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor="#f6f3ed22", linewidth=0.2)
+        poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor=edgecolor, linewidth=linewidth)
         ax.add_collection3d(poly)
         if bounds_accum is not None:
             bounds_accum.append(verts)
@@ -1139,8 +1310,8 @@ def render_isometric(scene, out_path, title):
     # `bounds_accum` list contribute.
     bounds_verts = []
 
-    def add_group(items, alpha, for_bounds=False):
-        draw_solid_group(ax, items, alpha, bounds_accum=bounds_verts if for_bounds else None)
+    def add_group(items, alpha, for_bounds=False, **kwargs):
+        draw_solid_group(ax, items, alpha, bounds_accum=bounds_verts if for_bounds else None, **kwargs)
 
     def add_opening_decals(records, alpha=0.95, for_bounds=True):
         draw_opening_decals(ax, records, alpha, bounds_accum=bounds_verts if for_bounds else None)
@@ -1169,8 +1340,22 @@ def render_isometric(scene, out_path, title):
     # scenario leaves `interior_walls` empty, so `buildings_alpha` stays
     # 0.82 and this whole render is byte-for-byte what it always was.
     interior_walls = scene.get("interior_walls", [])
-    buildings_alpha = 0.35 if interior_walls else 0.82
-    add_group(scene["buildings"], alpha=buildings_alpha, for_bounds=True)
+    punched = scene.get("punched_openings", False)
+    # A real punched-through shell doesn't need translucency to read as
+    # "see-through" at all -- the real punched voids already ARE the
+    # window, the same way a real building's own walls are opaque and
+    # its windows are the only real openings. Solid (not fully 1.0 --
+    # kept just shy of opaque so the interior_walls layer below still has
+    # a hint of read through an open punch at a glancing angle) once
+    # there's a real hole to look through instead of a translucency hack
+    # standing in for one.
+    buildings_alpha = 0.97 if punched else (0.35 if interior_walls else 0.82)
+    add_group(
+        scene["buildings"], alpha=buildings_alpha, for_bounds=True,
+        # See draw_solid_group's own docstring for why punched geometry
+        # gets a near-invisible edge instead of the usual faint outline.
+        edgecolor=("#f6f3ed08" if punched else "#f6f3ed22"),
+    )
     add_opening_decals(scene.get("opening_decals", []))
     add_group(interior_walls, alpha=0.95, for_bounds=True)
     add_group(scene.get("activity_markers", []), alpha=0.95, for_bounds=True)
@@ -1212,6 +1397,11 @@ INTERIOR_VIEW_RADIUS_M = 9.0  # how far the tight interior-view camera
 # the room the camera sits in AND real geometry past the exterior wall
 # (plaza/street/neighboring building), small enough to stay a real close-
 # up, not another wide shot of the whole cluster.
+WINDOW_NEAR_ROOM_M = 1.5  # how close a real window's own placed position
+# must land to an InteriorCell's own boundary to count as belonging to
+# THAT room -- generous vs a real wall's own thickness/reveal, tight
+# enough that a window on a completely different part of a large real
+# building's facade doesn't get attributed to a room it doesn't border.
 
 
 def interior_view_candidates(nbhd, origin_lng, origin_lat, max_views=2):
@@ -1234,9 +1424,11 @@ def interior_view_candidates(nbhd, origin_lng, origin_lat, max_views=2):
     own shot has the most real context. Returns a list of dicts with keys
     `building`, `cell`, `floor_idx`, `room_xy` (real cell centroid, local
     meters), `outward_xy` (real unit direction to aim the camera along --
-    `_best_interior_view_direction`'s own pick, not simply the wall's own
-    outward normal; see its docstring for why) -- empty if no building in
-    `nbhd` carries any real `interior_cells`.
+    `_best_interior_view_direction`'s own pick, biased toward a real
+    p221 window on this room's own wall when one exists, not simply the
+    wall's own outward normal; see that function's own docstring for the
+    full scoring) -- empty if no building in `nbhd` carries any real
+    `interior_cells`.
     """
     candidates = []
     ranked = sorted(
@@ -1297,7 +1489,35 @@ def interior_view_candidates(nbhd, origin_lng, origin_lat, max_views=2):
         nx, ny = edy / edge_len, -edx / edge_len  # perpendicular to the edge
         if (ccx - (ex1 + ex2) / 2) * nx + (ccy - (ey1 + ey2) / 2) * ny > 0:
             nx, ny = -nx, -ny  # point AWAY from the room's own centroid
-        view_dir, view_dist = _best_interior_view_direction(ccx, ccy, cell_xy, (nx, ny))
+
+        # Real p221_natural_doors_and_windows window openings that sit ON
+        # this room's own exterior wall -- the SAME real opening_placement
+        # numbers punch_openings uses, filtered to real WINDOWS (not
+        # doors -- a "look out" shot aimed at a door doesn't show the
+        # outside) on the ground floor (this room's own real floor), whose
+        # own real position lands close enough to this room's real
+        # boundary (`WINDOW_NEAR_ROOM_M`) to belong to it and not some
+        # other room sharing the same building. Real directions toward
+        # each, from this room's own centroid -- see
+        # `_best_interior_view_direction`'s own docstring for how these
+        # bias the final camera direction toward an ACTUAL window.
+        outer_sign = polygon_signed_area2_m2(outer_xy)
+        window_dirs = []
+        for o in b.get("openings") or []:
+            if o.get("on_hole") or o.get("kind") == "door" or o.get("floor", 0) != 0:
+                continue
+            placement = opening_placement(outer_xy, outer_sign, o)
+            if placement is None:
+                continue
+            wx, wy = placement[0], placement[1]
+            if _min_dist_point_to_ring(wx, wy, cell_xy) > WINDOW_NEAR_ROOM_M:
+                continue
+            wdx, wdy = wx - ccx, wy - ccy
+            wdist = math.hypot(wdx, wdy)
+            if wdist > 1e-6:
+                window_dirs.append((wdx / wdist, wdy / wdist))
+
+        view_dir, view_dist = _best_interior_view_direction(ccx, ccy, cell_xy, (nx, ny), window_dirs=window_dirs)
         # A camera radius sized to the real open space in the chosen
         # direction -- a fixed radius either sat inside a solid (a shallow
         # real room) or pulled back out of the room entirely (a deep real
@@ -1380,7 +1600,20 @@ def render_interior_view(scene, candidate, out_path, title):
     ax.set_facecolor("#2a2a2e")
 
     draw_solid_group(ax, scene.get("interior_walls", []), alpha=0.95)
-    draw_solid_group(ax, scene["buildings"], alpha=0.3)
+    # Solid once real punches exist, matching render_isometric/export_glb's
+    # own real reasoning: a real punched void is the real "see through"
+    # mechanism now, an opaque wall around it is just a real wall. (An
+    # earlier version of this tuning kept a low, partial alpha even for
+    # punched geometry -- measured worse close up, since this camera sits
+    # near enough that partial alpha accumulates across many overlapping
+    # near-grazing faces into a murky flat wash rather than a clean
+    # nearest-face read; full opacity removes that accumulation
+    # entirely.)
+    punched = scene.get("punched_openings", False)
+    draw_solid_group(
+        ax, scene["buildings"], alpha=(0.97 if punched else 0.3),
+        edgecolor=("#f6f3ed08" if punched else "#f6f3ed22"),
+    )
     draw_opening_decals(ax, scene.get("opening_decals", []), alpha=0.95)
     draw_solid_group(ax, scene.get("plazas", []), alpha=0.5)
     draw_solid_group(ax, scene.get("activity_markers", []), alpha=0.85)
@@ -1478,21 +1711,29 @@ def export_glb(scene, out_path):
     isometric PNG, where a decal costs a numpy quad instead of a real OCC
     solid, gets that detail.
 
-    `scene["interior_walls"]` is the one exception, and only when a caller
-    opted into `build_scene`'s `include_interior_walls` -- real, additive
-    partition-wall extrusions (a handful of solids on a single showcase
-    cluster, nothing like the 7,765-opening budget problem above) with the
-    `buildings` group's own alpha lowered to read as a translucent shell
-    around them. Every existing scenario leaves `interior_walls` empty, so
-    this GLB stays byte-for-byte what it always was for them. See
-    `render_floor_plan`'s own module doc for why a full FLOOR PLAN is still
-    drawn as 2D, not built into any 3D solid -- this is a different, much
-    smaller real geometry (single-story partition walls), not that.
+    `scene["interior_walls"]`/`scene["punched_openings"]` are the real
+    exceptions, and only when a caller opted into `build_scene`'s
+    `include_interior_walls`/`punch_real_openings` -- real, additive
+    partition-wall extrusions and real boolean-punched window/door voids
+    (a handful of buildings on a single showcase cluster, nothing like the
+    7,765-opening whole-site budget problem above). The `buildings` group
+    itself stays SOLID either way once real punches exist -- a real
+    punched void is what lets you see through/into the model now, the
+    same way a real building's own wall is opaque and its window is the
+    one real opening in it; translucency was only ever a stand-in for
+    that before punching existed (see `render_isometric`'s own matching
+    comment). Every existing scenario leaves both flags off, so this GLB
+    stays byte-for-byte what it always was for them. See
+    `render_floor_plan`'s own module doc for why a full FLOOR PLAN is
+    still drawn as 2D, not built into any 3D solid -- this is a
+    different, much smaller real geometry (single-story partition
+    walls), not that.
     """
     asm = cq.Assembly()
     n_added = 0
     interior_walls = scene.get("interior_walls", [])
-    buildings_alpha = 0.35 if interior_walls else 0.82
+    punched = scene.get("punched_openings", False)
+    buildings_alpha = 0.97 if punched else (0.35 if interior_walls else 0.82)
     for group, alpha, solids_key in (
         ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", buildings_alpha, "buildings"),
         ("interior_walls", 0.95, "interior_walls"),
@@ -1935,7 +2176,10 @@ def main():
     # message) -- phase attribution is the only way to tell real cost from
     # noise in this environment.
     _t0 = time.perf_counter()
-    scene = build_scene(nbhd, context_path=context_path, include_interior_walls=include_interior_walls)
+    scene = build_scene(
+        nbhd, context_path=context_path, include_interior_walls=include_interior_walls,
+        punch_real_openings=include_interior_walls,
+    )
     _t_build_scene = time.perf_counter() - _t0
     print(
         f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
