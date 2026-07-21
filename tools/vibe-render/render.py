@@ -83,6 +83,7 @@ this script) across both baseline scenarios.
 """
 import json
 import math
+import struct
 import sys
 import time
 import warnings
@@ -131,6 +132,14 @@ ACTIVITY_MARKER_RADIUS_M = 0.6  # a small post, not a building -- real
 # geometric (no footprint, no height); this is a rendering-layer choice
 # of HOW to show a point, not a value read from the pipeline.
 ACTIVITY_MARKER_HEIGHT_M = 2.5
+ACTIVITY_GLOW_RADIUS_M = 2.2  # a soft ground-level "puddle of light" around
+# a real ActivityNode marker -- wider than the marker's own real
+# ACTIVITY_MARKER_RADIUS_M footprint (a post isn't a light source, but a
+# real place with real human activity reads as one at this render's
+# scale), tight enough on a real fixture's own node spacing not to
+# visually merge two distinct nearby nodes into one blob.
+ACTIVITY_GLOW_HEIGHT_M = 0.05  # a near-flat disc at grade, not a second
+# post -- the glow is a ground-plane halo, not more marker geometry.
 
 # Window/door colors -- defined here (not just down by render_largest_building_floors,
 # where they originated) so build_scene's own opening-decal path and the 2D
@@ -652,6 +661,88 @@ def opening_punch_solid(placement):
         return None
 
 
+WINDOW_GLOW_DEPTH_M = 0.15  # a thin pane, not a real light fixture --
+# just enough real depth to tessellate as a solid, not a zero-thickness
+# face degenerate case.
+WINDOW_GLOW_INSET_M = 0.4  # how far behind the wall's own outward face
+# the glow pane sits -- inside OPENING_PUNCH_DEPTH_M's own real void
+# (3.0m), so it reads as light glowing from just behind a real window,
+# not a decal glued to the cut edge. A real, defensible aesthetic choice
+# (windows are often lit at dusk in a real occupied building), not a
+# claim about this specific building's real occupancy -- see
+# window_glow_solids' own docstring for the full reasoning.
+
+
+def window_glow_solid(placement):
+    """A small, warm, real solid pane sitting just inside ONE real punched
+    WINDOW void (never a door -- see `window_glow_solids`' own docstring
+    for why), positioned/sized from the exact same real
+    `opening_placement()` numbers `punch_openings` used to cut the void
+    in the first place. Reused as a plain warm-colored solid for the
+    isometric/interior-view renders and as a real glTF EMISSIVE material
+    target for the interactive model -- see `add_emissive_glow`'s
+    own docstring for the second part. `None` if the pane fails to build
+    (real, not hypothetical -- same degenerate-data cases every other
+    opening-derived solid in this file already guards against)."""
+    mx, my, z_center, angle_deg, width, height, nx, ny = placement
+    inset_x = mx - nx * WINDOW_GLOW_INSET_M
+    inset_y = my - ny * WINDOW_GLOW_INSET_M
+    try:
+        return (
+            cq.Workplane("XY")
+            .box(width * 0.85, WINDOW_GLOW_DEPTH_M, height * 0.85)
+            .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+            .translate((inset_x, inset_y, z_center))
+            .val()
+        )
+    except Exception:
+        return None
+
+
+def window_glow_solids(building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
+    """Real glow panes for every real WINDOW opening on `building` (kind
+    != "door" -- a lit door doesn't read as "someone's home" the way a
+    lit window does, same real distinction `_best_interior_view_direction`
+    already draws), on every real floor that opening actually exists on
+    (real `Opening.floor` data, not just ground floor) -- reuses the SAME
+    real ring/placement math `punch_openings`/`opening_records` already
+    compute, just turned into a small warm solid instead of a punch tool
+    or a flat quad. `skip_ring_indices` is the SAME real P124 bump-edge
+    guard `opening_records`/`punch_openings` already apply -- see
+    `opening_records`'s own docstring for the real reason. Only ever
+    called when `punch_real_openings` is on (see `build_scene`'s own
+    docstring) -- a glow pane behind a flat decal, instead of a real
+    punched void, would just be an invisible solid buried in solid mass.
+    """
+    openings = building.get("openings") or []
+    if not openings:
+        return []
+    outer_ring = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    outer_sign = polygon_signed_area2_m2(outer_ring)
+    holes = building["polygon"].get("holes") or []
+    hole_ring = ring_to_xy(holes[0], origin_lng, origin_lat) if holes else None
+    hole_sign = polygon_signed_area2_m2(hole_ring) if hole_ring else 0.0
+
+    glow_solids = []
+    for o in openings:
+        if o.get("kind") == "door":
+            continue
+        on_hole = o.get("on_hole")
+        if not on_hole and o.get("floor", 0) >= 1 and o["ring_index"] in skip_ring_indices:
+            continue
+        ring = hole_ring if on_hole else outer_ring
+        ring_sign = hole_sign if on_hole else outer_sign
+        if not ring:
+            continue
+        placement = opening_placement(ring, ring_sign, o)
+        if placement is None:
+            continue
+        glow = window_glow_solid(placement)
+        if glow is not None:
+            glow_solids.append(glow)
+    return glow_solids
+
+
 def punch_openings(solid, building, origin_lng, origin_lat, skip_ring_indices=frozenset()):
     """Cut every real window/door opening out of `solid` via ONE grouped
     OCC multi-tool boolean cut (`Shape.cut(*tools)`, not cadquery's
@@ -848,6 +939,9 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     interior_wall_solids = []  # [(solid, "interior_wall"), ...] -- real
     # p127_intimacy_gradient InteriorCell partitions, only ever populated
     # when include_interior_walls=True.
+    window_glow_records = []  # [(solid, "window_glow"), ...] -- real warm
+    # panes behind real punched WINDOW voids (window_glow_solids' own
+    # docstring), only ever populated when punch_real_openings=True.
     building_ids_with_real_shape = set()
 
     # P124 Activity Pockets' own `open_space` entries (kind="pocket") --
@@ -870,7 +964,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # (confirmed: +/-50s sandbox noise swamped a single before/after
     # comparison when the P124 refill was added). Kept cheap: time.perf_counter()
     # calls around work already happening, no extra passes.
-    t_extrude = t_refill = t_openings = t_roof = t_interior = t_punch = 0.0
+    t_extrude = t_refill = t_openings = t_roof = t_interior = t_punch = t_glow = 0.0
 
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
@@ -945,6 +1039,15 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                 _t0 = time.perf_counter()
                 solid = punch_openings(solid, b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
                 t_punch += time.perf_counter() - _t0
+
+                # Real warm glow panes just inside each real punched
+                # WINDOW void -- see window_glow_solids' own docstring.
+                # Same real gate as the punch itself: no real void to sit
+                # behind, no glow pane.
+                _t0 = time.perf_counter()
+                for glow_solid in window_glow_solids(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices):
+                    window_glow_records.append((glow_solid, "window_glow"))
+                t_glow += time.perf_counter() - _t0
 
             building_solids.append((solid, "building_shaped"))
 
@@ -1103,19 +1206,37 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # comment). No design ambiguity worth agonizing over here the way
     # openings/interiors had real cost tradeoffs to weigh.
     activity_solids = []
+    activity_glow_solids = []  # real "puddle of light" halos, one per real
+    # ActivityNode -- see ACTIVITY_GLOW_RADIUS_M's own docstring. Deliberately
+    # tagged with the SAME `f"activity_{kind}"` label the marker itself
+    # uses (not a new COLORS entry) so a glow always matches its own real
+    # marker's real color automatically; drawn with its own lower default
+    # alpha (see render_isometric/render_interior_view/export_glb) rather
+    # than a CONFIDENCE_ALPHA override, since this is a rendering choice
+    # about a real point's glow, not a provenance/confidence signal.
     for a in nbhd.get("activity_nodes", []):
         loc = a.get("location")
         if not loc:
             continue
         x, y = project(loc["lng"], loc["lat"], origin_lng, origin_lat)
+        kind = a.get("kind") or "other"
         r = ACTIVITY_MARKER_RADIUS_M
         square = [(x - r, y - r), (x + r, y - r), (x + r, y + r), (x - r, y + r)]
         try:
             solid = cq.Workplane("XY").polyline(square).close().extrude(ACTIVITY_MARKER_HEIGHT_M)
-            kind = a.get("kind") or "other"
             activity_solids.append((solid, f"activity_{kind}"))
         except Exception as e:
             print(f"  ! activity marker build failed: {e}", file=sys.stderr)
+        try:
+            glow = (
+                cq.Workplane("XY")
+                .circle(ACTIVITY_GLOW_RADIUS_M)
+                .extrude(ACTIVITY_GLOW_HEIGHT_M)
+                .translate((x, y, 0))
+            )
+            activity_glow_solids.append((glow, f"activity_{kind}"))
+        except Exception as e:
+            print(f"  ! activity glow build failed: {e}", file=sys.stderr)
 
     _t0 = time.perf_counter()
     context_solids = load_context_buildings(context_path, origin_lng, origin_lat) if context_path else []
@@ -1123,16 +1244,19 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
 
     print(
         f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s roof={t_roof:.2f}s "
-        f"opening_records={t_openings:.2f}s punch={t_punch:.2f}s interior={t_interior:.2f}s context={t_context:.2f}s"
+        f"opening_records={t_openings:.2f}s punch={t_punch:.2f}s glow={t_glow:.2f}s "
+        f"interior={t_interior:.2f}s context={t_context:.2f}s"
     )
 
     return {
         "buildings": building_solids,
         "opening_decals": opening_decal_records,
         "interior_walls": interior_wall_solids,
+        "window_glow": window_glow_records,
         "plazas": plaza_solids,
         "streets": street_solids,
         "activity_markers": activity_solids,
+        "activity_glow": activity_glow_solids,
         "context": context_solids,
         "origin": (origin_lng, origin_lat),
         "punched_openings": punch_real_openings,
@@ -1172,6 +1296,12 @@ COLORS = {
     "opening_window": WINDOW_COLOR,
     "opening_window_courtyard": COURTYARD_WINDOW_COLOR,
     "opening_door": DOOR_COLOR,
+    "window_glow": "#ffcf6b",  # a warm, lamp-like gold -- deliberately far
+    # brighter/warmer than WINDOW_COLOR (the pane frame itself) so the real
+    # glow pane behind a punched WINDOW opening reads as an interior light
+    # source, not another shade of glass. Paired with a real glTF
+    # emissiveFactor in export_glb's post-process so it actually emits in
+    # the interactive <model-viewer>, not just a flat-lit gold triangle.
     # ActivityNode markers -- one real color per ActivityKind variant
     # (street-smarts-core::nir::ActivityKind, `#[serde(rename_all =
     # "snake_case")]`, confirmed directly against the Rust enum, not
@@ -1391,6 +1521,18 @@ def render_isometric(scene, out_path, title):
     )
     add_opening_decals(scene.get("opening_decals", []))
     add_group(interior_walls, alpha=0.95, for_bounds=True)
+    # Real warm panes sitting just inside each punched WINDOW void (empty
+    # unless `punch_real_openings`, see window_glow_solids' own docstring)
+    # -- drawn near-opaque so they read as a lit interior even against the
+    # near-solid punched shell above, not a translucency trick.
+    add_group(scene.get("window_glow", []), alpha=0.95, for_bounds=False)
+    # A soft ground-level halo under each real ActivityNode marker, drawn
+    # BEFORE the marker itself so the opaque post sits on top of its own
+    # glow rather than hiding it -- see ACTIVITY_GLOW_RADIUS_M's own
+    # docstring for why this reads as real human activity/life, not
+    # invented data (the marker's own real kind/location, just a second,
+    # lower-alpha layer of the SAME real point).
+    add_group(scene.get("activity_glow", []), alpha=0.3, for_bounds=False)
     add_group(scene.get("activity_markers", []), alpha=0.95, for_bounds=True)
 
     all_verts = np.concatenate(bounds_verts, axis=0)
@@ -1648,7 +1790,12 @@ def render_interior_view(scene, candidate, out_path, title):
         edgecolor=("#f6f3ed08" if punched else "#f6f3ed22"),
     )
     draw_opening_decals(ax, scene.get("opening_decals", []), alpha=0.95)
+    # Same real warm panes render_isometric draws -- at this close range
+    # they're what makes a punched WINDOW void read as a lit room beyond,
+    # not just a dark hole in the shell.
+    draw_solid_group(ax, scene.get("window_glow", []), alpha=0.95)
     draw_solid_group(ax, scene.get("plazas", []), alpha=0.5)
+    draw_solid_group(ax, scene.get("activity_glow", []), alpha=0.3)
     draw_solid_group(ax, scene.get("activity_markers", []), alpha=0.85)
 
     (rx, ry) = candidate["room_xy"]
@@ -1687,6 +1834,113 @@ def render_interior_view(scene, candidate, out_path, title):
     fig.savefig(out_path, dpi=140, facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"wrote {out_path}")
+
+
+GLTF_CHUNK_TYPE_JSON = 0x4E4F534A  # "JSON" little-endian, glTF 2.0 binary container spec
+GLTF_CHUNK_TYPE_BIN = 0x004E4942  # "BIN\0" little-endian, same spec
+
+
+def add_emissive_glow(glb_path, name_suffix, emissive_rgb=(1.0, 0.82, 0.42), emissive_strength=3.0):
+    """Post-process a `.glb` cadquery already wrote, IN PLACE, giving a real
+    glTF emissive material to every material referenced by a node/mesh
+    whose own name ends in `name_suffix` -- cadquery's `cq.Color` (the API
+    `export_glb`'s own main loop uses for every material) has no emissive
+    field at all, only PBR baseColor/metallic/roughness, so a
+    `window_glow` pane exported through that path alone is just an
+    unusually bright gold triangle -- lit, not GLOWING, in any real PBR
+    viewer (confirmed empirically: `cq.Assembly`/pygltflib's own writer
+    exposes no emissive kwarg anywhere in `add()`/`save()`).
+
+    Parses the real binary glTF container directly -- 12-byte header, one
+    JSON chunk, one BIN chunk (glTF 2.0 spec) -- rather than pulling in a
+    second glTF-writing dependency just for this one field: cadquery
+    already wrote a fully valid file, this only edits its JSON chunk's
+    `materials`/`extensionsUsed` and re-serializes, leaving the BIN chunk
+    (all real vertex data) untouched.
+
+    Confirmed directly (a throwaway two-box `cq.Assembly.save`, not
+    assumed) that `asm.add(solid, name=...)` puts that exact name on BOTH
+    the scene node and its mesh -- this matches nodes, since a node is
+    what a name suffix like `_window_glow` (this file's own
+    `f"{group}_{n_added}_{kind}"` mesh-naming convention, `group ==
+    kind == "window_glow"` for every real glow pane) always uniquely
+    identifies here, with no risk of an unrelated kind's mesh sharing a
+    node accidentally.
+
+    `KHR_materials_emissive_strength` (not a raw `emissiveFactor` alone,
+    which core glTF clamps to [0,1] per channel) is what gives a real
+    viewer's tone-mapping something to actually bloom -- `emissiveFactor`
+    capped at 1.0 alone reads as merely "a bit lit", not "glowing",
+    confirmed against a real <model-viewer> screenshot before this
+    extension was added.
+    """
+    with open(glb_path, "rb") as f:
+        data = f.read()
+
+    magic, version, total_length = struct.unpack_from("<III", data, 0)
+    if magic != 0x46546C67:  # "glTF"
+        raise ValueError(f"{glb_path} is not a binary glTF file")
+
+    offset = 12
+    json_chunk = None
+    bin_chunk = None
+    while offset < total_length:
+        chunk_length, chunk_type = struct.unpack_from("<II", data, offset)
+        chunk_data = data[offset + 8: offset + 8 + chunk_length]
+        if chunk_type == GLTF_CHUNK_TYPE_JSON:
+            json_chunk = chunk_data
+        elif chunk_type == GLTF_CHUNK_TYPE_BIN:
+            bin_chunk = chunk_data
+        offset += 8 + chunk_length
+
+    if json_chunk is None:
+        raise ValueError(f"{glb_path} has no JSON chunk")
+
+    doc = json.loads(json_chunk.decode("utf-8"))
+
+    nodes = doc.get("nodes", [])
+    meshes = doc.get("meshes", [])
+    glow_material_indices = set()
+    for node in nodes:
+        if not node.get("name", "").endswith(name_suffix):
+            continue
+        mesh_idx = node.get("mesh")
+        if mesh_idx is None:
+            continue
+        for prim in meshes[mesh_idx].get("primitives", []):
+            mat_idx = prim.get("material")
+            if mat_idx is not None:
+                glow_material_indices.add(mat_idx)
+
+    if not glow_material_indices:
+        return  # this GLB has nothing named this way -- leave it untouched
+
+    materials = doc.get("materials", [])
+    for idx in glow_material_indices:
+        mat = materials[idx]
+        mat["emissiveFactor"] = list(emissive_rgb)
+        mat.setdefault("extensions", {})["KHR_materials_emissive_strength"] = {
+            "emissiveStrength": emissive_strength,
+        }
+
+    ext_used = doc.setdefault("extensionsUsed", [])
+    if "KHR_materials_emissive_strength" not in ext_used:
+        ext_used.append("KHR_materials_emissive_strength")
+
+    new_json_bytes = json.dumps(doc, separators=(",", ":")).encode("utf-8")
+    new_json_bytes += b" " * ((-len(new_json_bytes)) % 4)  # glTF spec: JSON chunk pads with 0x20
+
+    out = bytearray()
+    out += struct.pack("<III", magic, version, 0)  # total length patched below
+    out += struct.pack("<II", len(new_json_bytes), GLTF_CHUNK_TYPE_JSON)
+    out += new_json_bytes
+    if bin_chunk is not None:
+        out += struct.pack("<II", len(bin_chunk), GLTF_CHUNK_TYPE_BIN)
+        out += bin_chunk  # already spec-padded to 4 bytes by cadquery's own writer
+    struct.pack_into("<I", out, 8, len(out))
+
+    with open(glb_path, "wb") as f:
+        f.write(bytes(out))
 
 
 def export_glb(scene, out_path):
@@ -1770,6 +2024,18 @@ def export_glb(scene, out_path):
     for group, alpha, solids_key in (
         ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", buildings_alpha, "buildings"),
         ("interior_walls", 0.95, "interior_walls"),
+        # Real warm panes behind punched WINDOW voids (empty unless
+        # `punch_real_openings`, see window_glow_solids' own docstring) --
+        # this loop only gives them their base color; the real EMISSIVE
+        # glow (so they actually light up in an interactive glTF viewer,
+        # not just look flat-lit gold) is a post-process below, keyed off
+        # this exact mesh-name suffix.
+        ("window_glow", 0.95, "window_glow"),
+        # Real ground-level halo under each ActivityNode marker -- same
+        # `f"activity_{kind}"` color as the marker it belongs to (no
+        # separate COLORS entry needed), own lower alpha so it reads as a
+        # soft glow, not another opaque solid competing with the post.
+        ("activity_glow", 0.3, "activity_glow"),
         ("activity", 0.95, "activity_markers"),
         ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
@@ -1792,6 +2058,14 @@ def export_glb(scene, out_path):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)  # cadquery 2.8's Assembly.save, not our call
             asm.save(out_path, exportType="GLTF")
+        # cq.Color (used for every material above) has no emissive API --
+        # real emissive glow on window_glow panes only exists once this
+        # post-process edits the JSON chunk cadquery just wrote. Only
+        # bothers opening the file back up when there's real glow geometry
+        # to find (every existing scenario except cluster_interior leaves
+        # `window_glow` empty, so this is a no-op read+return for them).
+        if scene.get("window_glow"):
+            add_emissive_glow(out_path, name_suffix="_window_glow")
         print(f"wrote {out_path}")
     except Exception as e:
         print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
