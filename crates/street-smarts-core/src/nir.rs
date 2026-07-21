@@ -136,6 +136,45 @@ pub struct Building {
     /// `render.py`'s own documented "no roof forms" caveat).
     #[serde(default)]
     pub roof: Option<RoofForm>,
+    /// Real per-wing roof segments -- Alexander's P116 Cascade of Roofs
+    /// ("if the building is complex, and has several different roofs...
+    /// connect the roofs so that they step down, following the social
+    /// hierarchy of the spaces they cover"). Each segment covers its own
+    /// real sub-polygon of `polygon` with its own `RoofForm`, so a lower
+    /// wing can carry a lower ridge than a taller one -- the actual
+    /// "cascade" -- instead of the single whole-building `roof` above.
+    /// Empty until a real P116 generator exists to partition the
+    /// footprint: no such generator is implemented yet, and there is
+    /// nothing to key segments to today -- `p107_wings_of_light`
+    /// explicitly does NOT produce discrete wing entities (see that
+    /// generator's own module doc for why true branching wings were
+    /// deferred). `roof` above remains the whole-building fallback when
+    /// this is empty; every existing fixture round-trips unchanged.
+    #[serde(default)]
+    pub roof_segments: Vec<RoofSegment>,
+    /// Real covered walkways/porches attached along this building's own
+    /// exterior wall -- Alexander's P119 Arcades ("all busy public
+    /// paths... need a roofed arcade... to give pedestrians shelter") and
+    /// P166 Gallery Surround (the same covered-walkway idea, wrapped
+    /// further around a building's own perimeter). Empty until a real
+    /// generator exists -- `p221_natural_doors_and_windows` already
+    /// computes which wall ring edges face the street, the natural real
+    /// input a P119/P166 generator would need, but no such generator is
+    /// implemented yet.
+    #[serde(default)]
+    pub canopies: Vec<Canopy>,
+    /// Real local wall thickenings -- bay windows, built-in seats/shelves
+    /// deep enough to sit in -- along specific spans of this building's
+    /// own exterior wall. Alexander's P160 Building Edge ("the edge...
+    /// must be a place, must have volume... deep enough to contain
+    /// seats, bookshelves, bay windows"): a uniform `wall_thickness_m`
+    /// (P197 Thick Walls, above) gives every wall real depth, but P160's
+    /// own claim is about LOCAL extra depth at specific spots, not a
+    /// thicker uniform wall everywhere -- this is additive to, not a
+    /// replacement for, `wall_thickness_m`. Empty until a real P160
+    /// generator exists.
+    #[serde(default)]
+    pub wall_niches: Vec<WallNiche>,
 }
 
 /// The real geometric family a roof belongs to. Only `Shed` is generated
@@ -172,6 +211,90 @@ pub struct RoofForm {
     /// this pipeline's real lng/lat makes that an exact bearing, not an
     /// approximation.
     pub slope_azimuth_deg: f64,
+    /// Whether this roof plane is real, intentional occupiable space --
+    /// Alexander's P118 Roof Garden's own core claim (only meaningful
+    /// when `shape == RoofShape::Flat`; a sloped roof isn't occupiable by
+    /// this pipeline's own reasoning). `false` for every roof
+    /// `p117_sheltering_roof` assigns today (always `Shed`) -- purely
+    /// additive, no existing fixture changes meaning. A real access point
+    /// (stair/hatch up to the roof) is a separate, still-unbuilt concept
+    /// this field doesn't attempt to solve.
+    #[serde(default)]
+    pub occupiable: bool,
+}
+
+/// One real roof plane over part of a building's own footprint -- see
+/// `Building.roof_segments`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoofSegment {
+    /// The real sub-polygon of the building's own footprint this segment
+    /// covers. Expected (not validated here -- this schema doesn't own
+    /// that invariant, a future P116 generator does) to lie within the
+    /// parent `Building.polygon`'s outer ring.
+    pub footprint: Polygon,
+    pub form: RoofForm,
+}
+
+/// The Alexander pattern a `Canopy` instance realizes -- both patterns
+/// share the same real geometry (a thin roof projecting from a wall over
+/// a walkway), differing only in intent/coverage, so one struct serves
+/// both rather than two near-identical ones.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanopyKind {
+    /// P119 Arcades -- shelter along one busy public-facing wall span.
+    Arcade,
+    /// P166 Gallery Surround -- the same covered walkway, wrapped further
+    /// around the building's own perimeter.
+    Gallery,
+}
+
+/// A real covered walkway projecting from one wall of a building's own
+/// footprint -- see `Building.canopies`. Spans a real RANGE of one wall
+/// edge (`t_start..=t_end`), unlike `Opening`'s single-point `t`: a
+/// window is a point feature, an arcade is a real linear span a person
+/// walks the length of.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Canopy {
+    pub kind: CanopyKind,
+    /// Same real ring-edge indexing as `Opening.ring_index`.
+    pub ring_index: usize,
+    /// Same convention as `Opening.on_hole`.
+    #[serde(default)]
+    pub on_hole: bool,
+    /// Start of the covered span along that wall edge, in `0.0..=1.0`.
+    pub t_start: f64,
+    /// End of the covered span, in `0.0..=1.0`. Expected `>= t_start`
+    /// (not validated here; a future generator owns that invariant).
+    pub t_end: f64,
+    /// How far the canopy projects outward from the wall face, in meters.
+    pub depth_m: f64,
+    /// Real clearance height under the canopy, meters above this floor's
+    /// own base elevation (same convention as `Opening.sill_height_m`).
+    pub height_m: f64,
+    /// 0 = ground floor, same convention as `Opening.floor`. Distinguishes
+    /// P119 Arcades (a real ground-level, street-facing claim) from P166
+    /// Gallery Surround's own explicit "at every story" claim -- without a
+    /// real floor number, "every story" can't honestly be checked as
+    /// anything more than "at least one canopy exists somewhere."
+    #[serde(default)]
+    pub floor: u32,
+}
+
+/// One real local bulge in an exterior wall's own depth -- see
+/// `Building.wall_niches`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WallNiche {
+    /// Same real ring-edge indexing as `Opening.ring_index`.
+    pub ring_index: usize,
+    #[serde(default)]
+    pub on_hole: bool,
+    pub t_start: f64,
+    pub t_end: f64,
+    /// Extra depth beyond `Building.wall_thickness_m` at this span, in
+    /// meters -- the real bay/niche bump-out, not a replacement for the
+    /// building's own uniform exterior thickness.
+    pub extra_depth_m: f64,
 }
 
 /// One cell of a building's interior partition. Deliberately FORM-only --
@@ -413,6 +536,9 @@ mod building_wall_thickness_tests {
         }"#;
         let b: Building = serde_json::from_str(old_json).expect("older Building JSON should still deserialize");
         assert_eq!(b.wall_thickness_m, None, "no thickness signal in the source JSON should mean None, not a fabricated default");
+        assert!(b.roof_segments.is_empty(), "no roof-segment signal should mean empty, not a fabricated segment");
+        assert!(b.canopies.is_empty(), "no canopy signal should mean empty, not a fabricated canopy");
+        assert!(b.wall_niches.is_empty(), "no niche signal should mean empty, not a fabricated niche");
     }
 
     #[test]
@@ -427,9 +553,76 @@ mod building_wall_thickness_tests {
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: Some(0.3),
             roof: None,
+            roof_segments: vec![],
+            canopies: vec![],
+            wall_niches: vec![],
         };
         let json = serde_json::to_string(&b).unwrap();
         let back: Building = serde_json::from_str(&json).unwrap();
         assert_eq!(back.wall_thickness_m, Some(0.3));
+    }
+}
+
+#[cfg(test)]
+mod roof_segment_canopy_niche_tests {
+    use super::*;
+    use crate::geometry::{LngLat, Polygon};
+
+    fn square_polygon(x0: f64, y0: f64, x1: f64, y1: f64) -> Polygon {
+        Polygon::from_ring(vec![
+            LngLat::new(x0, y0), LngLat::new(x1, y0),
+            LngLat::new(x1, y1), LngLat::new(x0, y1), LngLat::new(x0, y0),
+        ])
+    }
+
+    fn building(id: &str) -> Building {
+        Building {
+            id: id.into(),
+            polygon: square_polygon(0.0, 0.0, 0.0002, 0.0001),
+            height_m: None, typology: None, year_built: None, parcel_id: None,
+            floors: None, openings: vec![], interior_cells: vec![],
+            wall_thickness_m: None, roof: None,
+            roof_segments: vec![], canopies: vec![], wall_niches: vec![],
+        }
+    }
+
+    #[test]
+    fn old_roof_form_json_with_no_occupiable_deserializes_to_honest_false() {
+        let old_json = r#"{
+            "shape": "flat", "ridge_height_m": 6.0, "eave_height_m": 6.0, "slope_azimuth_deg": 0.0
+        }"#;
+        let r: RoofForm = serde_json::from_str(old_json).expect("older RoofForm JSON should still deserialize");
+        assert!(!r.occupiable, "no occupiable signal in the source JSON should mean false, not a fabricated true");
+    }
+
+    #[test]
+    fn roof_segments_canopies_and_wall_niches_round_trip_through_json() {
+        let mut b = building("B1");
+        b.roof_segments.push(RoofSegment {
+            footprint: square_polygon(0.0, 0.0, 0.0001, 0.0001),
+            form: RoofForm {
+                shape: RoofShape::Flat, ridge_height_m: 6.0, eave_height_m: 6.0,
+                slope_azimuth_deg: 0.0, occupiable: true,
+            },
+        });
+        b.canopies.push(Canopy {
+            kind: CanopyKind::Arcade, ring_index: 0, on_hole: false,
+            t_start: 0.1, t_end: 0.6, depth_m: 1.5, height_m: 2.4, floor: 0,
+        });
+        b.wall_niches.push(WallNiche {
+            ring_index: 1, on_hole: false, t_start: 0.2, t_end: 0.4, extra_depth_m: 0.4,
+        });
+
+        let json = serde_json::to_string(&b).unwrap();
+        let back: Building = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(back.roof_segments.len(), 1);
+        assert_eq!(back.roof_segments[0].form.shape, RoofShape::Flat);
+        assert!(back.roof_segments[0].form.occupiable);
+        assert_eq!(back.canopies.len(), 1);
+        assert_eq!(back.canopies[0].kind, CanopyKind::Arcade);
+        assert_eq!(back.canopies[0].t_end, 0.6);
+        assert_eq!(back.wall_niches.len(), 1);
+        assert_eq!(back.wall_niches[0].extra_depth_m, 0.4);
     }
 }

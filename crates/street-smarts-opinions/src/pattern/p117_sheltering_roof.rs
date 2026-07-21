@@ -147,7 +147,7 @@ mod tests {
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![], wall_thickness_m: None,
             roof,
-        }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn nbhd(buildings: Vec<Building>) -> Neighborhood {
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn a_shed_roof_with_the_real_default_rise_scores_full() {
-        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
+        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0, occupiable: false, };
         let n = nbhd(vec![building("B1", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, .. } => assert!((value - 1.0).abs() < 1e-9, "got {value}"),
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn a_flat_roof_is_flagged_not_sloped() {
-        let roof = RoofForm { shape: RoofShape::Flat, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
+        let roof = RoofForm { shape: RoofShape::Flat, ridge_height_m: 11.0, eave_height_m: 9.0, slope_azimuth_deg: 0.0, occupiable: false, };
         let n = nbhd(vec![building("FLAT", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, contributing_features, .. } => {
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn a_near_zero_rise_is_flagged_not_meaningfully_sloped() {
-        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 9.05, eave_height_m: 9.0, slope_azimuth_deg: 0.0 };
+        let roof = RoofForm { shape: RoofShape::Shed, ridge_height_m: 9.05, eave_height_m: 9.0, slope_azimuth_deg: 0.0, occupiable: false, };
         let n = nbhd(vec![building("BARELY", Some(roof))]);
         match P117ShelteringRoof.evaluate(&n) {
             OpinionOutput::Value { value, .. } => assert!((value - 0.0).abs() < 1e-9, "got {value}"),

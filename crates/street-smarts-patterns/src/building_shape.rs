@@ -203,7 +203,7 @@ impl PatternOperator for BuildingShape {
                 interior_cells: vec![],
                 wall_thickness_m: None,
                 roof: None,
-            });
+            canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
 
             // Update the parcel's use_category to indicate a building exists.
             // We replace the parcel (same id, same polygon) with the new tag.

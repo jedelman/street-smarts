@@ -172,7 +172,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         (space, building)
     }
 
@@ -212,7 +212,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![space], vec![building]);
         let out = P105SouthFacingOutdoors.evaluate(&n);
         match out {
@@ -241,7 +241,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![space], vec![building]);
         let out = P105SouthFacingOutdoors.evaluate(&n);
         match out {

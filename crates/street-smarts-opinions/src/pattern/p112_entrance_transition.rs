@@ -150,7 +150,7 @@ mod tests {
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: cells,
             wall_thickness_m: None,
             roof: None,
-        }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

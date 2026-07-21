@@ -115,6 +115,34 @@ different real primitive (not a roof slope) not attempted, and P160's own "wall 
 prerequisite is untouched. See `p117_sheltering_roof.rs`'s own module doc for the full reasoning
 and what was deliberately left out.
 
+**2026-07-21 update, later the same day: schema now exists for all five, no generator for any
+of them yet.** `street-smarts-core/src/nir.rs` gained four real, purely-additive fields, each
+keyed to a specific pattern's own literal claim, not a generic catch-all:
+- `Building.roof_segments: Vec<RoofSegment>` (a real sub-polygon + its own `RoofForm`) for P116's
+  "roofs step down toward wing ends" -- still nothing to key segments to (no wing-detection
+  generator exists; `p107_wings_of_light` explicitly doesn't produce discrete wing entities).
+- `RoofForm.occupiable: bool` for P118's "usable as roof gardens" -- `p117_sheltering_roof` still
+  only ever assigns a sloped `Shed` roof, never `Flat`/`occupiable`.
+- `Building.canopies: Vec<Canopy>` (`CanopyKind::Arcade | Gallery`, a real wall-edge span + depth +
+  clearance height + floor number) for P119 Arcades and P166 Gallery Surround -- `p221_natural_
+  doors_and_windows` already computes which wall edges face the street, the natural real input a
+  generator would need, but none exists yet.
+- `Building.wall_niches: Vec<WallNiche>` (a real local bulge in an exterior wall's own depth,
+  additive to P197's uniform `wall_thickness_m`) for P160's own literal "deep enough to contain
+  seats, bookshelves, bay windows" claim.
+
+All five opinions (`p116_cascade_of_roofs.rs`, `p118_roof_garden.rs`, `p119_arcades.rs`,
+`p166_gallery_surround.rs`, `p160_building_edge.rs`) were flipped from an unconditional `NoView`
+to a real check against these fields, same discipline as the P117/P162 flip above -- verified
+against synthetic fixtures in each file's own tests, not just claimed. On every real fixture this
+pipeline ships today they still return `NoView` (P160 falls back to its pre-existing shape-index
+proxy instead, since it already had one), because no generator populates any of the four new
+fields yet -- the honest reason changed from "the schema can't represent this" to "nothing
+produces it yet", which is real forward progress, not the same gap restated. The next real step
+for this cluster is generator work, not more schema: a P116 wing-partition generator, a P118 flat-
+roof-garden generator (needs P116 first), and a P119/P166 canopy generator keyed to `p221`'s
+existing street-facing-wall computation.
+
 ### Extend `p221_natural_doors_and_windows.rs` (openings)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

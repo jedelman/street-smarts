@@ -200,7 +200,7 @@ mod tests {
             parcel_id: None, floors: Some(2), openings: vec![], interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn plaza(id: &str, x_m: f64, y_m: f64, side: f64) -> OpenSpace {

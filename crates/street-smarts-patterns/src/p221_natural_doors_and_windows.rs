@@ -749,7 +749,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

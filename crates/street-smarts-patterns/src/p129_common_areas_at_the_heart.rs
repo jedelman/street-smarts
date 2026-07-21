@@ -222,7 +222,7 @@ mod tests {
             ],
             wall_thickness_m: None,
             roof: None,
-        };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![b]);
         let sub = P129CommonAreasAtTheHeart.apply(&n, "*", &P129Params::defaults(), 1).expect("should run");
         let cells = &sub.new_buildings[0].interior_cells;
@@ -248,7 +248,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![b]);
         assert!(P129CommonAreasAtTheHeart.apply(&n, "*", &P129Params::defaults(), 1).is_err());
     }

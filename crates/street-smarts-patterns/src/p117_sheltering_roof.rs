@@ -180,7 +180,7 @@ impl PatternOperator for P117ShelteringRoof {
                 ridge_height_m: height_m + params.roof_rise_m,
                 eave_height_m: height_m,
                 slope_azimuth_deg: 0.0,
-            });
+            occupiable: false, });
             new_buildings.push(nb);
             replaced.push(b.id.clone());
         }
@@ -251,7 +251,7 @@ mod tests {
             polygon: Polygon::from_ring(square_ring(0.0, 0.0, 10.0)),
             height_m, typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None,
-        }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn nbhd(buildings: Vec<Building>) -> Neighborhood {
