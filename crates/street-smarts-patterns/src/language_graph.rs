@@ -109,6 +109,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "carves a real pocket from buildings bordering a real Plaza; needs P107's real final footprints and P61's real Plazas, and must run before P197/P127/P221 read the final footprint",
     },
     PatternNode {
+        id: "p117_sheltering_roof", alexander_number: Some(117),
+        requires: &["p107_wings_of_light"],
+        completes: &[],
+        why: "assigns every real P107/P96 building with a real height_m a real shed roof sloped to true north; also closes P162 North Face's own specifically-north claim by the same geometry (P162 has no separate generator of its own to list here) -- needs real height_m, which P107 already guarantees (via P96's story count or its own assumed_height_m fallback)",
+    },
+    PatternNode {
         id: "p197_thick_walls", alexander_number: Some(197), requires: &["p107_wings_of_light"], completes: &[],
         why: "assigns every real P107/P124 building a real wall_thickness_m, capped relative to its own footprint; every downstream stage clones-and-mutates from here, so the field survives untouched. Doesn't strictly REQUIRE p124_activity_pockets to have run (P124 is a real but skippable step, not every fixture has a building close enough to a Plaza to qualify) -- just needs to run after it if it did, which pipeline.rs's own real call order already guarantees",
     },

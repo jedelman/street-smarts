@@ -59,38 +59,50 @@
 //!      splices the bump into the ring directly rather than using
 //!      subtract_convex + union_pieces (the same reassembly-reliability
 //!      problem P95/P133 already hit).
-//!   10. P197 Thick Walls (once, site-scale): assigns every real building a
+//!   10. P117 Sheltering Roof (once, site-scale): assigns every real
+//!      building with a real `height_m` a real shed roof (ridge = its own
+//!      height_m, eave = Alexander's own literal 1.8288-1.9812m P117
+//!      figure), sloping down to true north -- also closes P162 North
+//!      Face's own specifically-north claim by the same real geometry.
+//!      Runs after P107/P124 (only needs real height, not footprint or
+//!      wall thickness) and before P197 so wall thickness applies to the
+//!      final, roofed building the same as everything else downstream.
+//!      See p117_sheltering_roof's own module doc for why one shed roof
+//!      honestly satisfies both patterns at once, and what it deliberately
+//!      doesn't claim (P116's per-wing cascade, P118's roof garden, P119/
+//!      P166's canopy geometry).
+//!   11. P197 Thick Walls (once, site-scale): assigns every real building a
 //!      real, nonzero `wall_thickness_m`, capped relative to its own real
-//!      footprint. Runs after P107 and P124 -- every downstream stage
-//!      clones and mutates the buildings P107/P124 produced, so this
+//!      footprint. Runs after P107, P124, and P117 -- every downstream
+//!      stage clones and mutates the buildings those produced, so this
 //!      field survives untouched to the end. Deliberately scalar-only,
 //!      not carved geometry -- see p197_thick_walls's own module doc.
-//!   11. P127 Intimacy Gradient (once, site-scale): partitions every
+//!   12. P127 Intimacy Gradient (once, site-scale): partitions every
 //!      building's ground floor into a depth-ordered sequence of cells
 //!      (public wall/entrance bay -> deepest point). Runs right after P107
 //!      -- canonical numbering (107 < 127) needs no reordering here. See
 //!      `p127_intimacy_gradient`'s own module doc for the full sourced
 //!      sequence Alexander's own text lays out (127 -> 128 -> 129 -> 130 ->
 //!      131 -> 132 -> 133...).
-//!   12. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   13. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
 //!      change, see the module's own doc for why. Kept next to P127
 //!      instead of Alexander's own post-P129 position since nothing about
 //!      it depends on run order relative to P129.
-//!   13. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!   14. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity.
-//!   14. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   15. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   15. P221 (once, site-scale): place real window/door openings on every
+//!   16. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   16. P133 Staircase as a Stage (once, site-scale): carves a real
+//!   17. P133 Staircase as a Stage (once, site-scale): carves a real
 //!      stair-core strip out of the common-area cell of every multi-story
 //!      building, open to the room it interrupts. Runs AFTER P221, not
 //!      right after P131 where Alexander's own numbering would put it --
@@ -117,6 +129,7 @@ use crate::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Param
 use crate::p130_entrance_room::{P130EntranceRoom, P130Params};
 use crate::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use crate::p124_activity_pockets::{P124ActivityPockets, P124Params};
+use crate::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p197_thick_walls::{P197Params, P197ThickWalls};
 use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
@@ -341,12 +354,27 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P124ActivityPockets.name());
     }
 
+    // P117 Sheltering Roof (once, site-scale): assigns every real building
+    // with a real height_m a real shed roof, sloped down to true north --
+    // also closes P162 North Face's own specifically-north claim by the
+    // same geometry. Only needs height_m (already real by this point via
+    // P96/P107's own fallback), not footprint or wall thickness, so its
+    // exact position relative to P124/P197 isn't load-bearing the way
+    // P124<P197 is -- placed here (after P124, before P197) simply to keep
+    // every "shape the building further" stage grouped together before
+    // P197's own scalar-only pass. See p117_sheltering_roof's own module
+    // doc for what it does and deliberately doesn't claim.
+    if let Ok(sub117) = P117ShelteringRoof.apply(&nbhd, "*", &P117Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub117);
+        trace.push(P117ShelteringRoof.name());
+    }
+
     // P197 Thick Walls (once, site-scale): assigns every real building a
     // real wall_thickness_m, capped relative to its own footprint. Runs
-    // after P107 (and after P124, so a bumped building's final footprint
-    // is what gets a thickness) -- every downstream stage clones-and-
-    // mutates from here, so the field survives to the end of the
-    // pipeline untouched. See p197_thick_walls's own module doc.
+    // after P107 (and after P124/P117, so a bumped, roofed building's
+    // final footprint is what gets a thickness) -- every downstream stage
+    // clones-and-mutates from here, so the field survives to the end of
+    // the pipeline untouched. See p197_thick_walls's own module doc.
     if let Ok(sub197) = P197ThickWalls.apply(&nbhd, "*", &P197Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub197);
         trace.push(P197ThickWalls.name());

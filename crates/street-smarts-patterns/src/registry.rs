@@ -13,6 +13,7 @@ use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
 use crate::p130_entrance_room::P130EntranceRoom;
 use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 use crate::p124_activity_pockets::P124ActivityPockets;
+use crate::p117_sheltering_roof::P117ShelteringRoof;
 use crate::p133_staircase_as_a_stage::P133StaircaseAsAStage;
 use crate::p197_thick_walls::P197ThickWalls;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
@@ -99,6 +100,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
         Box::new(P124ActivityPockets),
+        Box::new(P117ShelteringRoof),
         Box::new(P197ThickWalls),
         Box::new(P127IntimacyGradient),
         Box::new(P130EntranceRoom),

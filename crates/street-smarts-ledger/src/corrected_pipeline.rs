@@ -23,6 +23,7 @@ use street_smarts_core::Scope;
 use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use street_smarts_patterns::p124_activity_pockets::{P124ActivityPockets, P124Params};
+use street_smarts_patterns::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use street_smarts_patterns::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
 use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
 use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
@@ -112,6 +113,7 @@ pub fn run_corrected_pipeline_via_ledger(
     // Right after P107, strictly before P197/P127/P221 -- all of which
     // need the FINAL building footprint. See pipeline.rs's own step 9 doc.
     try_run(store, &P124ActivityPockets, "*", &P124Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P117ShelteringRoof, "*", &P117Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Right after P107/P124 -- every downstream stage clones-and-mutates
     // the buildings P107/P124 produced, so wall_thickness_m survives
     // untouched. See pipeline.rs's own step 10 doc.
