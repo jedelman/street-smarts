@@ -13,8 +13,9 @@
 //!
 //! `p133_staircase_as_a_stage` carves a real `InteriorCell { kind: "stair"
 //! }` out of each multi-story building's common area, with a real
-//! `stair_width_m` parameter (range 0.9-2.0m, default 1.2m -- see its own
-//! module doc). This opinion checks that real stair cell's own local
+//! `stair_width_m` parameter (range 0.61-1.52m, default 1.2m -- Alexander's
+//! own literal 2-5 foot figure, see its own module doc). This opinion
+//! checks that real stair cell's own local
 //! bounding-box short side against Alexander's literal 2-5 foot
 //! (0.61-1.52m) width range. Cannot check the "two story volume" claim at
 //! all -- `InteriorCell` has no height/vertical-extent field, and (per

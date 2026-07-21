@@ -14,8 +14,7 @@
 //!
 //! For each ground-floor, outer-wall window (`Opening { kind: Window,
 //! on_hole: false, floor: 0 }`), this opinion computes its exterior point
-//! (the same ring-interpolation `p100_pedestrian_street` and
-//! `p112_entrance_transition` use) and checks:
+//! (the same ring-interpolation `p100_pedestrian_street` uses) and checks:
 //!
 //! - `has_life_nearby`: a real street (perpendicular distance to its
 //!   nearest segment, not just a vertex) or a resolved (non-`Undecided`)
