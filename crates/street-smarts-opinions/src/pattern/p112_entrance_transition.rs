@@ -149,6 +149,7 @@ mod tests {
             polygon: Polygon::from_ring(vec![LngLat::new(0.0, 0.0), LngLat::new(20.0 * m, 0.0), LngLat::new(20.0 * m, 20.0 * m), LngLat::new(0.0, 20.0 * m), LngLat::new(0.0, 0.0)]),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: cells,
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

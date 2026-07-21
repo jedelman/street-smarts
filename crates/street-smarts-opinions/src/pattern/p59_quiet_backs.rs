@@ -167,6 +167,7 @@ mod tests {
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

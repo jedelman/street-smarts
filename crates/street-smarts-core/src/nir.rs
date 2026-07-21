@@ -125,6 +125,53 @@ pub struct Building {
     /// closes).
     #[serde(default)]
     pub wall_thickness_m: Option<f64>,
+    /// Real roof form -- Alexander's P117 Sheltering Roof ("slope the
+    /// roof... make its entire surface visible, and bring the eaves down
+    /// low") and P162 North Face ("make the north face of the building a
+    /// cascade which slopes down to the ground, so the sun... strikes the
+    /// ground immediately beside the building"). `None` until an operator
+    /// that assigns a real roof (`p117_sheltering_roof` generator) has
+    /// run -- every existing fixture round-trips unchanged. Before this
+    /// field existed, every building was a flat-topped extrusion (see
+    /// `render.py`'s own documented "no roof forms" caveat).
+    #[serde(default)]
+    pub roof: Option<RoofForm>,
+}
+
+/// The real geometric family a roof belongs to. Only `Shed` is generated
+/// today (see `p117_sheltering_roof.rs`'s own module doc for why a shed
+/// roof, specifically low on the true-north side, is the one form that
+/// honestly satisfies BOTH P117's "sloped, eaves down low" claim and
+/// P162's specifically NORTH-facing "cascade... to the ground" claim at
+/// once) -- `Gable`/`Hip`/`Flat` are real, named variants reserved for
+/// later work (P116 Cascade of Roofs' own per-wing segments, P118 Roof
+/// Garden's flat section), not fabricated options nothing ever produces.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoofShape {
+    Flat,
+    Shed,
+    Gable,
+    Hip,
+}
+
+/// A real, dimensioned roof over a building's own footprint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoofForm {
+    pub shape: RoofShape,
+    /// Real height (meters, above the site datum P107/P96 already use for
+    /// `Building.height_m`) of the roof's own highest edge.
+    pub ridge_height_m: f64,
+    /// Real height of the roof's own lowest edge -- Alexander's P117
+    /// literal figure (6'0"-6'6" / 1.8288-1.9812m) at its low side.
+    pub eave_height_m: f64,
+    /// Real compass bearing (0 = true north, 90 = east, degrees) the roof
+    /// slopes DOWN toward -- i.e. the direction of the low (eave) edge
+    /// from the high (ridge) edge. `p117_sheltering_roof` always assigns
+    /// `0.0` (true north), for P162's own literal "north face" claim --
+    /// this pipeline's real lng/lat makes that an exact bearing, not an
+    /// approximation.
+    pub slope_azimuth_deg: f64,
 }
 
 /// One cell of a building's interior partition. Deliberately FORM-only --
@@ -379,6 +426,7 @@ mod building_wall_thickness_tests {
             height_m: None, typology: None, year_built: None, parcel_id: None,
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: Some(0.3),
+            roof: None,
         };
         let json = serde_json::to_string(&b).unwrap();
         let back: Building = serde_json::from_str(&json).unwrap();

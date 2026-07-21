@@ -261,6 +261,7 @@ mod tests {
             openings: Vec::<Opening>::new(),
             interior_cells: Vec::new(),
             wall_thickness_m: None,
+            roof: None,
         });
         n.streets.push(Street {
             id: "S1".into(),

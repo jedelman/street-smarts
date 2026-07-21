@@ -386,6 +386,7 @@ mod tests {
             openings: vec![],
             interior_cells: vec![cell],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

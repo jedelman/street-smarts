@@ -408,6 +408,7 @@ mod tests {
             openings: vec![],
             interior_cells: cells,
             wall_thickness_m: None,
+            roof: None,
         }
     }
 
@@ -474,6 +475,7 @@ mod tests {
             openings: vec![],
             interior_cells: vec![mk("bay_0"), mk("bay_1"), mk("bay_2"), mk("bay_3")],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         let sub = P131TheFlowThroughRooms.apply(&n, "*", &P131Params::defaults(), 1).expect("should run");

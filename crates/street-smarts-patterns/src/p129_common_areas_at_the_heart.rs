@@ -221,6 +221,7 @@ mod tests {
                 cell("c2", 25.0 * m, 5.0 * m, 1.0),
             ],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         let sub = P129CommonAreasAtTheHeart.apply(&n, "*", &P129Params::defaults(), 1).expect("should run");
@@ -246,6 +247,7 @@ mod tests {
             openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         assert!(P129CommonAreasAtTheHeart.apply(&n, "*", &P129Params::defaults(), 1).is_err());

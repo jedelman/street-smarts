@@ -215,6 +215,7 @@ mod tests {
             year_built: None, parcel_id: None, floors: Some(3), openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

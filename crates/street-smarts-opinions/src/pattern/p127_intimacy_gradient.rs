@@ -269,6 +269,7 @@ mod tests {
                 band(20.0, 30.0, 1.0, "c2"),
             ],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

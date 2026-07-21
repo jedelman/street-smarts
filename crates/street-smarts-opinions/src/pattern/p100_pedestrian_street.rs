@@ -158,6 +158,7 @@ mod tests {
             openings: vec![Opening { kind: OpeningKind::Door, ring_index: 0, on_hole: false, t: 0.5, width_m: 0.9, sill_height_m: 0.0, head_height_m: 2.1, floor: 0 }],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

@@ -289,6 +289,7 @@ mod tests {
                 floor: 0,
             }],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

@@ -244,6 +244,7 @@ mod tests {
             openings: vec![],
             interior_cells: cells,
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

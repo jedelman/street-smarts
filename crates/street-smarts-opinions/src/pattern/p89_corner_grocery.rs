@@ -164,7 +164,7 @@ mod tests {
     }
 
     fn building_on(id: &str, parcel_id: &str, x_m: f64, y_m: f64, floors: u32) -> Building {
-        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![], wall_thickness_m: None }
+        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None }
     }
 
     fn street_along_x(y_m: f64) -> Street {

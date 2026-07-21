@@ -165,6 +165,7 @@ mod tests {
                 depth: 0.5, is_common: false, kind: "stair".into(), connects_to: vec![], floor: 0,
             }],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 

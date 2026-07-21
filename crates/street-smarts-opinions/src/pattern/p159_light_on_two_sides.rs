@@ -326,6 +326,7 @@ mod tests {
                 win(2, false, 0.5), // mid-wall bay, no adjacent window
             ],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);
@@ -359,6 +360,7 @@ mod tests {
             interior_cells: vec![],
             openings: vec![win(0, false, 0.5), win(0, true, 0.5)],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);
@@ -387,6 +389,7 @@ mod tests {
             interior_cells: vec![],
             openings: vec![win(0, false, 0.5), win(1, false, 0.5)],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);

@@ -371,6 +371,7 @@ mod tests {
             openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
@@ -406,6 +407,7 @@ mod tests {
             openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],

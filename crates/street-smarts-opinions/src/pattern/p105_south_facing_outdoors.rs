@@ -171,6 +171,7 @@ mod tests {
             year_built: None, parcel_id: None, floors: Some(3), openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         (space, building)
     }
@@ -210,6 +211,7 @@ mod tests {
             year_built: None, parcel_id: None, floors: Some(3), openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![space], vec![building]);
         let out = P105SouthFacingOutdoors.evaluate(&n);
@@ -238,6 +240,7 @@ mod tests {
             year_built: None, parcel_id: None, floors: Some(3), openings: vec![],
             interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         };
         let n = nbhd(vec![space], vec![building]);
         let out = P105SouthFacingOutdoors.evaluate(&n);

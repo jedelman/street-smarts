@@ -159,6 +159,7 @@ mod tests {
             parcel_id: Some(format!("p108_merged_{id}")),
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: None,
+            roof: None,
         }
     }
 
