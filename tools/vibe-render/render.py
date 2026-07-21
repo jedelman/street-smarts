@@ -39,11 +39,11 @@ wall, not in a real reveal) and roof forms.
 Massing is still, by default, one footprint swept straight up by one
 height per building -- a real EXTRUSION, not per-floor VOLUMES. The one
 exception is P124 Activity Pockets: `build_scene`'s own per-building
-refill step (see its comment there and `find_pocket_refill`'s own
-docstring) re-adds the notch's own footprint above ground level so a
-pocket reads as a ground-floor alcove, not a floor-to-roof slot -- a
-targeted fix for one real feature, not a general per-floor footprint
-model.
+cutback step (see its comment there and `find_pocket_refill`'s own
+docstring) cuts the bump's own footprint back out above ground level so
+a pocket reads as a ground-floor nook projecting from the building, not
+a floor-to-roof bay window -- a targeted fix for one real feature, not a
+general per-floor footprint model.
 
 Interior rooms are a separate, 2D concern: `render_floor_plan` draws each
 building's `interior_cells` polygons directly (`p127_intimacy_gradient` /
@@ -165,27 +165,30 @@ def extrude_polygon(outer_ring, holes, height, origin_lng, origin_lat):
 
 def find_pocket_refill(building_outer_xy, pocket_outer_xy):
     """Join a P124 Activity Pockets `open_space` entry (`kind: "pocket"`)
-    back to the real building it was carved from -- purely from geometry
+    back to the real building it bumps out from -- purely from geometry
     this scene already has, no Rust schema change needed.
 
     `p124_activity_pockets` (crates/street-smarts-patterns) splices the
     pocket's own 4 corners directly into its parent building's outer ring
-    at the notch site, and the SAME 4 points (run through the SAME
+    at the bump site, and the SAME 4 points (run through the SAME
     local<->lnglat conversion, same origin) become the Pocket's own
     `open_space` polygon -- so at least 3 of the pocket's 4 vertices are,
-    bit-for-bit, real vertices of the FINAL (post-notch) building ring this
+    bit-for-bit, real vertices of the FINAL (post-bump) building ring this
     scene already has. Requiring 3+ (not just 1) is what makes this safe
     against a party-wall neighbor (P108-merged buildings can share one or
     two incidental ring vertices, never a run of 3+) -- confirmed on the
-    real eastside-baseline fixture: 17/17 real pockets match exactly one
-    real building each, zero ambiguous matches.
+    real eastside-baseline fixture back when the generator produced real
+    pockets (17/17 matched exactly one real building each, zero ambiguous
+    matches); the matching logic itself is unchanged by the later
+    notch-to-bump rewrite, since the splice technique is the same either
+    direction.
 
     Returns the set of `ring_index` values (edge-start indices into
-    `building_outer_xy`) for the short notch edges (the alcove's own
-    side/back walls) -- used both by `build_scene`'s own refill step and
-    to tell `opening_records` which edges are, after refill, an interior
-    face rather than an exterior wall for any floor above ground. Empty
-    set if `pocket_outer_xy` isn't this building's own pocket.
+    `building_outer_xy`) for the short bump edges (the nook's own
+    side/front walls) -- used both by `build_scene`'s own cutback step and
+    to tell `opening_records` which edges don't exist above ground floor
+    once the bump is cut back out. Empty set if `pocket_outer_xy` isn't
+    this building's own pocket.
     """
     idxs = []
     for pp in pocket_outer_xy:
@@ -304,20 +307,21 @@ def opening_records(building, origin_lng, origin_lat, skip_ring_indices=frozense
 
     `skip_ring_indices` (outer-ring edges only, never holes): P124
     Activity Pockets runs BEFORE P221 in the real pipeline, so P221 places
-    openings against the already-notched ring and can put a floor>=1
-    opening on one of the notch's own short edges. `build_scene`'s own
-    pocket-refill step fills that notch back in above ground level (see
-    `find_pocket_refill`'s own docstring) -- for a building it refilled,
-    those specific edges are an INTERIOR face at floor>=1 after the
-    refill, not an exterior wall, so a decal there would sit glued to a
-    face buried inside solid mass, invisible and wasted rather than a real
-    opening. Floor-0 openings on the same edges are untouched -- ground
-    level really does keep the notch. Checked directly against the real
-    fixture: 0 of 17 real pockets currently produce a floor>=1 opening on
-    a notch edge (P221's own placement logic doesn't happen to reach one
-    here), so this is a real but not yet observed failure mode -- kept as
-    a cheap, always-correct guard rather than something to revisit only
-    once it actually bites.
+    openings against the already-bumped ring and can put a floor>=1
+    opening on one of the bump's own short edges. `build_scene`'s own
+    pocket-cutback step cuts that bump back out above ground level (see
+    `find_pocket_refill`'s own docstring) -- for a building it cut back,
+    those specific edges DON'T EXIST at floor>=1 after the cutback (the
+    ring above ground floor reverts to the plain, pre-bump footprint), so
+    a decal there would float in open air or sit glued inside solid mass
+    depending on direction, either way not a real opening. Floor-0
+    openings on the same edges are untouched -- ground level really does
+    keep the bump. Not yet re-measured against a real fixture with real
+    bumped pockets (the current eastside-baseline fixture produces zero
+    real pockets under the corrected, Alexander-faithful generator -- see
+    p124_activity_pockets.rs's own module doc) -- kept as a cheap,
+    always-correct guard rather than something to defer until a fixture
+    with real pockets exists to check it against.
     """
     openings = building.get("openings") or []
     if not openings:
@@ -458,51 +462,52 @@ def build_scene(nbhd, context_path=None):
             if solid is None:
                 continue
 
-            # Volumetric refill: a P124 notch is a GROUND-LEVEL alcove (see
+            # Volumetric cutback: a P124 pocket is a GROUND-LEVEL alcove (see
             # p124_activity_pockets.rs's own module doc -- Alexander's "small
             # pocket of activity" reading is a street-level feature, not a
-            # light well), but `extrude_polygon` above just swept the
-            # (already-notched) ring straight up by the building's FULL
-            # height -- a naive single extrusion carves the notch through
-            # every floor, not just the ground one. There's no per-floor
-            # footprint field anywhere in this schema to read the "right"
-            # upper-floor shape from, and no pre-notch ring either (P124
-            # deliberately doesn't keep one -- every downstream Rust
+            # floor-to-roof bay window), but `extrude_polygon` above just
+            # swept the (already-bumped) ring straight up by the building's
+            # FULL height -- a naive single extrusion projects the bump
+            # through every floor, not just the ground one. There's no
+            # per-floor footprint field anywhere in this schema to read the
+            # "right" upper-floor shape from, and no pre-bump ring either
+            # (P124 deliberately doesn't keep one -- every downstream Rust
             # consumer needs the FINAL ring). Re-derive it instead from the
-            # pocket's own emitted geometry: extrude just the notch
+            # pocket's own emitted geometry: extrude just the pocket
             # rectangle from one floor-to-floor height up to the roof, and
-            # fuse it back onto the base solid, so only the ground floor
-            # keeps the recess and every floor above reads as a normal
-            # solid facade -- the same "ground-level void under upper-floor
-            # mass" shape as Alexander's P119 Arcades, not yet a P124-only
-            # special case in spirit even though it's implemented as one
-            # here (no generalized abstraction built ahead of a second real
-            # user for it).
+            # CUT it back out of the base solid, so only the ground floor
+            # keeps the projecting bump and every floor above reverts to the
+            # plain, pre-bump facade -- a ground-floor nook, not a bay
+            # window repeated at every story. This is the opposite boolean
+            # from the earlier inward-notch reading (which added material
+            # back above ground floor); the base ring itself now already
+            # includes the bump, so the correction needed above ground
+            # floor is subtractive.
             _t0 = time.perf_counter()
-            notch_edge_indices = set()
+            bump_edge_indices = set()
             outer_xy = ring_to_xy(part["outer"], origin_lng, origin_lat)
             for pocket in unclaimed_pockets:
                 pocket_xy = ring_to_xy(pocket["polygon"]["outer"], origin_lng, origin_lat)
                 edges = find_pocket_refill(outer_xy, pocket_xy)
                 if not edges:
                     continue
-                notch_edge_indices = edges
+                bump_edge_indices = edges
                 if height > FLOOR_TO_FLOOR_M:
                     # Assumes the pocket itself is exactly one
                     # FLOOR_TO_FLOOR_M tall -- P124 carries no explicit
                     # height field of its own, so this is a rendering-layer
                     # assumption, not a Rust-derived fact.
-                    refill = extrude_polygon(
+                    cutback = extrude_polygon(
                         pocket["polygon"]["outer"], [], height - FLOOR_TO_FLOOR_M, origin_lng, origin_lat
                     )
-                    if refill is not None:
-                        refill = refill.translate((0, 0, FLOOR_TO_FLOOR_M))
+                    if cutback is not None:
+                        cutback = cutback.translate((0, 0, FLOOR_TO_FLOOR_M))
                         try:
-                            solid = solid.union(refill).clean()
+                            solid = solid.cut(cutback).clean()
                         except Exception as e:
                             print(
-                                f"  ! pocket refill union failed for {b.get('id')}, "
-                                f"rendering with the full-height notch instead: {e}",
+                                f"  ! pocket cutback failed for {b.get('id')}, "
+                                f"rendering with the full-height bump instead: {e}",
                                 file=sys.stderr,
                             )
                 unclaimed_pockets.remove(pocket)
@@ -512,7 +517,7 @@ def build_scene(nbhd, context_path=None):
             building_solids.append((solid, "building_shaped"))
             _t0 = time.perf_counter()
             opening_decal_records.extend(
-                opening_records(b, origin_lng, origin_lat, skip_ring_indices=notch_edge_indices)
+                opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
             )
             t_openings += time.perf_counter() - _t0
         # Track the pad id this building came from so we don't double-extrude it below.
