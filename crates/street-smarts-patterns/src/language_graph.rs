@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 16-step sequence -- exactly the "read-and-infer" cost
+//! same 20-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 16-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 20-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -143,6 +143,24 @@ pub const LANGUAGE: &[PatternNode] = &[
         requires: &["p129_common_areas_at_the_heart", "p131_the_flow_through_rooms", "p221_natural_doors_and_windows"],
         completes: &[],
         why: "carves a stair core from the common-area cell of multi-story buildings; needs Building.floors (only P221 sets it) and P129/P131's cell structure to carve from",
+    },
+    PatternNode {
+        id: "p118_roof_garden", alexander_number: Some(118),
+        requires: &["p117_sheltering_roof", "p221_natural_doors_and_windows"],
+        completes: &[],
+        why: "overwrites P117's sloped shed roof with a flat, occupiable one on tall-enough buildings; needs a real roof to overwrite (P117) and real Building.floors (only P221 sets it) for its own floor-count criterion",
+    },
+    PatternNode {
+        id: "p119_arcades", alexander_number: Some(119),
+        requires: &["p107_wings_of_light", "p221_natural_doors_and_windows"],
+        completes: &[],
+        why: "places a real ground-floor arcade (P119) plus a gallery at every real upper story (P166) on the building's street/open-space-facing wall; needs real footprint geometry (P107) and real Building.floors for the every-story claim (only P221 sets it)",
+    },
+    PatternNode {
+        id: "p160_building_edge", alexander_number: Some(160),
+        requires: &["p221_natural_doors_and_windows"],
+        completes: &[],
+        why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank",
     },
 ];
 

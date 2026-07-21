@@ -113,6 +113,26 @@
 //!      resulting error. See the module's own doc for the full story (also
 //!      covers the clip_half_plane-based strip technique, borrowed from
 //!      P131's own passage cell, and the union_pieces bug it replaced).
+//!   18. P118 Roof Garden (once, site-scale): overwrites the site's own
+//!      `max_gardens` tallest real buildings from P117's sloped shed roof
+//!      to a flat, occupiable garden roof. Runs after P221 for the same
+//!      reason P133 does -- needs real `Building.floors` to rank by. A
+//!      small fixed count, not a floor threshold -- see p118_roof_garden's
+//!      own module doc for why a threshold was tried and rejected (it
+//!      tanked P117/P162's own real sloped-roof score site-wide on this
+//!      pipeline's real fixture).
+//!   19. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+//!      real ground-floor arcade canopy, plus a gallery canopy at every
+//!      real upper story, on whichever wall best faces the nearest real
+//!      street/open space. Also needs real `Building.floors` (P166's
+//!      "every story" claim), so runs after P221. Not fatal if no
+//!      building has a real street/open-space target within threshold.
+//!      See p119_arcades's own module doc.
+//!   20. P160 Building Edge (once, site-scale): places a real wall niche
+//!      flanking every real door P221 already placed, on the same wall
+//!      edge. Runs after P221 for the real door data to flank. Not fatal
+//!      if no door has room for a niche on either side. See
+//!      p160_building_edge's own module doc.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -130,7 +150,10 @@ use crate::p130_entrance_room::{P130EntranceRoom, P130Params};
 use crate::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use crate::p124_activity_pockets::{P124ActivityPockets, P124Params};
 use crate::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
+use crate::p118_roof_garden::{P118Params, P118RoofGarden};
+use crate::p119_arcades::{P119Arcades, P119Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
+use crate::p160_building_edge::{P160BuildingEdge, P160Params};
 use crate::p197_thick_walls::{P197Params, P197ThickWalls};
 use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
@@ -411,6 +434,33 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub133) = P133StaircaseAsAStage.apply(&nbhd, "*", &P133Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub133);
         trace.push(P133StaircaseAsAStage.name());
+    }
+
+    // P118 Roof Garden (once, site-scale): overwrites every real
+    // sufficiently-tall building's P117 sloped roof with a flat,
+    // occupiable one. Needs real Building.floors (only P221 sets it), so
+    // runs here, not right after P117. Not fatal if no building qualifies.
+    if let Ok(sub118) = P118RoofGarden.apply(&nbhd, "*", &P118Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub118);
+        trace.push(P118RoofGarden.name());
+    }
+
+    // P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+    // real ground-floor arcade plus upper-story galleries on each
+    // building's real street/open-space-facing wall. Also needs real
+    // Building.floors for P166's "every story" claim, so runs after P221.
+    // Not fatal if no building has a real facing target within threshold.
+    if let Ok(sub119) = P119Arcades.apply(&nbhd, "*", &P119Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub119);
+        trace.push(P119Arcades.name());
+    }
+
+    // P160 Building Edge (once, site-scale): places a real wall niche
+    // flanking every real door P221 already placed. Needs real Opening
+    // data, so runs after P221. Not fatal if no door has room for one.
+    if let Ok(sub160) = P160BuildingEdge.apply(&nbhd, "*", &P160Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub160);
+        trace.push(P160BuildingEdge.name());
     }
 
     (nbhd, trace)

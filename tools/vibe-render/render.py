@@ -212,6 +212,42 @@ def roof_cap_solid(outer_ring, eave_height_m, ridge_height_m, origin_lng, origin
         return None
 
 
+FLAT_ROOF_CAP_THICKNESS_M = 0.2  # a plausible real slab depth for a flat,
+# occupiable roof (P118 Roof Garden) -- same "plausible, honestly labeled,
+# not a cited figure" category as FLOOR_PLATE_THICKNESS_M below.
+
+
+def flat_roof_cap_solid(outer_ring, height_m, origin_lng, origin_lat):
+    """A real flat roof cap for P118 Roof Garden's own occupiable
+    `RoofForm` (`RoofShape.Flat`, `ridge_height_m == eave_height_m` by
+    `p118_roof_garden`'s own construction -- see that generator's own
+    module doc). `roof_cap_solid` above needs a real `ridge_height_m >
+    eave_height_m` rise to build its triangular-wedge profile and returns
+    `None` for a genuinely flat roof -- this is a dedicated, much simpler
+    primitive instead: a real flat slab at `height_m`, using the SAME real
+    bounding-box footprint approximation `roof_cap_solid`'s own docstring
+    already documents and uses (not a new simplification introduced
+    here). `None` if the footprint is degenerate."""
+    pts = ring_to_xy(outer_ring, origin_lng, origin_lat)
+    if len(pts) < 3:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    if x_max - x_min < 1e-6 or y_max - y_min < 1e-6:
+        return None
+    try:
+        return (
+            cq.Workplane("XY")
+            .box(x_max - x_min, y_max - y_min, FLAT_ROOF_CAP_THICKNESS_M)
+            .translate(((x_min + x_max) / 2, (y_min + y_max) / 2, height_m + FLAT_ROOF_CAP_THICKNESS_M / 2))
+        )
+    except Exception as e:
+        print(f"  ! skipped a flat roof cap (extrude failed: {e})", file=sys.stderr)
+        return None
+
+
 INTERIOR_WALL_HEIGHT_M = 2.7  # a plausible real interior ceiling height --
 # NOT Alexander's own literal figure (p127_intimacy_gradient's own cells
 # carry no height data at all), deliberately well under FLOOR_TO_FLOOR_M
@@ -565,6 +601,143 @@ def opening_placement(ring_xy, ring_sign, o):
     height = max(o["head_height_m"] - o["sill_height_m"], 0.1)
     z_bottom = o["floor"] * FLOOR_TO_FLOOR_M + o["sill_height_m"]
     return mx, my, z_bottom + height / 2, angle_deg, width, height, nx, ny
+
+
+def span_placement(ring_xy, ring_sign, ring_index, t_start, t_end):
+    """Real placement for a `t_start..t_end` SPAN along one wall edge
+    (`Canopy`, `WallNiche`) -- the same real edge/normal/angle math
+    `opening_placement` uses for a single point+width_m, generalized to a
+    real linear span instead: `width` is derived from the real
+    `(t_end - t_start)` fraction of the edge's own real length, not a
+    separately-stored value (neither `Canopy` nor `WallNiche` carry one --
+    see `crates/street-smarts-core/src/nir.rs`'s own doc for why). Returns
+    `(mx, my, angle_deg, width, nx, ny)` -- no z-position, unlike
+    `opening_placement`: a canopy's real vertical placement (a thin slab
+    at its own clearance height) and a wall niche's (a bump spanning a
+    real seat/bay height range) are different enough shapes that each
+    solid-builder computes its own z directly, rather than forcing one
+    shared convention. `None` if the referenced edge is degenerate or out
+    of range."""
+    n = len(ring_xy)
+    i = ring_index
+    if n < 2 or i >= n:
+        return None
+    ax, ay = ring_xy[i]
+    bx, by = ring_xy[(i + 1) % n]
+    dx, dy = bx - ax, by - ay
+    edge_len = math.hypot(dx, dy)
+    if edge_len < 1e-6:
+        return None
+    t_mid = (t_start + t_end) / 2
+    mx, my = ax + dx * t_mid, ay + dy * t_mid
+    nx, ny = (dy / edge_len, -dx / edge_len) if ring_sign >= 0 else (-dy / edge_len, dx / edge_len)
+    angle_deg = math.degrees(math.atan2(dy, dx))
+    width = max(abs(t_end - t_start) * edge_len, 0.1)
+    return mx, my, angle_deg, width, nx, ny
+
+
+CANOPY_SLAB_THICKNESS_M = 0.15  # a thin roof plane, not a real load-bearing
+# structure -- just enough real depth to tessellate as a solid.
+
+
+def canopy_solid(span, depth_m, floor, clearance_height_m):
+    """A real, thin horizontal slab for one `Canopy` (P119 Arcades / P166
+    Gallery Surround) -- sits with its own underside at the real
+    clearance height above `floor`'s own base elevation
+    (`floor * FLOOR_TO_FLOOR_M + clearance_height_m`, the same real
+    per-floor convention `Opening.sill_height_m` uses), projecting
+    OUTWARD from the wall face by `depth_m` (its inner edge flush with
+    the wall, not floating clear of it or buried inside it). `None` if
+    the underlying box fails to build."""
+    mx, my, angle_deg, width, nx, ny = span
+    z_bottom = floor * FLOOR_TO_FLOOR_M + clearance_height_m
+    ox, oy = mx + nx * (depth_m / 2), my + ny * (depth_m / 2)
+    try:
+        return (
+            cq.Workplane("XY")
+            .box(width, depth_m, CANOPY_SLAB_THICKNESS_M)
+            .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+            .translate((ox, oy, z_bottom + CANOPY_SLAB_THICKNESS_M / 2))
+            .val()
+        )
+    except Exception:
+        return None
+
+
+WALL_NICHE_HEIGHT_M = 1.6  # a plausible real seat/bay height -- NOT
+# Alexander's own literal figure (P160's cited text gives none), a modest
+# real scale between a built-in bench and a bay window, ground level only
+# (WallNiche carries no floor field -- see nir.rs's own doc for why).
+
+
+def wall_niche_solid(span, extra_depth_m):
+    """A real, local outward bump in the wall's own depth for one
+    `WallNiche` (P160 Building Edge) -- projects OUTWARD from the wall
+    face by `extra_depth_m`, spanning a real, modest `WALL_NICHE_HEIGHT_M`
+    from grade. Additive to `Building.wall_thickness_m`, not a
+    replacement -- see this file's own module doc history and
+    `p160_building_edge.rs`'s own generator doc. `None` if the underlying
+    box fails to build."""
+    mx, my, angle_deg, width, nx, ny = span
+    ox, oy = mx + nx * (extra_depth_m / 2), my + ny * (extra_depth_m / 2)
+    try:
+        return (
+            cq.Workplane("XY")
+            .box(width, extra_depth_m, WALL_NICHE_HEIGHT_M)
+            .rotate((0, 0, 0), (0, 0, 1), angle_deg)
+            .translate((ox, oy, WALL_NICHE_HEIGHT_M / 2))
+            .val()
+        )
+    except Exception:
+        return None
+
+
+def canopy_and_niche_records(building, origin_lng, origin_lat):
+    """Every real `Canopy`/`WallNiche` solid for one building -- `build_
+    scene`'s own single pass over the real per-building `canopies`/
+    `wall_niches` data, same real ring/placement machinery `opening_
+    records` already uses for `openings`."""
+    canopies = building.get("canopies") or []
+    niches = building.get("wall_niches") or []
+    if not canopies and not niches:
+        return [], []
+
+    outer_ring = ring_to_xy(building["polygon"]["outer"], origin_lng, origin_lat)
+    outer_sign = polygon_signed_area2_m2(outer_ring)
+    holes = building["polygon"].get("holes") or []
+    hole_ring = ring_to_xy(holes[0], origin_lng, origin_lat) if holes else None
+    hole_sign = polygon_signed_area2_m2(hole_ring) if hole_ring else 0.0
+
+    canopy_solids = []
+    for c in canopies:
+        on_hole = c.get("on_hole")
+        ring = hole_ring if on_hole else outer_ring
+        ring_sign = hole_sign if on_hole else outer_sign
+        if not ring:
+            continue
+        span = span_placement(ring, ring_sign, c["ring_index"], c["t_start"], c["t_end"])
+        if span is None:
+            continue
+        solid = canopy_solid(span, c["depth_m"], c.get("floor", 0), c["height_m"])
+        if solid is not None:
+            kind = "canopy_arcade" if c["kind"] == "arcade" else "canopy_gallery"
+            canopy_solids.append((solid, kind))
+
+    niche_solids = []
+    for wn in niches:
+        on_hole = wn.get("on_hole")
+        ring = hole_ring if on_hole else outer_ring
+        ring_sign = hole_sign if on_hole else outer_sign
+        if not ring:
+            continue
+        span = span_placement(ring, ring_sign, wn["ring_index"], wn["t_start"], wn["t_end"])
+        if span is None:
+            continue
+        solid = wall_niche_solid(span, wn["extra_depth_m"])
+        if solid is not None:
+            niche_solids.append((solid, "wall_niche"))
+
+    return canopy_solids, niche_solids
 
 
 def opening_quad_corners(placement):
@@ -942,6 +1115,13 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     window_glow_records = []  # [(solid, "window_glow"), ...] -- real warm
     # panes behind real punched WINDOW voids (window_glow_solids' own
     # docstring), only ever populated when punch_real_openings=True.
+    canopy_records = []  # [(solid, "canopy_arcade"|"canopy_gallery"), ...]
+    # -- real P119/P166 canopies, see canopy_and_niche_records's own
+    # docstring. Populated whenever a building's real "canopies" list is
+    # non-empty (independent of punch_real_openings -- a canopy is its own
+    # real solid, not a punch-void pane).
+    wall_niche_records = []  # [(solid, "wall_niche"), ...] -- real P160
+    # wall bulges, see canopy_and_niche_records's own docstring.
     building_ids_with_real_shape = set()
 
     # P124 Activity Pockets' own `open_space` entries (kind="pocket") --
@@ -1062,11 +1242,21 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
             _t0 = time.perf_counter()
             roof = b.get("roof")
             if roof is not None:
-                roof_solid = roof_cap_solid(
-                    part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
-                )
+                if roof["shape"] == "flat":
+                    # P118 Roof Garden's own real occupiable roof --
+                    # roof_cap_solid's triangular-wedge profile needs a
+                    # real ridge > eave rise, which a flat roof never has
+                    # by construction. See flat_roof_cap_solid's own
+                    # docstring.
+                    roof_solid = flat_roof_cap_solid(part["outer"], roof["ridge_height_m"], origin_lng, origin_lat)
+                    roof_kind = "roof_garden" if roof.get("occupiable") else "roof"
+                else:
+                    roof_solid = roof_cap_solid(
+                        part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
+                    )
+                    roof_kind = "roof"
                 if roof_solid is not None:
-                    building_solids.append((roof_solid, "roof"))
+                    building_solids.append((roof_solid, roof_kind))
             t_roof += time.perf_counter() - _t0
 
             if not punch_real_openings:
@@ -1075,6 +1265,16 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                     opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
                 )
                 t_openings += time.perf_counter() - _t0
+
+            # P119/P166 canopies and P160 wall niches -- real, independent
+            # of punch_real_openings (neither is a punch-void pane; both
+            # are real projecting solids in their own right). See
+            # canopy_and_niche_records's own docstring.
+            _t0 = time.perf_counter()
+            c_solids, n_solids = canopy_and_niche_records(b, origin_lng, origin_lat)
+            canopy_records.extend(c_solids)
+            wall_niche_records.extend(n_solids)
+            t_openings += time.perf_counter() - _t0
 
             # p127_intimacy_gradient's own real InteriorCell partitions --
             # only ever built when a caller explicitly opts in (see
@@ -1253,6 +1453,8 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         "opening_decals": opening_decal_records,
         "interior_walls": interior_wall_solids,
         "window_glow": window_glow_records,
+        "canopies": canopy_records,
+        "wall_niches": wall_niche_records,
         "plazas": plaza_solids,
         "streets": street_solids,
         "activity_markers": activity_solids,
@@ -1273,6 +1475,22 @@ COLORS = {
     "roof": "#5c3a2e",  # a real, darker shingled-roof brown -- distinct from
     # "building_shaped" but clearly related (same warm-brown family), not an
     # unrelated hue, matching "pocket"'s own reasoning above.
+    "roof_garden": "#7a9a5e",  # a real garden green, deliberately unrelated
+    # to the warm-brown roof/building family -- P118's own flat occupiable
+    # roof is real planted/usable space, not another shade of shingle, and
+    # should read as such at a glance.
+    "canopy_arcade": "#c9a13f",  # a warm, sheltering gold -- P119's own
+    # ground-level covered walkway, close to "plaza"'s own hue (both are
+    # real public/pedestrian-facing surfaces) but distinct enough not to
+    # be confused with the ground plane itself.
+    "canopy_gallery": "#b8894a",  # same real family as canopy_arcade (P166
+    # is the same covered-walkway geometry at upper stories) but a shade
+    # darker/cooler -- reads as related, not identical, since a balcony
+    # gallery isn't quite the same ground-level public space an arcade is.
+    "wall_niche": "#9c7a5a",  # between "building_shaped" and "pocket" --
+    # a real local wall bulge is part of the wall mass, not a separate
+    # material, so it stays in the same warm-brown family, just a
+    # distinguishable shade.
     "interior_wall": "#e8dfc8",  # a real, light plaster-like tone -- deliberately
     # far from the warm-brown exterior family so a real InteriorCell partition
     # reads as a distinct, interior element seen through the translucent shell,
@@ -1526,6 +1744,10 @@ def render_isometric(scene, out_path, title):
     # -- drawn near-opaque so they read as a lit interior even against the
     # near-solid punched shell above, not a translucency trick.
     add_group(scene.get("window_glow", []), alpha=0.95, for_bounds=False)
+    # Real P119/P166 canopies and P160 wall niches -- independent of
+    # punch_real_openings, always drawn when present.
+    add_group(scene.get("canopies", []), alpha=0.9, for_bounds=True)
+    add_group(scene.get("wall_niches", []), alpha=0.9, for_bounds=False)
     # A soft ground-level halo under each real ActivityNode marker, drawn
     # BEFORE the marker itself so the opaque post sits on top of its own
     # glow rather than hiding it -- see ACTIVITY_GLOW_RADIUS_M's own
@@ -1794,6 +2016,8 @@ def render_interior_view(scene, candidate, out_path, title):
     # they're what makes a punched WINDOW void read as a lit room beyond,
     # not just a dark hole in the shell.
     draw_solid_group(ax, scene.get("window_glow", []), alpha=0.95)
+    draw_solid_group(ax, scene.get("canopies", []), alpha=0.9)
+    draw_solid_group(ax, scene.get("wall_niches", []), alpha=0.9)
     draw_solid_group(ax, scene.get("plazas", []), alpha=0.5)
     draw_solid_group(ax, scene.get("activity_glow", []), alpha=0.3)
     draw_solid_group(ax, scene.get("activity_markers", []), alpha=0.85)
@@ -2031,6 +2255,11 @@ def export_glb(scene, out_path):
         # not just look flat-lit gold) is a post-process below, keyed off
         # this exact mesh-name suffix.
         ("window_glow", 0.95, "window_glow"),
+        # Real P119/P166 canopies and P160 wall niches -- independent of
+        # punch_real_openings, always present when the real pipeline
+        # placed them.
+        ("canopies", 0.9, "canopies"),
+        ("wall_niches", 0.9, "wall_niches"),
         # Real ground-level halo under each ActivityNode marker -- same
         # `f"activity_{kind}"` color as the marker it belongs to (no
         # separate COLORS entry needed), own lower alpha so it reads as a
@@ -2495,7 +2724,8 @@ def main():
     print(
         f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
         f"streets: {len(scene['streets'])}, activity_markers: {len(scene.get('activity_markers', []))}, "
-        f"interior_walls: {len(scene.get('interior_walls', []))}, context: {len(scene['context'])}"
+        f"interior_walls: {len(scene.get('interior_walls', []))}, context: {len(scene['context'])}, "
+        f"canopies: {len(scene.get('canopies', []))}, wall_niches: {len(scene.get('wall_niches', []))}"
     )
 
     _t0 = time.perf_counter()
