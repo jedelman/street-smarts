@@ -103,6 +103,18 @@ caveat) -- P116/117/118/162 share that same real prerequisite gap, flagged hones
 | 162 | North Face | Cascade the north face down so sun reaches the ground beside it. | Same roof-geometry prerequisite as P116/117, applied by cardinal direction (this pipeline already computes real lng/lat, so "north" is real, not approximated). |
 | 166 | Gallery Surround | Porches/balconies/arcades at building edges facing public space. | Same family as P119 -- bundle together. |
 
+**2026-07-21 update, not part of the original proposal above:** P117/162 shipped for real
+(`p117_sheltering_roof.rs`, a new generator, not an extension of `p107_wings_of_light.rs` as
+this table originally proposed) -- a real `Building.roof` (shed roof, ridge above the
+building's own real `height_m`, sloped to true north) now exists, closing both patterns'
+own detector opinions from `NoView` to a real check, and rendered in `render.py` as a plain
+extrusion (no boolean). P116/118/119/166/160's own real gaps are UNCHANGED by this -- P116
+needs real per-wing roof segments (a richer schema addition keyed to `p127_intimacy_gradient`'s
+cell graph, not built), P118 still needs P116 first, P119/166's own canopy/gallery geometry is a
+different real primitive (not a roof slope) not attempted, and P160's own "wall has real depth"
+prerequisite is untouched. See `p117_sheltering_roof.rs`'s own module doc for the full reasoning
+and what was deliberately left out.
+
 ### Extend `p221_natural_doors_and_windows.rs` (openings)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|
