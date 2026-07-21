@@ -196,6 +196,57 @@ def roof_cap_solid(outer_ring, eave_height_m, ridge_height_m, origin_lng, origin
         return None
 
 
+INTERIOR_WALL_HEIGHT_M = 2.7  # a plausible real interior ceiling height --
+# NOT Alexander's own literal figure (p127_intimacy_gradient's own cells
+# carry no height data at all), deliberately well under FLOOR_TO_FLOOR_M
+# (3.5m) so a partition wall reads as an interior wall, not a second
+# full-height exterior wall -- same "plausible, honestly labeled, not a
+# cited number" category as p95_building_complex's own pad_inset_m.
+INTERIOR_WALL_THICKNESS_M = 0.12  # thinner than the real exterior
+# wall_thickness_m (p197_thick_walls' own default 0.3m) -- a partition,
+# not load-bearing exterior construction.
+
+
+def interior_partition_solids(cell_ring_xy, wall_height_m=INTERIOR_WALL_HEIGHT_M, wall_thickness_m=INTERIOR_WALL_THICKNESS_M):
+    """Real, additive thin wall slabs along ONE `InteriorCell`'s own real
+    polygon boundary (`p127_intimacy_gradient`'s own real depth-ordered
+    partition) -- one real EXTRUSION per edge, no boolean, the same
+    additive technique already used for the roof cap and (in the Rust
+    generator itself) P124's bump. Ground floor only, one story, no
+    ceiling -- `InteriorCell.floor` is hard-coded 0 everywhere in this
+    schema (see its own doc comment), so anything above a single real
+    story would be fabricated, not rendered.
+
+    Adjacent cells sharing a real boundary edge each draw their own wall
+    there -- a real, honest double-wall simplification for a first slice,
+    not a hidden approximation: deduplicating shared edges would need a
+    real adjacency reconciliation (`InteriorCell.connects_to` says WHICH
+    cells are adjacent, not which specific edge they share), a separate,
+    larger lift not attempted here.
+    """
+    solids = []
+    n = len(cell_ring_xy)
+    for i in range(n):
+        ax, ay = cell_ring_xy[i]
+        bx, by = cell_ring_xy[(i + 1) % n]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        nx, ny = -dy / length, dx / length  # unit perpendicular to the edge
+        hw = wall_thickness_m / 2
+        quad = [
+            (ax + nx * hw, ay + ny * hw), (bx + nx * hw, by + ny * hw),
+            (bx - nx * hw, by - ny * hw), (ax - nx * hw, ay - ny * hw),
+        ]
+        try:
+            solid = cq.Workplane("XY").polyline(quad).close().extrude(wall_height_m)
+            solids.append(solid)
+        except Exception as e:
+            print(f"  ! skipped an interior wall segment (extrude failed: {e})", file=sys.stderr)
+    return solids
+
+
 def load(path):
     with open(path) as f:
         return json.load(f)
@@ -473,7 +524,18 @@ def load_context_buildings(path, origin_lng, origin_lat):
     return solids
 
 
-def build_scene(nbhd, context_path=None):
+def build_scene(nbhd, context_path=None, include_interior_walls=False):
+    """`include_interior_walls`: real, opt-in -- OFF by default so every
+    existing scenario (clean_baseline included, since p127_intimacy_
+    gradient runs on every real building site-wide, not just a showcase
+    cluster) renders exactly as it always has, byte-for-byte, unless a
+    caller explicitly asks for the interior-detail treatment (see
+    `interior_partition_solids`'s own docstring, and `main`'s own
+    `--interiors` flag). When on, `render_isometric`/`export_glb` both
+    key off whether `scene["interior_walls"]` is non-empty to lower the
+    exterior shell's own alpha and draw partitions on top -- no separate
+    render-time flag needed there, the scene data itself is the signal.
+    """
     parcels = site_parcels(nbhd)
     if not parcels:
         raise SystemExit("no site parcels found -- check spec filtering")
@@ -490,6 +552,9 @@ def build_scene(nbhd, context_path=None):
     # `export_glb` share this SAME list now; there is no more separate
     # punched-vs-unpunched pair to keep in sync.
     opening_decal_records = []  # [(placement, color_key), ...] -- see opening_records's own docstring
+    interior_wall_solids = []  # [(solid, "interior_wall"), ...] -- real
+    # p127_intimacy_gradient InteriorCell partitions, only ever populated
+    # when include_interior_walls=True.
     building_ids_with_real_shape = set()
 
     # P124 Activity Pockets' own `open_space` entries (kind="pocket") --
@@ -512,7 +577,7 @@ def build_scene(nbhd, context_path=None):
     # (confirmed: +/-50s sandbox noise swamped a single before/after
     # comparison when the P124 refill was added). Kept cheap: time.perf_counter()
     # calls around work already happening, no extra passes.
-    t_extrude = t_refill = t_openings = t_roof = 0.0
+    t_extrude = t_refill = t_openings = t_roof = t_interior = 0.0
 
     for b in nbhd.get("buildings", []):
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
@@ -601,6 +666,20 @@ def build_scene(nbhd, context_path=None):
                 opening_records(b, origin_lng, origin_lat, skip_ring_indices=bump_edge_indices)
             )
             t_openings += time.perf_counter() - _t0
+
+            # p127_intimacy_gradient's own real InteriorCell partitions --
+            # only ever built when a caller explicitly opts in (see
+            # build_scene's own docstring); every existing scenario leaves
+            # `nbhd["buildings"][*]["interior_cells"]` untouched here.
+            if include_interior_walls:
+                _t0 = time.perf_counter()
+                for cell in b.get("interior_cells") or []:
+                    cell_xy = ring_to_xy(cell["polygon"]["outer"], origin_lng, origin_lat)
+                    if len(cell_xy) < 3:
+                        continue
+                    for wall_solid in interior_partition_solids(cell_xy):
+                        interior_wall_solids.append((wall_solid, "interior_wall"))
+                t_interior += time.perf_counter() - _t0
         # Track the pad id this building came from so we don't double-extrude it below.
         bid = b["id"]
         if bid.endswith("_building"):
@@ -698,12 +777,13 @@ def build_scene(nbhd, context_path=None):
 
     print(
         f"  build_scene timing: extrude={t_extrude:.2f}s refill={t_refill:.2f}s roof={t_roof:.2f}s "
-        f"opening_records={t_openings:.2f}s context={t_context:.2f}s"
+        f"opening_records={t_openings:.2f}s interior={t_interior:.2f}s context={t_context:.2f}s"
     )
 
     return {
         "buildings": building_solids,
         "opening_decals": opening_decal_records,
+        "interior_walls": interior_wall_solids,
         "plazas": plaza_solids,
         "streets": street_solids,
         "activity_markers": activity_solids,
@@ -722,6 +802,10 @@ COLORS = {
     "roof": "#5c3a2e",  # a real, darker shingled-roof brown -- distinct from
     # "building_shaped" but clearly related (same warm-brown family), not an
     # unrelated hue, matching "pocket"'s own reasoning above.
+    "interior_wall": "#e8dfc8",  # a real, light plaster-like tone -- deliberately
+    # far from the warm-brown exterior family so a real InteriorCell partition
+    # reads as a distinct, interior element seen through the translucent shell,
+    # not another shade of the same building mass.
     "plaza": "#d9a441",
     "pocket": "#c9713f",  # warm, between "building_shaped" and "plaza" --
     # reads as related to both (it's carved from the one, opens onto the
@@ -870,8 +954,20 @@ def render_isometric(scene, out_path, title):
     # most opaque single layer but still see-through against neighbors.
     add_group(scene["streets"], alpha=0.55, for_bounds=True)
     add_group(scene["plazas"], alpha=0.6, for_bounds=True)
-    add_group(scene["buildings"], alpha=0.82, for_bounds=True)
+
+    # A real `interior_walls` layer (only ever non-empty when a caller
+    # opted into `include_interior_walls`, see build_scene's own
+    # docstring) changes what the exterior shell is FOR: normally it's the
+    # subject, drawn near-opaque; with real partitions to show, it becomes
+    # a translucent shell so the partitions read as visible interior
+    # structure rather than being hidden inside solid mass. Every existing
+    # scenario leaves `interior_walls` empty, so `buildings_alpha` stays
+    # 0.82 and this whole render is byte-for-byte what it always was.
+    interior_walls = scene.get("interior_walls", [])
+    buildings_alpha = 0.35 if interior_walls else 0.82
+    add_group(scene["buildings"], alpha=buildings_alpha, for_bounds=True)
     add_opening_decals(scene.get("opening_decals", []))
+    add_group(interior_walls, alpha=0.95, for_bounds=True)
     add_group(scene.get("activity_markers", []), alpha=0.95, for_bounds=True)
 
     all_verts = np.concatenate(bounds_verts, axis=0)
@@ -959,14 +1055,26 @@ def export_glb(scene, out_path):
     established). So the GLB stays exactly what it was before this file's
     P124/decal work: plain massing, no window/door detail -- only the
     isometric PNG, where a decal costs a numpy quad instead of a real OCC
-    solid, gets that detail. No interior walls either way -- see
-    `render_floor_plan`'s own module doc for why interior partitions are
-    drawn as a 2D plan instead of built into the 3D solid.
+    solid, gets that detail.
+
+    `scene["interior_walls"]` is the one exception, and only when a caller
+    opted into `build_scene`'s `include_interior_walls` -- real, additive
+    partition-wall extrusions (a handful of solids on a single showcase
+    cluster, nothing like the 7,765-opening budget problem above) with the
+    `buildings` group's own alpha lowered to read as a translucent shell
+    around them. Every existing scenario leaves `interior_walls` empty, so
+    this GLB stays byte-for-byte what it always was for them. See
+    `render_floor_plan`'s own module doc for why a full FLOOR PLAN is still
+    drawn as 2D, not built into any 3D solid -- this is a different, much
+    smaller real geometry (single-story partition walls), not that.
     """
     asm = cq.Assembly()
     n_added = 0
+    interior_walls = scene.get("interior_walls", [])
+    buildings_alpha = 0.35 if interior_walls else 0.82
     for group, alpha, solids_key in (
-        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", 0.82, "buildings"),
+        ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", buildings_alpha, "buildings"),
+        ("interior_walls", 0.95, "interior_walls"),
         ("activity", 0.95, "activity_markers"),
         ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
@@ -1383,11 +1491,18 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
-        print("usage: render.py <neighborhood.json> <output_prefix> [context_buildings.geojson]")
+    # `--interiors` is a bare flag, not a positional -- stripped out before
+    # the existing positional parsing below so it can appear anywhere on
+    # the command line without shifting `context_buildings.geojson`.
+    argv = sys.argv[1:]
+    include_interior_walls = "--interiors" in argv
+    if include_interior_walls:
+        argv = [a for a in argv if a != "--interiors"]
+    if len(argv) not in (2, 3):
+        print("usage: render.py <neighborhood.json> <output_prefix> [context_buildings.geojson] [--interiors]")
         sys.exit(1)
-    nbhd_path, out_prefix = sys.argv[1], sys.argv[2]
-    context_path = sys.argv[3] if len(sys.argv) == 4 else None
+    nbhd_path, out_prefix = argv[0], argv[1]
+    context_path = argv[2] if len(argv) == 3 else None
     nbhd = load(nbhd_path)
     print(f"=== {nbhd_path} ===")
 
@@ -1399,12 +1514,12 @@ def main():
     # message) -- phase attribution is the only way to tell real cost from
     # noise in this environment.
     _t0 = time.perf_counter()
-    scene = build_scene(nbhd, context_path=context_path)
+    scene = build_scene(nbhd, context_path=context_path, include_interior_walls=include_interior_walls)
     _t_build_scene = time.perf_counter() - _t0
     print(
         f"buildings: {len(scene['buildings'])}, plazas: {len(scene['plazas'])}, "
         f"streets: {len(scene['streets'])}, activity_markers: {len(scene.get('activity_markers', []))}, "
-        f"context: {len(scene['context'])}"
+        f"interior_walls: {len(scene.get('interior_walls', []))}, context: {len(scene['context'])}"
     )
 
     _t0 = time.perf_counter()

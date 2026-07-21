@@ -11,11 +11,21 @@
 # cost.
 #
 # Runs whichever scenarios $VIBE_RENDER_SCENARIOS names -- defaults to
-# just clean_baseline (the one real, geolocated site):
+# clean_baseline plus cluster_interior:
 #   - clean_baseline: eastside-baseline.json, parcel MILITARY_CIRCLE_ASSEMBLED
 #     (the real Military Circle site, Norfolk VA -- a 97.7-acre union of
 #     25 real Norfolk GIS parcels, no EDA tags; see the parcel's own `spec`
 #     field for the real tax-parcel ids it was assembled from)
+#   - cluster_interior: ONE real building cluster extracted from
+#     clean_baseline's own output (tools/vibe-render/extract_cluster.py,
+#     60m radius around the densest real anchor -- no --anchor given, so
+#     which building that is can shift if the pipeline or fixture changes;
+#     not pinned to a specific id on purpose), rendered with render.py's
+#     `--interiors` flag: real p127_intimacy_gradient InteriorCell ground-
+#     floor partition walls, visible through a translucent exterior shell.
+#     See render.py's own `interior_partition_solids` docstring for what
+#     this does and deliberately doesn't show (no stairs, furniture, room
+#     labels, ceilings, or upper floors -- ground floor only, one story).
 #   - barrio_mallcore: eastside-proposal.json, parcel 13279568 (MALL_CORE,
 #     27.8 acres, the fragmentation stress case -- see task #7)
 #   - mallcore_seeding: MALL_CORE again, rendered twice -- once with P37's
@@ -26,9 +36,9 @@
 # barrio_mallcore/mallcore_seeding are archived, not deleted, as of the
 # commit that added this env var -- real fixture data and real pipeline
 # code, still fully valid (nothing about the pipeline itself changed),
-# just not part of the default gallery/CI render for now. Bring all four
+# just not part of the default gallery/CI render for now. Bring all six
 # back for one run with:
-#   VIBE_RENDER_SCENARIOS="clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided" \
+#   VIBE_RENDER_SCENARIOS="clean_baseline cluster_interior barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided" \
 #     scripts/vibe-render.sh
 #
 # Output goes to $OUT_DIR (default: target/vibe-render/): the intermediate
@@ -55,7 +65,7 @@ OUT_DIR="${OUT_DIR:-target/vibe-render}"
 VENV_DIR="${VENV_DIR:-tools/vibe-render/.venv}"
 SEED="${VIBE_RENDER_SEED:-42}"
 PUBLISH_DIR="${PUBLISH_DIR:-}"
-SCENARIOS="${VIBE_RENDER_SCENARIOS:-clean_baseline}"
+SCENARIOS="${VIBE_RENDER_SCENARIOS:-clean_baseline cluster_interior}"
 has_scenario() { case " $SCENARIOS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # Wipe $OUT_DIR before generating, not just mkdir -p it -- CI (deploy.yml)
@@ -99,7 +109,13 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 "$VENV_DIR/bin/pip" install -q -r tools/vibe-render/requirements.txt
 
-for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
+if has_scenario cluster_interior; then
+  echo "==> extracting cluster: cluster_interior (from clean_baseline, 60m real radius around the densest real anchor)"
+  "$VENV_DIR/bin/python" tools/vibe-render/extract_cluster.py \
+    "$OUT_DIR/clean_baseline.json" "$OUT_DIR/cluster_interior.json" --radius-m 60
+fi
+
+for scenario in clean_baseline cluster_interior barrio_mallcore mallcore_seeding_stratified mallcore_seeding_fieldguided; do
   has_scenario "$scenario" || continue
   echo "==> rendering: $scenario"
   if [ "$scenario" = "clean_baseline" ]; then
@@ -110,6 +126,12 @@ for scenario in clean_baseline barrio_mallcore mallcore_seeding_stratified mallc
     # the same way, so there's no honest "surrounding context" to fetch.
     "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario" \
       data/military-circle-context-buildings.geojson
+  elif [ "$scenario" = "cluster_interior" ]; then
+    # `--interiors`: real p127_intimacy_gradient InteriorCell partition
+    # walls, only affordable geometry-budget-wise at single-cluster scale
+    # (see render.py's own export_glb docstring for the whole-site
+    # opening-geometry budget math this doesn't attempt to repeat).
+    "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario" --interiors
   else
     "$VENV_DIR/bin/python" tools/vibe-render/render.py "$OUT_DIR/$scenario.json" "$OUT_DIR/$scenario"
   fi

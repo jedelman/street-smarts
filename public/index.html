@@ -655,6 +655,18 @@
       </figcaption>
     </figure>
 
+    <figure class="render">
+      <model-viewer src="/vibe-render/cluster_interior.glb" poster="/vibe-render/cluster_interior_isometric.png" alt="3D model of one real building cluster from the clean-baseline site, showing ground-floor interior partition walls through a translucent exterior shell -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
+      <figcaption>
+        <h3>One cluster, with interiors</h3>
+        <p>The same real <code>clean_baseline</code> pipeline output, cropped to ONE real building cluster (<code>tools/vibe-render/extract_cluster.py</code>: the building with the most real neighbors within 60m, plus everything else -- other buildings, open space, streets -- within that same 60m of its centroid; no field in the schema names a "cluster" directly, so this is a real geometric proxy, not a fabricated grouping). At this scale, real 3D geometry for <code>p127_intimacy_gradient</code>'s ground-floor <code>InteriorCell</code> ring becomes affordable (a real, additive extrusion per cell edge, the same technique as the roof cap above, not a boolean) -- something the whole-site model above can't do (7,765 real window/door openings alone already push that budget past Cloudflare's 25 MiB limit; interior walls on top of that isn't affordable there). The exterior shell is rendered translucent here specifically so the partitions are visible through it. Ground floor only, one real story -- <code>InteriorCell.floor</code> is hard-coded 0 everywhere in this schema, so there's no upper-floor interior data to show; no stairs (P133 only carries a 2D stair-core footprint, no tread/riser geometry exists to render), no furniture, no room labels, no doors cut into the partitions -- Alexander's own pattern language describes spatial relationships, not a prescribed use, and this project doesn't invent a program the pipeline has no way to know.</p>
+        <div class="downloads">
+          <span class="label">3D model:</span>
+          <a href="/vibe-render/cluster_interior.glb" download>.glb</a>
+        </div>
+      </figcaption>
+    </figure>
+
     <!-- Archived: the "Barrio breakdown: MALL_CORE" figure and the
          Stratified/FieldGuided seeding-mode comparison pair. Real markup,
          real fixture data, not deleted -- just removed from the default

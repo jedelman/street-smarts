@@ -96,6 +96,8 @@ jobs:
           test -f public/vibe-render/clean_baseline_floorplan_ground.svg
           test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
           test -f public/vibe-render/clean_baseline_lineage.svg
+          test -f public/vibe-render/cluster_interior_isometric.png
+          test -f public/vibe-render/cluster_interior.glb
           echo "All required outputs present."
 
       - name: Visual regression check (isometric renders)
@@ -108,7 +110,8 @@ jobs:
         # A PR that intentionally changes a render updates the baseline
         # with: python3 tools/vibe-render/perceptual_hash.py update-baseline
         # tools/vibe-render/baselines/isometric.json target/vibe-render
-        # clean_baseline_isometric.png barrio_mallcore_isometric.png
+        # clean_baseline_isometric.png cluster_interior_isometric.png
+        # barrio_mallcore_isometric.png
         # mallcore_seeding_stratified_isometric.png mallcore_seeding_fieldguided_isometric.png
         #
         # Reads `target/vibe-render` -- the "Generate vibe-render gallery"
