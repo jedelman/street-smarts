@@ -14,10 +14,11 @@
 //! # A real, checkable proxy
 //!
 //! `p124_activity_pockets` (the generator, `street-smarts-patterns`) is
-//! the only real producer of `OpenSpaceKind::Pocket` -- a real notch
-//! carved from a bordering building's own footprint, open toward the
-//! plaza, with a real `ActivityNode` at its centroid. This opinion checks,
-//! for each real Plaza, whether at least one real Pocket sits within
+//! the only real producer of `OpenSpaceKind::Pocket` -- a real bump
+//! projecting from a bordering building's own footprint, toward the
+//! plaza (Alexander's own literal "jut forward into the open space"),
+//! with a real `ActivityNode` at its centroid. This opinion checks, for
+//! each real Plaza, whether at least one real Pocket sits within
 //! `POCKET_ADJACENCY_M` of its own boundary. `value` = fraction of real
 //! Plazas with at least one real, adjacent Pocket.
 //!
@@ -26,6 +27,14 @@
 //! own "surround" implies more than one pocket per real square in the
 //! general case; a real, richer coverage measure is a possible future
 //! refinement, not claimed here.
+//!
+//! On the real `eastside-baseline` fixture, the generator currently
+//! produces zero real pockets (32/33 real bordering candidates sit too
+//! close to their own plaza for any safe outward bump, and the one
+//! candidate with real room faces away from its plaza) -- so this
+//! opinion reads `0.0` there, an honest fixture-scale fact, not a defect
+//! in this check. See `p124_activity_pockets.rs`'s own module doc
+//! (`street-smarts-patterns`) for the real measured numbers.
 
 use std::collections::BTreeMap;
 use street_smarts_core::geometry::point_to_polyline_m;
@@ -98,10 +107,10 @@ impl Opinion for P124ActivityPockets {
                 "Checks only whether a plaza has AT LEAST ONE real adjacent pocket, not how much \
                  of its edge is covered or how well-enclosed each pocket is -- Alexander's own \
                  'surround' implies more coverage than a single pocket in the general case.".into(),
-                "p124_activity_pockets (generator) reads 'jut forward into the open space' as an \
-                 alcove carved from a bordering building's own footprint -- a real, defensible, but \
-                 not the only possible geometric interpretation of Alexander's text. See its own \
-                 module doc.".into(),
+                "p124_activity_pockets (generator) reads 'jut forward into the open space' literally: \
+                 a real bump projecting OUTWARD from a bordering building's own footprint, toward the \
+                 plaza. See its own module doc for the direction-fidelity history and the real, \
+                 currently-zero pocket count on the eastside-baseline fixture.".into(),
             ],
             contributing_features: vec![],
             runtime_ms: timer.elapsed_ms(),

@@ -11,9 +11,13 @@
 //! > occupies, and in such a way that the paths which go in and out of the
 //! > building lie tangent to it.
 //!
-//! Runs immediately after `p127_intimacy_gradient` in the pipeline (127 <
-//! 129, no reordering needed -- see that operator's own module doc for
-//! the full sourced sequence this is part of).
+//! Runs after `p127_intimacy_gradient` in the pipeline, with
+//! `p130_entrance_room` now sandwiched between them (see p130's own module
+//! doc for why: it never changes cell geometry or count, so nothing about
+//! this operator's own center-of-gravity computation depends on whether
+//! the entrance cell has been relabeled yet). No reordering justification
+//! needed for 127 -> 129 itself -- see p127's own module doc for the full
+//! sourced sequence this is part of.
 //!
 //! # The "tangent, not through the middle" half of the pattern
 //! Alexander's text is explicit that the common area must sit ON the path

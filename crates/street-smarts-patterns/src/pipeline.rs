@@ -47,17 +47,18 @@
 //!      regardless of which block a pad came from, and no longer applies
 //!      its own setback on top of a P95/P108 pad's own gap (see p107's
 //!      "v0.2" module doc).
-//!   9. P124 Activity Pockets (once, site-scale): carves a real, small,
-//!      partly enclosed pocket from up to max_pockets_per_plaza buildings
-//!      bordering each real Plaza (from P61), reading "jut forward into
-//!      the open space" as an alcove cut from the building's own
-//!      footprint, open toward the plaza. Runs right after P107 and
-//!      strictly before P197/P127/P221 -- all of which need the FINAL
-//!      building footprint, not a stale pre-pocket one. See
-//!      p124_activity_pockets's own module doc for the geometric reading
-//!      and its own hard-won note on why it splices the notch into the
-//!      ring directly rather than using subtract_convex + union_pieces
-//!      (the same reassembly-reliability problem P95/P133 already hit).
+//!   9. P124 Activity Pockets (once, site-scale): bumps a small, real,
+//!      partly enclosed pocket out from up to max_pockets_per_plaza
+//!      buildings bordering each real Plaza (from P61), reading "jut
+//!      forward into the open space" literally -- a real projection
+//!      OUTWARD from the building's own footprint, toward the plaza, not
+//!      a recession into it. Runs right after P107 and strictly before
+//!      P197/P127/P221 -- all of which need the FINAL building footprint,
+//!      not a stale pre-bump one. See p124_activity_pockets's own module
+//!      doc for the geometric reading and its own hard-won note on why it
+//!      splices the bump into the ring directly rather than using
+//!      subtract_convex + union_pieces (the same reassembly-reliability
+//!      problem P95/P133 already hit).
 //!   10. P197 Thick Walls (once, site-scale): assigns every real building a
 //!      real, nonzero `wall_thickness_m`, capped relative to its own real
 //!      footprint. Runs after P107 and P124 -- every downstream stage
@@ -324,15 +325,17 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P107WingsOfLight.name());
     }
 
-    // P124 Activity Pockets (once, site-scale): carves a real, small
-    // pocket from up to max_pockets_per_plaza buildings bordering each
+    // P124 Activity Pockets (once, site-scale): bumps a real, small
+    // pocket out from up to max_pockets_per_plaza buildings bordering each
     // real Plaza. Runs right after P107 (needs real final building
     // footprints AND real Plazas from P61) and strictly BEFORE P197 (so
-    // wall thickness applies to the post-pocket footprint), P127 (so
-    // interior cells partition the post-pocket footprint, not a stale
+    // wall thickness applies to the post-bump footprint), P127 (so
+    // interior cells partition the post-bump footprint, not a stale
     // one), and P221 (so window/door ring_index references the final
-    // outer ring). Not fatal if no building qualifies. See
-    // p124_activity_pockets's own module doc.
+    // outer ring). Not fatal if no building qualifies -- currently never
+    // qualifies on the real eastside-baseline fixture (see
+    // p124_activity_pockets's own module doc for the real measured
+    // numbers), so this stage is a real no-op there today, not broken.
     if let Ok(sub124) = P124ActivityPockets.apply(&nbhd, "*", &P124Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub124);
         trace.push(P124ActivityPockets.name());
@@ -340,10 +343,10 @@ pub fn run_corrected_pipeline_with_p37_traced(
 
     // P197 Thick Walls (once, site-scale): assigns every real building a
     // real wall_thickness_m, capped relative to its own footprint. Runs
-    // after P107 (and after P124, so a pocket-carved building's final
-    // footprint is what gets a thickness) -- every downstream stage
-    // clones-and-mutates from here, so the field survives to the end of
-    // the pipeline untouched. See p197_thick_walls's own module doc.
+    // after P107 (and after P124, so a bumped building's final footprint
+    // is what gets a thickness) -- every downstream stage clones-and-
+    // mutates from here, so the field survives to the end of the
+    // pipeline untouched. See p197_thick_walls's own module doc.
     if let Ok(sub197) = P197ThickWalls.apply(&nbhd, "*", &P197Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub197);
         trace.push(P197ThickWalls.name());
