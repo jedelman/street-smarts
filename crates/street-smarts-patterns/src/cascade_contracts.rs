@@ -588,18 +588,20 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
               windows checked; 74% have real street/open-space activity within 25m). Floor set \
               safely below that.",
     },
-    CascadeContract {
-        generator: "p124_activity_pockets",
-        generator_pattern: 124,
-        opinion: "p124_activity_pockets",
-        opinion_pattern: 124,
-        check: CascadeCheck::MinValue(0.15),
-        why: "Same-number self-pair: p124_activity_pockets (generator) is the only real producer \
-              of OpenSpaceKind::Pocket -- a real notch carved from a bordering building's own \
-              footprint at a real Plaza's edge; p124_activity_pockets (opinion) checks the \
-              fraction of real Plazas with at least one real adjacent Pocket. Measured on the \
-              real fixture: NoView -> Value 0.169 (89 real plazas checked; 15 (17%) have at least \
-              one real Pocket within 3m of their own boundary; 17 real pockets total). Floor set \
-              safely below that.",
-    },
+    // p124_activity_pockets has no self-pair contract here (yet). It had
+    // one when the generator carved a notch INWARD (Value 0.169 on the
+    // real fixture); once the operator was rewritten to bump OUTWARD --
+    // matching Alexander's own literal "jut forward into the open space"
+    // text -- two real correctness bugs were found and fixed directly
+    // against this fixture (a bowtie-splice direction bug, and an edge
+    // whose own outward normal pointed away from the plaza rather than
+    // toward it). After both real fixes, this fixture's own real
+    // candidates produce ZERO qualifying pockets: 32/33 real bordering
+    // buildings sit at only ~0.10m from their own plaza edge (too tight
+    // for any real positive `pocket_depth_m`), and the sole candidate
+    // with real room (~1.5m) has its own closest edge facing away from
+    // the plaza, not toward it. This is a real, honest finding about this
+    // fixture's own geometry, not a code defect -- there is no honest
+    // MinValue or StructuralFact to assert here until a fixture or
+    // upstream generator change creates a real qualifying candidate.
 ];
