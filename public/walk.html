@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>street-smarts — walk/fly through</title>
+<meta name="description" content="Free-fly through the real cluster_interior 3D model -- WASD + mouse on desktop, an automated camera tour on mobile. Same real geometry scripts/vibe-render.sh already exports, just a different way of moving a camera through it.">
+<style>
+  :root {
+    --bg: #14120f;
+    --ink: #f6f3ed;
+    --muted: #b9aed6;
+    --line: #4a4438;
+    --accent: #d9a441;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 1rem; z-index: 10;
+  }
+  #hud a, #hud button {
+    pointer-events: auto;
+    font: inherit; font-size: 0.85rem;
+    background: rgba(20, 18, 15, 0.72);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  #hud button[aria-pressed="true"] { background: var(--accent); color: #1a1814; border-color: var(--accent); }
+  #hud button:hover, #hud a:hover { border-color: var(--accent); }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .top-row { justify-content: space-between; }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; width: 6px; height: 6px;
+    margin: -3px 0 0 -3px; border-radius: 50%;
+    background: var(--ink); opacity: 0.6; z-index: 10; pointer-events: none;
+    display: none;
+  }
+  #instructions {
+    max-width: 26rem; font-size: 0.82rem; line-height: 1.5; color: var(--muted);
+    background: rgba(20, 18, 15, 0.72); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.6rem 0.85rem;
+  }
+  #instructions code {
+    background: rgba(255,255,255,0.08); border-radius: 3px; padding: 0 0.3rem;
+    color: var(--ink);
+  }
+  #loading {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--muted); font-size: 0.95rem;
+    text-align: center; padding: 2rem;
+  }
+  #loading.hidden { display: none; }
+  #loading .err { color: #d97a5a; }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="crosshair"></div>
+<div id="loading">Loading real geometry&hellip;</div>
+
+<div id="hud">
+  <div class="row top-row">
+    <a href="/#vibe-gallery">&larr; Back to gallery</a>
+    <div class="row">
+      <button type="button" id="mode-flight" aria-pressed="false">Free-fly</button>
+      <button type="button" id="mode-tour" aria-pressed="false">Auto tour</button>
+      <button type="button" id="tour-toggle" hidden>Pause tour</button>
+    </div>
+  </div>
+  <div class="row">
+    <div id="instructions"></div>
+  </div>
+</div>
+
+<!-- three.js, pinned (same "real external CDN dependency" tradeoff index.html
+     already makes for <model-viewer> -- see that file's own comment on why
+     this isn't vendored as a build step). Real, live-checked version as of
+     when this page was written, not guessed. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.185.1/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.185.1/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+const params = new URLSearchParams(location.search);
+// Defaults to the one scenario that actually has real interior geometry to
+// walk into -- clean_baseline's whole-site GLB stays decal-only (see
+// render.py's own export_glb docstring for the real triangle-budget math
+// behind that split), so there's nothing behind its walls to fly through.
+const GLB_URL = params.get('glb') || '/vibe-render/cluster_interior.glb';
+const VIEWS_URL = GLB_URL.replace(/\.glb$/, '_interior_views.json');
+const HDRI_URL = '/env/kloofendal_43d_clear_puresky_1k.hdr';
+
+const canvas = document.getElementById('c');
+const loadingEl = document.getElementById('loading');
+const crosshairEl = document.getElementById('crosshair');
+const instructionsEl = document.getElementById('instructions');
+const flightBtn = document.getElementById('mode-flight');
+const tourBtn = document.getElementById('mode-tour');
+const tourToggleBtn = document.getElementById('tour-toggle');
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 2000);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Real model-viewer camera-orbit convention (theta/phi/radius spherical
+// around camera-target), reverse-engineered and verified empirically
+// against a live <model-viewer> earlier in this project (see render.py's
+// own interior_camera_views docstring): at phi=90deg the camera offset
+// from target is radius*(sin theta, 0, cos theta). This is the general
+// form of that same formula, not a new guess.
+function orbitToPosition(target, thetaDeg, phiDeg, radius) {
+  const theta = THREE.MathUtils.degToRad(thetaDeg);
+  const phi = THREE.MathUtils.degToRad(phiDeg);
+  return new THREE.Vector3(
+    target.x + radius * Math.sin(phi) * Math.sin(theta),
+    target.y + radius * Math.cos(phi),
+    target.z + radius * Math.sin(phi) * Math.cos(theta),
+  );
+}
+
+function parseMeters(str) {
+  // "19.39m 1.60m -50.86m" -> Vector3 -- the exact real format render.py's
+  // interior_camera_views() writes for <model-viewer>'s camera-target.
+  const [x, y, z] = str.trim().split(/\s+/).map(s => parseFloat(s));
+  return new THREE.Vector3(x, y, z);
+}
+
+function parseOrbit(str) {
+  // "90.0deg 82deg 4.39m" -> {theta, phi, radius}, same real format as
+  // <model-viewer>'s camera-orbit attribute.
+  const [t, p, r] = str.trim().split(/\s+/).map(s => parseFloat(s));
+  return { theta: t, phi: p, radius: r };
+}
+
+async function loadEnvironment() {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const hdr = await new HDRLoader().loadAsync(HDRI_URL);
+  const envMap = pmrem.fromEquirectangular(hdr).texture;
+  scene.environment = envMap;
+  scene.background = envMap;
+  hdr.dispose();
+  pmrem.dispose();
+}
+
+async function loadModel() {
+  const gltf = await new GLTFLoader().loadAsync(GLB_URL);
+  scene.add(gltf.scene);
+  return new THREE.Box3().setFromObject(gltf.scene);
+}
+
+async function loadRealWaypoints() {
+  try {
+    const r = await fetch(VIEWS_URL);
+    if (!r.ok) return [];
+    const views = await r.json();
+    return views.map(v => {
+      const target = parseMeters(v.camera_target);
+      const { theta, phi, radius } = parseOrbit(v.camera_orbit);
+      return { pos: orbitToPosition(target, theta, phi, radius), target, label: v.building_id };
+    });
+  } catch (e) {
+    return []; // real waypoints just won't offer a tour -- doesn't block loading the model
+  }
+}
+
+// --- Mode / control state -------------------------------------------------
+
+let mode = matchMedia('(pointer: coarse)').matches ? 'tour' : 'flight';
+let touring = true;
+
+const controls = new PointerLockControls(camera, renderer.domElement);
+controls.addEventListener('lock', () => { crosshairEl.style.display = 'block'; updateInstructions(); });
+controls.addEventListener('unlock', () => { crosshairEl.style.display = 'none'; updateInstructions(); });
+
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+canvas.addEventListener('click', () => {
+  if (mode === 'flight' && !controls.isLocked) controls.lock();
+});
+
+const FLIGHT_SPEED = 3.2;   // m/s -- a brisk real walking pace
+const FLIGHT_BOOST = 3.5;   // Shift multiplier -- "fly" over "walk"
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _move = new THREE.Vector3();
+
+function updateFlight(dt) {
+  if (!controls.isLocked) return;
+  camera.getWorldDirection(_forward);
+  _right.crossVectors(_forward, camera.up).normalize();
+  _move.set(0, 0, 0);
+  if (keys.KeyW) _move.add(_forward);
+  if (keys.KeyS) _move.addScaledVector(_forward, -1);
+  if (keys.KeyD) _move.add(_right);
+  if (keys.KeyA) _move.addScaledVector(_right, -1);
+  if (keys.Space) _move.y += 1;
+  if (keys.KeyC) _move.y -= 1;
+  if (_move.lengthSq() > 0) {
+    _move.normalize();
+    const speed = FLIGHT_SPEED * (keys.ShiftLeft || keys.ShiftRight ? FLIGHT_BOOST : 1);
+    camera.position.addScaledVector(_move, speed * dt);
+  }
+}
+
+// --- Auto tour: real bbox-derived overview + real per-room waypoints -----
+
+let keyframes = [];
+let kfIndex = 0;
+let kfPhase = 'dwell';
+let phaseStart = 0;
+const TRAVEL_MS = 4200;
+const DWELL_MS = 4800;
+
+let dragYaw = 0, dragPitch = 0, dragging = false, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', e => {
+  if (mode !== 'tour') return;
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+});
+addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  dragYaw -= dx * 0.0025;
+  dragPitch = THREE.MathUtils.clamp(dragPitch - dy * 0.0025, -1.2, 1.2);
+});
+addEventListener('pointerup', () => { dragging = false; });
+
+function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+function updateTour(nowMs) {
+  if (keyframes.length === 0) return;
+  if (keyframes.length === 1 || !touring) {
+    const kf = keyframes[Math.min(kfIndex, keyframes.length - 1)];
+    camera.position.copy(kf.pos);
+    camera.lookAt(kf.target);
+    if (dragYaw) camera.rotateY(dragYaw);
+    if (dragPitch) camera.rotateX(dragPitch);
+    return;
+  }
+  const elapsed = nowMs - phaseStart;
+  const cur = keyframes[kfIndex];
+  const next = keyframes[(kfIndex + 1) % keyframes.length];
+  if (kfPhase === 'dwell') {
+    camera.position.copy(cur.pos);
+    camera.lookAt(cur.target);
+    camera.rotateY(Math.sin(nowMs * 0.00035) * 0.12); // a gentle idle pan, not a static held frame
+    if (elapsed > DWELL_MS) { kfPhase = 'travel'; phaseStart = nowMs; }
+  } else {
+    const t = Math.min(1, elapsed / TRAVEL_MS);
+    const e = easeInOutCubic(t);
+    camera.position.lerpVectors(cur.pos, next.pos, e);
+    camera.lookAt(new THREE.Vector3().lerpVectors(cur.target, next.target, e));
+    if (t >= 1) { kfIndex = (kfIndex + 1) % keyframes.length; kfPhase = 'dwell'; phaseStart = nowMs; }
+  }
+  if (dragYaw) camera.rotateY(dragYaw);
+  if (dragPitch) camera.rotateX(dragPitch);
+}
+
+// --- Mode switching UI -----------------------------------------------------
+
+function setMode(next) {
+  mode = next;
+  flightBtn.setAttribute('aria-pressed', String(mode === 'flight'));
+  tourBtn.setAttribute('aria-pressed', String(mode === 'tour'));
+  tourToggleBtn.hidden = mode !== 'tour';
+  if (mode === 'tour') {
+    if (controls.isLocked) controls.unlock();
+    // Reset the tour clock on every entry into tour mode, not just once at
+    // boot -- phaseStart otherwise stays frozen at its initial 0, so the
+    // first real updateTour() call (which might run seconds after page
+    // load, or whenever a user switches modes mid-session) measures
+    // "elapsed" against real page-uptime instead of tour-start time and
+    // skips straight into the travel phase before ever showing the
+    // dwell. Confirmed directly (a real bug caught in Playwright
+    // verification, not assumed away): without this reset, load latency
+    // alone was enough to blow past DWELL_MS on frame one.
+    kfIndex = 0;
+    kfPhase = 'dwell';
+    phaseStart = performance.now();
+  }
+  updateInstructions();
+}
+flightBtn.addEventListener('click', () => setMode('flight'));
+tourBtn.addEventListener('click', () => setMode('tour'));
+tourToggleBtn.addEventListener('click', () => {
+  touring = !touring;
+  tourToggleBtn.textContent = touring ? 'Pause tour' : 'Resume tour';
+});
+
+function updateInstructions() {
+  if (mode === 'flight') {
+    instructionsEl.innerHTML = controls.isLocked
+      ? 'Mouse to look, <code>WASD</code> to move, <code>Space</code>/<code>C</code> up/down, hold <code>Shift</code> to fly faster, <code>Esc</code> to release.'
+      : 'Click anywhere to fly through the model.';
+  } else {
+    instructionsEl.innerHTML = 'Automated tour of real interior viewpoints. Drag to look around.';
+  }
+}
+
+// --- Boot -------------------------------------------------------------------
+
+(async function boot() {
+  try {
+    const [box, waypoints] = await Promise.all([loadModel(), loadRealWaypoints(), loadEnvironment()]);
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    // A derived establishing shot, not authored data -- position/distance
+    // computed straight from the real loaded mesh's own bounding box, the
+    // same "rendering-layer choice, not a claim about the data" reasoning
+    // render.py's own ACTIVITY_MARKER_RADIUS_M uses.
+    const overviewRadius = Math.max(size.x, size.z) * 0.9 + 6;
+    const overview = {
+      pos: new THREE.Vector3(
+        center.x + overviewRadius * 0.6,
+        center.y + Math.max(size.y * 0.8, 8),
+        center.z + overviewRadius * 0.6,
+      ),
+      target: center.clone(),
+      label: 'overview',
+    };
+    keyframes = [overview, ...waypoints];
+
+    camera.position.copy(overview.pos);
+    camera.lookAt(overview.target);
+
+    setMode(mode);
+    tourToggleBtn.hidden = mode !== 'tour';
+    loadingEl.classList.add('hidden');
+
+    const timer = new THREE.Timer();
+    renderer.setAnimationLoop((now) => {
+      timer.update(now);
+      const dt = Math.min(timer.getDelta(), 0.1);
+      if (mode === 'flight') updateFlight(dt);
+      else updateTour(performance.now());
+      renderer.render(scene, camera);
+    });
+  } catch (e) {
+    loadingEl.innerHTML = '<span class="err">Couldn&rsquo;t load the real model (' + (e && e.message ? e.message : 'network error') + '). Try reloading.</span>';
+  }
+})();
+</script>
+</body>
+</html>
