@@ -1187,6 +1187,33 @@ COLORS = {
     "activity_other": "#8a8a8a",
 }
 
+# Confidence coloring: a real per-kind alpha OVERRIDE (checked before a
+# group's own default alpha, see draw_solid_group/export_glb) for the two
+# real kinds this schema itself already flags as less certain than
+# everything else it draws, rather than inventing a new confidence signal
+# on top of the data:
+#   - "building_unshaped": a real P95 pad P107 never got around to
+#     shaping into a real Building -- a massing-box GUESS at the height
+#     P96 assigned, not a real p107_wings_of_light footprint. Currently
+#     0 of these appear on any real fixture this repo ships (P107 reaches
+#     every real pad on clean_baseline/cluster_interior/barrio_mallcore
+#     as of when this was added, confirmed directly) -- this is a real,
+#     already-modeled distinction the render has simply never had a
+#     reason to show yet, not a hypothetical one added preemptively for
+#     its own sake.
+#   - "undecided": a real P37/P108 open-space parcel whose own real
+#     `kind` field is literally the string "undecided" -- not a color
+#     choice, an actual value this schema's own pipeline can produce
+#     when a parcel hasn't been assigned a real use yet.
+# A GHOSTLIER (lower) alpha than the group's own default reads, without a
+# legend, as "less solid, less finished, less certain" -- the same
+# intuition a viewer already brings to a half-transparent object, applied
+# honestly to something the pipeline itself hasn't fully decided.
+CONFIDENCE_ALPHA = {
+    "building_unshaped": 0.45,
+    "undecided": 0.4,
+}
+
 # Two-light setup, not one. A single directional light leaves every face
 # NOT facing it at flat ambient -- with a mostly-boxy massing scene that's
 # roughly half the visible surfaces reading as a dark, formless silhouette.
@@ -1255,6 +1282,12 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22",
     `punch_real_openings` was added). `render_isometric` passes a fainter
     edge for the buildings group specifically when `scene["punched_
     openings"]` is set.
+
+    Alpha is looked up per solid via `CONFIDENCE_ALPHA`, falling back to
+    this call's own `alpha` -- a real "building_unshaped"/"undecided" kind
+    (see that dict's own docstring) reads ghostlier than its neighbors
+    within the SAME group, instead of every kind in a group sharing one
+    flat opacity regardless of how certain the pipeline actually was.
     """
     for solid, kind in items:
         try:
@@ -1264,7 +1297,7 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22",
             continue
         face_verts = verts[tris]
         base_hex = COLORS.get(kind, "#999999")
-        rgba = shade_faces(face_verts, base_hex, alpha)
+        rgba = shade_faces(face_verts, base_hex, CONFIDENCE_ALPHA.get(kind, alpha))
         poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor=edgecolor, linewidth=linewidth)
         ax.add_collection3d(poly)
         if bounds_accum is not None:
@@ -1743,8 +1776,12 @@ def export_glb(scene, out_path):
         for solid, kind in scene.get(solids_key, []):
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
             n_added += 1
+            # Same real per-kind override render_isometric's own
+            # draw_solid_group uses -- see CONFIDENCE_ALPHA's own
+            # docstring.
+            solid_alpha = CONFIDENCE_ALPHA.get(kind, alpha)
             try:
-                asm.add(solid, name=f"{group}_{n_added}_{kind}", color=cq.Color(r, g, b, alpha))
+                asm.add(solid, name=f"{group}_{n_added}_{kind}", color=cq.Color(r, g, b, solid_alpha))
             except Exception as e:
                 print(f"  ! glb: skipped a {group} piece: {e}", file=sys.stderr)
 
