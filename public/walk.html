@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>street-smarts — walk/fly through</title>
-<meta name="description" content="Free-fly through the real cluster_interior 3D model -- WASD + mouse on desktop, an automated camera tour on mobile. Same real geometry scripts/vibe-render.sh already exports, just a different way of moving a camera through it.">
+<meta name="description" content="Free-fly through a real street-smarts 3D model -- WASD + mouse on desktop, an automated camera tour on mobile (real per-room waypoints for cluster_interior; a static overview for clean_baseline's whole-site exterior). Same real geometry scripts/vibe-render.sh already exports, just a different way of moving a camera through it.">
 <style>
   :root {
     --bg: #14120f;
@@ -102,13 +102,16 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 const params = new URLSearchParams(location.search);
-// Defaults to the one scenario that actually has real interior geometry to
-// walk into -- clean_baseline's whole-site GLB stays decal-only (see
-// render.py's own export_glb docstring for the real triangle-budget math
-// behind that split), so there's nothing behind its walls to fly through.
+// Any exported .glb works via ?glb= (index.html links both clean_baseline,
+// exterior-only, and cluster_interior, which also has real interiors to
+// walk into). Defaults to cluster_interior when linked bare -- it has real
+// per-room tour waypoints (loadRealWaypoints below); clean_baseline's
+// whole-site GLB stays decal-only (see render.py's own export_glb
+// docstring for the real triangle-budget math behind that split), so
+// there's nothing behind its walls to fly INTO, only around.
 const GLB_URL = params.get('glb') || '/vibe-render/cluster_interior.glb';
 const VIEWS_URL = GLB_URL.replace(/\.glb$/, '_interior_views.json');
-const HDRI_URL = '/env/kloofendal_43d_clear_puresky_1k.hdr';
+const HDRI_URL = '/env/evening_road_01_puresky_1k.hdr';
 
 const canvas = document.getElementById('c');
 const loadingEl = document.getElementById('loading');
