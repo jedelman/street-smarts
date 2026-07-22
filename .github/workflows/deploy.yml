@@ -144,10 +144,22 @@ jobs:
         # tighter since the real number is known. Ratchet down over time
         # as real headroom data accumulates -- don't just raise it if it's
         # ever hit without asking why the bundle grew first.
+        #
+        # Raised 300,000 -> 310,000 after asking why: PR #27's real growth
+        # (a new p21_four_story_limit generator, and the IntimacyField
+        # primitive + its p116/p127 consumers -- both genuine new pattern-
+        # language functionality, not bloat) pushed the actual gzip size to
+        # 300,362 measured on CI (run 29956884133) -- this budget had only
+        # ~2,650 bytes (0.9%) of headroom left even before that PR, per the
+        # prior successful run (297,348 bytes, run 29955908752), so it was
+        # always going to trip on the next real feature regardless of size.
+        # New budget keeps a similar proportional margin (~3% over the real
+        # measured number) rather than a token bump to just clear this one
+        # PR.
         run: |
           RAW=$(stat -c%s public/pkg/street_smarts_web_bg.wasm)
           GZIP=$(gzip -c public/pkg/street_smarts_web_bg.wasm | wc -c)
-          BUDGET_GZIP_BYTES=300000
+          BUDGET_GZIP_BYTES=310000
           echo "WASM raw   : ${RAW} bytes"
           echo "WASM gzip  : ${GZIP} bytes (budget: ${BUDGET_GZIP_BYTES} bytes)"
           if [ "$GZIP" -gt "$BUDGET_GZIP_BYTES" ]; then
