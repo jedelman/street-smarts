@@ -48,7 +48,8 @@ fn nbhd(parcels: Vec<Parcel>, open_space: Vec<OpenSpace>) -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P61 raw-placement fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]

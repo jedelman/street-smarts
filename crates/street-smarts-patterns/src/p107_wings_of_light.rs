@@ -418,6 +418,7 @@ impl P107WingsOfLight {
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         };
         Ok((sub, building_typology_assignments, pad_role_assignments))
     }

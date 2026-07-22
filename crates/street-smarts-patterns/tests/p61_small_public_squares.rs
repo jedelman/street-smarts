@@ -32,7 +32,8 @@ fn square_plaza_neighborhood(side_m: f64) -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P61 unit fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]
@@ -175,7 +176,8 @@ fn elongated_plaza_partitions_along_the_long_axis_only() {
             layer_provenance: Default::default(),
             label: "P61 elongated fixture".into(),
         },
-    };
+            pattern_fields: vec![],
+        };
 
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();
     assert_eq!(sub.new_open_space.len(), 4, "60m x 15m strip should split 4-wide along the long axis only");

@@ -46,7 +46,8 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P37 fuzz fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]

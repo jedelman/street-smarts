@@ -606,6 +606,7 @@ impl PatternOperator for P95BuildingComplex {
             replaced_building_ids: vec![],
             entity_provenance,
             trace,
+            new_fields: vec![],
         })
     }
 }

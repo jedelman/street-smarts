@@ -469,6 +469,7 @@ impl PatternOperator for P124ActivityPockets {
             replaced_building_ids,
             entity_provenance: Default::default(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -516,6 +517,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P124 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

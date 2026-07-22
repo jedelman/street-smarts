@@ -229,6 +229,7 @@ impl PatternOperator for P29DensityRings {
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }

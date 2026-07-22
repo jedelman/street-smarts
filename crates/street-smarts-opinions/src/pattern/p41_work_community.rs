@@ -138,6 +138,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P41 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

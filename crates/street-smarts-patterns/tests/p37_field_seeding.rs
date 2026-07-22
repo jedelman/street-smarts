@@ -151,7 +151,8 @@ fn field_guided_mode_falls_back_to_stratified_when_no_anchors_exist() {
             layer_provenance: Default::default(),
             label: "no-anchors fixture".into(),
         },
-    };
+            pattern_fields: vec![],
+        };
 
     let params = P37Params { seeding_mode: 1.0, ..P37Params::defaults() };
     let sub = P37HouseCluster

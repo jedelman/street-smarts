@@ -244,6 +244,7 @@ impl PatternOperator for P131TheFlowThroughRooms {
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -371,6 +372,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P131 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

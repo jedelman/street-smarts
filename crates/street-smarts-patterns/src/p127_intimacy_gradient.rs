@@ -266,6 +266,7 @@ impl PatternOperator for P127IntimacyGradient {
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -574,6 +575,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P127 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

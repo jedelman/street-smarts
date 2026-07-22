@@ -25,6 +25,12 @@ pub struct Neighborhood {
     pub boundaries: Vec<Boundary>,
     #[serde(default)]
     pub activity_nodes: Vec<ActivityNode>,
+    /// Real, sampleable potentials over raw site geometry -- see
+    /// `PatternField`'s own doc. Empty until a field-producing operator
+    /// (P29 Density Rings) has run; every existing fixture round-trips
+    /// unchanged (defaults to `vec![]`).
+    #[serde(default)]
+    pub pattern_fields: Vec<PatternField>,
     pub metadata: NeighborhoodMeta,
 }
 
@@ -72,6 +78,65 @@ pub struct Parcel {
     /// fall back to their own flat default.
     #[serde(default)]
     pub target_stories: Option<f64>,
+}
+
+/// One real, sampleable potential over raw site geometry -- see
+/// `PATTERN_ORDERING_AUDIT.md` (repo root) for why this exists: a larger,
+/// prior Alexander pattern (P29 Density Rings) describes a general
+/// disposition across the whole site, not yet a value attached to any
+/// specific parcel or block. Storing that disposition here, instead of
+/// forcing the producing operator to wait until something smaller has
+/// already been individuated (a block, a pad) purely so it has somewhere
+/// to stamp a tag, is what lets a pattern like P29 run at its own real,
+/// canonical pipeline position -- see `p29_density_rings`'s own module
+/// doc for the concrete before/after.
+///
+/// One variant per producing pattern, not a generic "field of floats" --
+/// each field's own real sampling math differs (see `DensityField`'s own
+/// doc) and lives with its producing operator in `street-smarts-patterns`
+/// (`p29_density_rings::sample_density_field`), not here; this schema only
+/// carries the data, same split every other operator-specific NIR type
+/// already uses (e.g. `RoofForm` is data, `p116_cascade_of_roofs` is the
+/// math that produces and reads it). Extend with a new variant (a future
+/// P116 "significance field", per the audit doc) rather than generalizing
+/// this one into something abstract.
+///
+/// Named `PatternField`, not `Field` -- `street_smarts_patterns::field`
+/// already defines an unrelated `Field` (a rasterized pressure grid for
+/// Voronoi seed placement, ported from eastside-commons' own field
+/// solver). Same metaphor, a different real thing; kept namespaced apart
+/// on purpose so `use`-ing both in the same file (P37 needs to) is never
+/// ambiguous.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum PatternField {
+    Density(DensityField),
+}
+
+/// P29 Density Rings' own real data: site density should step down with
+/// distance from a real center, not be flat everywhere. Pure data -- the
+/// real sampling logic (`sample_density_field`) lives with the operator
+/// that produces this, in `street-smarts-patterns::p29_density_rings`, not
+/// here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DensityField {
+    /// Real center of the density gradient, already shifted by the
+    /// producing operator's own `eccentricity_frac` at construction time
+    /// -- see `p29_density_rings`'s own module doc for why an eccentric,
+    /// off-center peak (P28 Eccentric Nucleus) is the real target, not a
+    /// dead-center one.
+    pub center: crate::geometry::LngLat,
+    /// Real distance (meters) at which the gradient reaches its edge
+    /// value and stops falling further -- a sample beyond this clamps to
+    /// `edge_target_stories`, it is not extrapolated past it.
+    pub radius_m: f64,
+    pub core_target_stories: f64,
+    pub edge_target_stories: f64,
+    /// Number of concentric density bands -- carried on the field itself
+    /// (not re-passed as a separate parameter at sample time) so every
+    /// consumer buckets into the exact same rings P29 itself was
+    /// configured with.
+    pub n_rings: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -624,5 +689,45 @@ mod roof_segment_canopy_niche_tests {
         assert_eq!(back.canopies[0].t_end, 0.6);
         assert_eq!(back.wall_niches.len(), 1);
         assert_eq!(back.wall_niches[0].extra_depth_m, 0.4);
+    }
+}
+
+#[cfg(test)]
+mod pattern_field_tests {
+    use super::*;
+    use crate::geometry::LngLat;
+
+    fn nbhd_json_without_pattern_fields() -> &'static str {
+        r#"{
+            "id": "test", "bbox_wgs84": [0.0, 0.0, 0.01, 0.01],
+            "metadata": {"source": "s", "fetched_at": "t", "license": "l", "label": "old fixture"}
+        }"#
+    }
+
+    #[test]
+    fn old_neighborhood_json_with_no_pattern_fields_deserializes_to_empty_vec() {
+        let n: Neighborhood = serde_json::from_str(nbhd_json_without_pattern_fields())
+            .expect("pre-field Neighborhood JSON should still deserialize");
+        assert!(n.pattern_fields.is_empty());
+    }
+
+    #[test]
+    fn density_field_round_trips_through_json_with_its_kind_tag() {
+        let field = PatternField::Density(DensityField {
+            center: LngLat::new(-76.1, 36.8),
+            radius_m: 300.0,
+            core_target_stories: 6.0,
+            edge_target_stories: 2.0,
+            n_rings: 3,
+        });
+        let json = serde_json::to_string(&field).unwrap();
+        assert!(json.contains("\"kind\":\"Density\""), "expected an internally-tagged 'kind' discriminator, got: {json}");
+        let back: PatternField = serde_json::from_str(&json).unwrap();
+        match back {
+            PatternField::Density(d) => {
+                assert_eq!(d.n_rings, 3);
+                assert!((d.radius_m - 300.0).abs() < 1e-9);
+            }
+        }
     }
 }

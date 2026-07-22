@@ -25,7 +25,7 @@
 use crate::parameters::{ParamSpec, Parameters};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::nir::{Neighborhood, Parcel, PatternField};
 use street_smarts_core::opinion::SourceCitation;
 
 /// The result of running a pattern operator: the new parcels, open space,
@@ -59,6 +59,16 @@ pub struct Subdivision {
     /// at all.
     #[serde(default)]
     pub new_boundaries: Vec<street_smarts_core::nir::Boundary>,
+    /// New site-wide `PatternField`s (a real, sampleable potential over raw
+    /// geometry -- see `PatternField`'s own doc, and `PATTERN_ORDERING_
+    /// AUDIT.md` at the repo root for why this exists). `p29_density_rings`
+    /// is the first real producer. Appended to `Neighborhood.pattern_fields`
+    /// by `apply_subdivision`, never replaced -- unlike parcels/buildings/
+    /// open space, a field has no id to key a "replace" on, and nothing in
+    /// this pipeline runs the same field-producing operator twice on one
+    /// neighborhood.
+    #[serde(default)]
+    pub new_fields: Vec<PatternField>,
     /// IDs of source parcels removed from the neighborhood when applying.
     #[serde(default)]
     pub replaced_parcel_ids: Vec<String>,
@@ -275,6 +285,9 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
     let mut new_boundaries = nbhd.boundaries.clone();
     new_boundaries.extend(sub.new_boundaries.iter().cloned());
 
+    let mut new_pattern_fields = nbhd.pattern_fields.clone();
+    new_pattern_fields.extend(sub.new_fields.iter().cloned());
+
     let mut out = nbhd.clone();
     out.parcels = new_parcels;
     out.open_space = new_open_space;
@@ -282,6 +295,7 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
     out.streets = new_streets;
     out.activity_nodes = new_activity_nodes;
     out.boundaries = new_boundaries;
+    out.pattern_fields = new_pattern_fields;
     out.metadata.label = format!(
         "{} — modified by {} (seed {})",
         out.metadata.label, sub.trace.operator_name, sub.trace.seed

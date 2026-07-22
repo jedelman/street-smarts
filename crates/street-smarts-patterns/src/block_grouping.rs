@@ -283,6 +283,7 @@ impl PatternOperator for BlockGrouping {
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }

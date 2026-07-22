@@ -79,6 +79,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P98 unit fixture".into(),
             },
+            pattern_fields: vec![],
         };
         match P98CirculationRealms.evaluate(&n) {
             OpinionOutput::NoView { reason, .. } => assert!(reason.contains("realm")),

@@ -194,6 +194,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P131 opinion fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

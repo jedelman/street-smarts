@@ -187,6 +187,7 @@ mod tests {
                 license: "test".into(),
                 layer_provenance: Default::default(),
             },
+            pattern_fields: vec![],
         }
     }
 

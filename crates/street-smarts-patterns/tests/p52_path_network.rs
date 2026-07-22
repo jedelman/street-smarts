@@ -56,7 +56,8 @@ fn four_corner_blocks() -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P52 unit fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]
@@ -219,7 +220,8 @@ fn pentagon_blocks() -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P50 degree-cap fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]
@@ -362,7 +364,8 @@ fn three_blocks_uneven_spacing() -> Neighborhood {
             layer_provenance: Default::default(),
             label: "arterial-length fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]

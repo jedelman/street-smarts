@@ -99,6 +99,7 @@ mod tests {
             open_space: vec![],
             boundaries: vec![],
             activity_nodes: vec![],
+            pattern_fields: vec![],
             metadata: NeighborhoodMeta {
                 source: "test".into(),
                 fetched_at: "".into(),

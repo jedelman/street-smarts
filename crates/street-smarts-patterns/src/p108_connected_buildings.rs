@@ -310,6 +310,7 @@ impl PatternOperator for P108ConnectedBuildings {
             replaced_building_ids: vec![],
             entity_provenance,
             trace,
+            new_fields: vec![],
         })
     }
 }
