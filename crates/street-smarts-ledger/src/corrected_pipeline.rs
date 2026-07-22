@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 20-stage pipeline and risking
+//! each independently computing the same 21-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 20
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 21
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -25,6 +25,7 @@ use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P
 use street_smarts_patterns::p124_activity_pockets::{P124ActivityPockets, P124Params};
 use street_smarts_patterns::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use street_smarts_patterns::p118_roof_garden::{P118Params, P118RoofGarden};
+use street_smarts_patterns::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
 use street_smarts_patterns::p119_arcades::{P119Arcades, P119Params};
 use street_smarts_patterns::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
 use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
@@ -66,7 +67,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 20-stage corrected pipeline against `root` via
+/// Runs the real 21-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -122,6 +123,7 @@ pub fn run_corrected_pipeline_via_ledger(
     // untouched. See pipeline.rs's own step 10 doc.
     try_run(store, &P197ThickWalls, "*", &P197Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P127IntimacyGradient, "*", &P127Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P116CascadeOfRoofs, "*", &P116Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P129CommonAreasAtTheHeart, "*", &P129Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P131TheFlowThroughRooms, "*", &P131Params::defaults().as_map(), seed, &mut cur, &mut commits);

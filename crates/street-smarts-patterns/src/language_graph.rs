@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 20-step sequence -- exactly the "read-and-infer" cost
+//! same 21-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 20-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 21-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -121,6 +121,12 @@ pub const LANGUAGE: &[PatternNode] = &[
     PatternNode {
         id: "p127_intimacy_gradient", alexander_number: Some(127), requires: &["p107_wings_of_light"], completes: &[],
         why: "partitions each P107 building's ground floor into a depth-ordered cell sequence; needs real building footprints",
+    },
+    PatternNode {
+        id: "p116_cascade_of_roofs", alexander_number: Some(116),
+        requires: &["p117_sheltering_roof", "p127_intimacy_gradient"],
+        completes: &[],
+        why: "partitions each P117 whole-building roof into per-cell RoofSegments whose ridge height cascades with P127's own real depth gradient; needs both P117's real roof and P127's real interior_cells to exist first",
     },
     PatternNode {
         id: "p130_entrance_room", alexander_number: Some(130), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],

@@ -1240,23 +1240,50 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
             # why a plain extrusion, not a boolean, is the right real cost
             # here.
             _t0 = time.perf_counter()
-            roof = b.get("roof")
-            if roof is not None:
-                if roof["shape"] == "flat":
-                    # P118 Roof Garden's own real occupiable roof --
-                    # roof_cap_solid's triangular-wedge profile needs a
-                    # real ridge > eave rise, which a flat roof never has
-                    # by construction. See flat_roof_cap_solid's own
-                    # docstring.
-                    roof_solid = flat_roof_cap_solid(part["outer"], roof["ridge_height_m"], origin_lng, origin_lat)
-                    roof_kind = "roof_garden" if roof.get("occupiable") else "roof"
-                else:
-                    roof_solid = roof_cap_solid(
-                        part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
-                    )
-                    roof_kind = "roof"
-                if roof_solid is not None:
-                    building_solids.append((roof_solid, roof_kind))
+            roof_segments = b.get("roof_segments") or []
+            if roof_segments:
+                # P116 Cascade of Roofs' own real per-cell partition
+                # (crates/street-smarts-patterns/src/p116_cascade_of_roofs.rs)
+                # -- one cap per segment, each using ITS OWN footprint and
+                # RoofForm (ridge height already cascades with the cell's
+                # real depth; only ridge_height_m varies, shape/eave/azimuth
+                # are the same as the whole-building roof by construction).
+                # Drawn INSTEAD OF the single whole-building `roof` cap
+                # below -- roof_segments already partitions the same real
+                # roof area, so drawing both would double it up.
+                for seg in roof_segments:
+                    seg_form = seg["form"]
+                    if seg_form["shape"] == "flat":
+                        seg_solid = flat_roof_cap_solid(
+                            seg["footprint"]["outer"], seg_form["ridge_height_m"], origin_lng, origin_lat
+                        )
+                        seg_kind = "roof_garden" if seg_form.get("occupiable") else "roof"
+                    else:
+                        seg_solid = roof_cap_solid(
+                            seg["footprint"]["outer"], seg_form["eave_height_m"], seg_form["ridge_height_m"],
+                            origin_lng, origin_lat,
+                        )
+                        seg_kind = "roof"
+                    if seg_solid is not None:
+                        building_solids.append((seg_solid, seg_kind))
+            else:
+                roof = b.get("roof")
+                if roof is not None:
+                    if roof["shape"] == "flat":
+                        # P118 Roof Garden's own real occupiable roof --
+                        # roof_cap_solid's triangular-wedge profile needs a
+                        # real ridge > eave rise, which a flat roof never has
+                        # by construction. See flat_roof_cap_solid's own
+                        # docstring.
+                        roof_solid = flat_roof_cap_solid(part["outer"], roof["ridge_height_m"], origin_lng, origin_lat)
+                        roof_kind = "roof_garden" if roof.get("occupiable") else "roof"
+                    else:
+                        roof_solid = roof_cap_solid(
+                            part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
+                        )
+                        roof_kind = "roof"
+                    if roof_solid is not None:
+                        building_solids.append((roof_solid, roof_kind))
             t_roof += time.perf_counter() - _t0
 
             if not punch_real_openings:

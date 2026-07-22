@@ -143,6 +143,17 @@ for this cluster is generator work, not more schema: a P116 wing-partition gener
 roof-garden generator (needs P116 first), and a P119/P166 canopy generator keyed to `p221`'s
 existing street-facing-wall computation.
 
+**2026-07-22 update: generator cluster complete, all five patterns.** `p118_roof_garden.rs`,
+`p119_arcades.rs` (also closes P166), and `p160_building_edge.rs` landed first (in that order,
+NOT gated on P116 the way the note above predicted -- P118's top-N tallest-buildings pick and
+P119/P160's own wall-edge geometry turned out not to need per-wing roof segments at all).
+`p116_cascade_of_roofs.rs` (the generator, distinct from the opinion of the same name) landed
+last: it reuses `p127_intimacy_gradient`'s own depth-ordered `interior_cells` polygons directly as
+the roof's wing partition (rather than building an independent wing-detection pass, which this
+doc's earlier note assumed would be needed), and cascades `ridge_height_m` down with each cell's
+real `depth`. All five opinions now score real `Value`s (not `NoView`) on every real fixture this
+pipeline ships, wired into both `pipeline.rs` and the ledger mirror, and into `render.py`.
+
 ### Extend `p221_natural_doors_and_windows.rs` (openings)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

@@ -84,25 +84,34 @@
 //!      `p127_intimacy_gradient`'s own module doc for the full sourced
 //!      sequence Alexander's own text lays out (127 -> 128 -> 129 -> 130 ->
 //!      131 -> 132 -> 133...).
-//!   13. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   13. P116 Cascade of Roofs (once, site-scale): partitions every
+//!      already-roofed building's roof into per-cell `RoofSegment`s whose
+//!      ridge height cascades with P127's own cell `depth` -- the same
+//!      "social hierarchy of the spaces below" Alexander's own text names,
+//!      reused rather than independently re-derived. Runs right after P127
+//!      -- needs both P117's whole-building `roof` and P127's real
+//!      `interior_cells` to exist first. See p116_cascade_of_roofs's own
+//!      module doc for why it reuses P127's cell polygons as the roof's
+//!      wing partition instead of computing a separate one.
+//!   14. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
 //!      change, see the module's own doc for why. Kept next to P127
 //!      instead of Alexander's own post-P129 position since nothing about
 //!      it depends on run order relative to P129.
-//!   14. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!   15. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity.
-//!   15. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   16. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   16. P221 (once, site-scale): place real window/door openings on every
+//!   17. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   17. P133 Staircase as a Stage (once, site-scale): carves a real
+//!   18. P133 Staircase as a Stage (once, site-scale): carves a real
 //!      stair-core strip out of the common-area cell of every multi-story
 //!      building, open to the room it interrupts. Runs AFTER P221, not
 //!      right after P131 where Alexander's own numbering would put it --
@@ -113,7 +122,7 @@
 //!      resulting error. See the module's own doc for the full story (also
 //!      covers the clip_half_plane-based strip technique, borrowed from
 //!      P131's own passage cell, and the union_pieces bug it replaced).
-//!   18. P118 Roof Garden (once, site-scale): overwrites the site's own
+//!   19. P118 Roof Garden (once, site-scale): overwrites the site's own
 //!      `max_gardens` tallest real buildings from P117's sloped shed roof
 //!      to a flat, occupiable garden roof. Runs after P221 for the same
 //!      reason P133 does -- needs real `Building.floors` to rank by. A
@@ -121,14 +130,14 @@
 //!      own module doc for why a threshold was tried and rejected (it
 //!      tanked P117/P162's own real sloped-roof score site-wide on this
 //!      pipeline's real fixture).
-//!   19. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+//!   20. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
 //!      real ground-floor arcade canopy, plus a gallery canopy at every
 //!      real upper story, on whichever wall best faces the nearest real
 //!      street/open space. Also needs real `Building.floors` (P166's
 //!      "every story" claim), so runs after P221. Not fatal if no
 //!      building has a real street/open-space target within threshold.
 //!      See p119_arcades's own module doc.
-//!   20. P160 Building Edge (once, site-scale): places a real wall niche
+//!   21. P160 Building Edge (once, site-scale): places a real wall niche
 //!      flanking every real door P221 already placed, on the same wall
 //!      edge. Runs after P221 for the real door data to flank. Not fatal
 //!      if no door has room for a niche on either side. See
@@ -144,6 +153,7 @@
 
 use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use crate::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
+use crate::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
 use crate::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
 use crate::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
 use crate::p130_entrance_room::{P130EntranceRoom, P130Params};
@@ -406,6 +416,11 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub127) = P127IntimacyGradient.apply(&nbhd, "*", &P127Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub127);
         trace.push(P127IntimacyGradient.name());
+    }
+
+    if let Ok(sub116) = P116CascadeOfRoofs.apply(&nbhd, "*", &P116Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub116);
+        trace.push(P116CascadeOfRoofs.name());
     }
 
     if let Ok(sub130) = P130EntranceRoom.apply(&nbhd, "*", &P130Params::defaults(), seed) {

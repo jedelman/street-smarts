@@ -11,21 +11,18 @@
 //! > most significant areas. Lesser roofs should cascade from these
 //! > primary structures.
 //!
-//! # A real check, now that the schema supports it -- no generator yet
+//! # A real check, now backed by a real generator
 //!
 //! `Building.roof_segments` (a `Vec<RoofSegment>`, each a real sub-polygon
-//! of the footprint with its own `RoofForm`) now exists specifically for
-//! this pattern. `p117_sheltering_roof` still only ever assigns the
-//! whole-building `roof` field (one segment, never `roof_segments`) -- so
-//! on every real fixture this pipeline ships today, `roof_segments` is
-//! empty everywhere, and this opinion still returns `NoView`. What
-//! changed: the reason is now "no generator populates this yet", not "the
-//! schema can't represent this at all" -- and the check below is REAL,
-//! not a placeholder, verified against synthetic fixtures in this file's
-//! own tests. Once a real P116 generator exists (needs a per-wing
-//! footprint partition keyed to `p127_intimacy_gradient`'s cell graph,
-//! still not built), this opinion starts scoring real buildings with no
-//! further changes needed here.
+//! of the footprint with its own `RoofForm`) is populated by
+//! `street_smarts_patterns::p116_cascade_of_roofs`, which reuses
+//! `p127_intimacy_gradient`'s own depth-ordered cell polygons as the
+//! roof's wing partition and cascades `ridge_height_m` down with each
+//! cell's `depth` -- see that operator's own module doc for the full
+//! design. This opinion needed no changes once the generator landed: it
+//! was written real from the start, scoring `NoView` only for buildings
+//! the generator itself skips (fewer than 2 real `interior_cells`, or no
+//! `roof` yet).
 //!
 //! For each building with 2+ real roof segments: a real cascade means the
 //! ridge heights actually step down, not stay uniform (uniform ridges
