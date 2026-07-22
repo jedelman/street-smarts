@@ -110,7 +110,7 @@ data-flow, not about correcting a misreading of the source text.
 | 2 | P108 → **P96** | **C. Mixed** (partially A, partially genuine) | ✅ Fixed (§6d) |
 | 3 | P124 → **P117** | **D. Free reorder** | ✅ Fixed (§6b) |
 | 4 | P197 → **P127** | **D. Free reorder** | ✅ Fixed (§6b) |
-| 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) | Open |
+| 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) | ✅ Fixed (§6e) |
 | 6 | P130 → **P129** | **D. Free reorder** (admitted in the code itself) | ✅ Fixed (§6b) |
 | 7 | P221 → **P133** | **B. Hoisted-derived-attribute bug** | ✅ Fixed (§6c) |
 | 8 | P133 → **P118** | **B. Hoisted-derived-attribute bug** | ✅ Fixed (§6c) |
@@ -565,9 +565,86 @@ passing within the existing 4-bit tolerance (expected: final story
 assignments are numerically identical to the pre-split single-pass P96,
 just computed across two stages instead of one).
 
-Remaining open item: item 2 (P116's own "reuses someone else's
-individuation" pattern, §4.5) — the last item on the audit's original
-list.
+Remaining open item (at that point): item 2 (P116's own "reuses someone
+else's individuation" pattern, §4.5) — the last item on the audit's
+original list.
+
+## 6e. Item 2, implemented: `IntimacyField`, P116 samples instead of reuses
+
+§4.5's own self-critique: `p116_cascade_of_roofs` read `InteriorCell.depth`
+directly off P127's own already-individuated cells to decide ridge
+height — a real, correct dependency given the old schema, but named
+honestly as an instance of the exact bug this whole audit is about.
+Alexander's own number for Cascade of Roofs (116) is LOWER than Intimacy
+Gradient's (127) — canonically a larger, prior pattern, forced to borrow a
+smaller, later one's specific discretization (how many bands P127 happened
+to slice, which index a given cell got) purely because there was nowhere
+else to read "which parts of this building matter more" from.
+
+What actually landed:
+
+- **`IntimacyField`**, the second `PatternField` variant (`street_smarts_
+  core::nir`). Unlike `DensityField` (one field for the whole site), this
+  is inherently per-building — `origin`, `axis_x`/`axis_y` (a unit vector
+  toward the public realm), `s_min`/`s_max` (the real range the axis
+  projection spans across that one building's footprint). `Neighborhood.
+  pattern_fields` already being a `Vec` meant no schema change was needed
+  to hold many of these at once.
+- **`p127_intimacy_gradient` attaches one per SOLID building it actually
+  slices.** A solid building's depth was always a real closed-form linear
+  gradient before it got discretized into bands — `solid_bands` already
+  computed `center`, `axis`, `s_min`, `s_max` internally; this just keeps
+  those values instead of discarding them once the bands exist. Honestly
+  scoped to solid buildings only: a courtyard building's depth is angular
+  arc-length position around its own ring, not reducible to a few scalars
+  without also carrying the ring geometry (already on `Building.polygon`,
+  redundant to duplicate) — no field for those, and none for a solid
+  building too small to slice at all (nothing to draw a real gradient
+  over). `p127_intimacy_gradient::sample_intimacy_field(field, point)`
+  evaluates the same projection math at ANY point, not just a cell's own
+  centroid.
+- **`p116_cascade_of_roofs` samples it** at each interior cell's own
+  centroid, in place of reading `cell.depth` — when a field is attached.
+  Falls back to `cell.depth` directly for courtyard buildings or any
+  building without one, fully backward compatible with older serialized
+  fixtures and exactly matching every existing test's own expectations
+  (none of them attach a field, so they all exercise, and confirm, the
+  fallback path unchanged).
+
+**A real, expected numeric difference, not a bug — documented up front
+this time, not discovered by a failing test.** Sampling the continuous
+field at a cell's own centroid does not reproduce that cell's old
+index-based `depth` (`k / (n_bands - 1)`) exactly: the index-based value
+only ever depended on a cell's ORDINAL position among its siblings, the
+field-sampled value on its real physical position. For evenly-sized bands
+the two are close but not identical (3 bands: index depths 0, 0.5, 1.0;
+field-sampled at each band's own centroid roughly 0.17, 0.5, 0.83). This
+is the actual point of the fix, not approximation error — the index-based
+value was itself an individuation artifact (how many bands P127 happened
+to choose), and P116 now gets the field's own continuous answer instead.
+Given the P96 split's own lesson earlier in this session (a naive per-
+entity resample broke a cross-group invariant), this one was checked for
+an analogous risk before shipping: unlike P96's tier-grouping/spacing
+interaction, nothing here compares two SEPARATE entities' field samples
+against each other — each cell's ridge height depends only on its own
+sample — so there's no equivalent invariant to break, confirmed by two
+new tests: one proving the field path is genuinely exercised (two cells
+sharing an artificially-identical, wrong `depth` label still come out
+correctly ordered from their real positions) and one proving the fallback
+path is unchanged when no field is attached.
+
+Full workspace test suite green (all `ok`, including the two new p127
+field-attachment tests and the two new p116 field-sampling tests), clippy
+clean, and `scripts/vibe-render.sh` (both scenarios) confirms the
+perceptual-hash regression gate still passes within its existing 4-bit
+tolerance — expected: ridge-height shifts are a small fraction of total
+rendered geometry (roofs, not full building mass) and don't move the
+coarse isometric hash. Pipeline EXECUTION ORDER is unchanged by this item
+(P127 still runs before P116 in the real trace, same as always) — only
+the coupling mechanism between them changed, from a direct attribute read
+to a sampled field.
+
+This closes the last open item from the original audit list (§3).
 
 ## 7. Non-goals
 
@@ -575,8 +652,10 @@ list.
   P95→P108, P96→P107, P107→P124, P117→P197, P127→P129→P131, P131→P221) is free of
   its own issues — only the ten actual deviations from ascending order were
   examined here.
-- Does not touch, revert, or re-litigate any already-shipped code — P116's real
-  implementation (§4.5) stays as-is; it's flagged, not undone.
+- Does not touch, revert, or re-litigate any already-shipped code beyond what's
+  described in §6e — P116's real geometry-partition reuse (its roof segments
+  still come from P127's own cell polygons) stays as-is; only the DEPTH VALUE
+  feeding ridge height changed, not the footprint partition.
 - Does not commit to Simondon's actual philosophical apparatus beyond the single
   borrowed distinction (pre-individual field vs. individuated instance) — see the
   citation-honesty note in §1.

@@ -36,6 +36,6 @@ fn p29_touches_no_parcel_at_all_only_attaches_a_field() {
     assert!(sub29.new_streets.is_empty());
 
     assert_eq!(sub29.new_fields.len(), 1, "P29 should attach exactly one real field");
-    let PatternField::Density(field) = &sub29.new_fields[0];
+    let PatternField::Density(field) = &sub29.new_fields[0] else { panic!("expected a Density field") };
     assert!(field.radius_m > 0.0, "the attached field should have a real, positive radius");
 }

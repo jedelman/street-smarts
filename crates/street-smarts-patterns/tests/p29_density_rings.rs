@@ -35,7 +35,7 @@ fn field_is_attached_with_a_real_center_and_radius() {
     let baseline = real_baseline();
     let with_field = attach_field(&baseline, &P29Params::defaults());
     assert_eq!(with_field.pattern_fields.len(), 1);
-    let PatternField::Density(field) = &with_field.pattern_fields[0];
+    let PatternField::Density(field) = &with_field.pattern_fields[0] else { panic!("expected a Density field") };
     assert!(field.radius_m > 10.0, "a real 47-acre site should have a real, non-trivial radius, got {}", field.radius_m);
     assert_eq!(field.n_rings, 3);
 }
@@ -49,8 +49,8 @@ fn eccentricity_frac_measurably_shifts_the_field_center() {
     let centered = attach_field(&baseline, &P29Params { eccentricity_frac: 0.0, ..P29Params::defaults() });
     let eccentric = attach_field(&baseline, &P29Params { eccentricity_frac: 0.6, ..P29Params::defaults() });
 
-    let PatternField::Density(d0) = &centered.pattern_fields[0];
-    let PatternField::Density(d1) = &eccentric.pattern_fields[0];
+    let PatternField::Density(d0) = &centered.pattern_fields[0] else { panic!("expected a Density field") };
+    let PatternField::Density(d1) = &eccentric.pattern_fields[0] else { panic!("expected a Density field") };
     let shift_m = street_smarts_core::geometry::haversine_m(&d0.center, &d1.center);
     assert!(shift_m > 1.0, "a higher eccentricity_frac should measurably shift the real field center, got {shift_m:.2}m");
 }
@@ -60,7 +60,7 @@ fn respects_custom_core_and_edge_targets() {
     let baseline = real_baseline();
     let params = P29Params { n_rings: 2.0, core_target_stories: 10.0, edge_target_stories: 1.0, ..P29Params::defaults() };
     let with_field = attach_field(&baseline, &params);
-    let PatternField::Density(field) = &with_field.pattern_fields[0];
+    let PatternField::Density(field) = &with_field.pattern_fields[0] else { panic!("expected a Density field") };
 
     let (label_at_center, stories_at_center) = sample_density_field(field, field.center);
     assert_eq!(label_at_center, "core");

@@ -97,9 +97,10 @@ pub struct Parcel {
 /// (`p29_density_rings::sample_density_field`), not here; this schema only
 /// carries the data, same split every other operator-specific NIR type
 /// already uses (e.g. `RoofForm` is data, `p116_cascade_of_roofs` is the
-/// math that produces and reads it). Extend with a new variant (a future
-/// P116 "significance field", per the audit doc) rather than generalizing
-/// this one into something abstract.
+/// math that produces and reads it). `Intimacy` is the second variant this
+/// doc comment used to anticipate as a future extension -- see its own
+/// doc and `PATTERN_ORDERING_AUDIT.md` §4.5/§6e for the real generator gap
+/// it closes.
 ///
 /// Named `PatternField`, not `Field` -- `street_smarts_patterns::field`
 /// already defines an unrelated `Field` (a rasterized pressure grid for
@@ -111,6 +112,7 @@ pub struct Parcel {
 #[serde(tag = "kind")]
 pub enum PatternField {
     Density(DensityField),
+    Intimacy(IntimacyField),
 }
 
 /// P29 Density Rings' own real data: site density should step down with
@@ -137,6 +139,50 @@ pub struct DensityField {
     /// consumer buckets into the exact same rings P29 itself was
     /// configured with.
     pub n_rings: u32,
+}
+
+/// `p127_intimacy_gradient`'s own real "public-to-private" gradient over
+/// ONE specific building's own footprint -- pure data; the real sampling
+/// logic (`sample_intimacy_field`) lives with the operator that produces
+/// this, in `street-smarts-patterns::p127_intimacy_gradient`, not here.
+/// Unlike `DensityField` (one field for the whole site), this is inherently
+/// per-building -- `Neighborhood.pattern_fields` already accommodates many
+/// entries, so one `Intimacy` field is attached per building P127
+/// partitions.
+///
+/// **Solid buildings only.** A solid building's depth is a real linear
+/// gradient along one axis (see `axis_x`/`axis_y` below) -- a closed form
+/// cheap enough to store as a few scalars and resample anywhere on the
+/// footprint, exactly the property that made `DensityField` work as a
+/// primitive. A courtyard building's depth is angular arc-length position
+/// around its own ring, which isn't reducible to a few scalars without
+/// also carrying the ring geometry itself (already on `Building.polygon`,
+/// redundant to duplicate here) -- courtyard buildings don't get an
+/// `Intimacy` field; consumers fall back to reading `InteriorCell.depth`
+/// directly for those, exactly as if this field didn't exist. See
+/// `PATTERN_ORDERING_AUDIT.md` §4.5/§6e for the real scope call this is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntimacyField {
+    /// Which building this gradient belongs to -- unlike `DensityField`,
+    /// there is one of these per building, not one for the whole site.
+    pub building_id: String,
+    /// The building footprint's own centroid, in real lng/lat -- the same
+    /// origin `p127_intimacy_gradient`'s own local-metre conversions use
+    /// for this building, and what `axis_x`/`axis_y`/`s_min`/`s_max` below
+    /// are measured relative to.
+    pub origin: crate::geometry::LngLat,
+    /// Real unit vector, in local metres (east-west, north-south) from
+    /// `origin`, pointing from the deepest point TOWARD the public realm
+    /// -- `p127_intimacy_gradient`'s own cardinal-snapped depth axis.
+    pub axis_x: f64,
+    pub axis_y: f64,
+    /// The real range of `(point - origin) . axis` this building's own
+    /// footprint spans -- `s_max` is where the axis projection is
+    /// greatest, i.e. nearest the public realm (depth 0.0); `s_min` is
+    /// farthest from it (depth 1.0). A sample outside this range clamps,
+    /// the same convention `DensityField`'s own radius clamp uses.
+    pub s_min: f64,
+    pub s_max: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -728,6 +774,29 @@ mod pattern_field_tests {
                 assert_eq!(d.n_rings, 3);
                 assert!((d.radius_m - 300.0).abs() < 1e-9);
             }
+            PatternField::Intimacy(_) => panic!("expected Density, got Intimacy"),
+        }
+    }
+
+    #[test]
+    fn intimacy_field_round_trips_through_json_with_its_kind_tag() {
+        let field = PatternField::Intimacy(IntimacyField {
+            building_id: "B1".into(),
+            origin: LngLat::new(-76.1, 36.8),
+            axis_x: 1.0,
+            axis_y: 0.0,
+            s_min: -5.0,
+            s_max: 5.0,
+        });
+        let json = serde_json::to_string(&field).unwrap();
+        assert!(json.contains("\"kind\":\"Intimacy\""), "expected an internally-tagged 'kind' discriminator, got: {json}");
+        let back: PatternField = serde_json::from_str(&json).unwrap();
+        match back {
+            PatternField::Intimacy(f) => {
+                assert_eq!(f.building_id, "B1");
+                assert!((f.s_max - f.s_min - 10.0).abs() < 1e-9);
+            }
+            PatternField::Density(_) => panic!("expected Intimacy, got Density"),
         }
     }
 }

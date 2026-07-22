@@ -67,12 +67,44 @@
 //! - **Upper floors untouched.** Same ground-floor-only scope
 //!   `p127_intimacy_gradient` itself documents -- the cell graph this
 //!   operator reuses only exists for floor 0.
+//!
+//! # v0.2: sampling P127's real `IntimacyField` instead of `cell.depth`
+//!
+//! The v0.1 approach above read each cell's `depth` attribute directly --
+//! a real, correct dependency at the time, but `PATTERN_ORDERING_AUDIT.md`
+//! §4.5 named it honestly as a self-critique: reusing a smaller, later
+//! pattern's own discrete individuation (which specific band index a cell
+//! got, out of however many P127 happened to slice) rather than sampling
+//! the real underlying gradient directly, the same premature-individuation
+//! shape the whole audit was about. `p127_intimacy_gradient` now attaches
+//! a real `IntimacyField` per solid building it partitions (its own "v0.3"
+//! module doc) -- this operator samples that field at each cell's own
+//! centroid instead of reading `cell.depth`, when one is attached. Falls
+//! back to `cell.depth` for courtyard buildings (no field: their depth
+//! isn't a simple closed form) and any building without one, so this stays
+//! fully backward compatible with older serialized fixtures. The
+//! resulting ridge heights shift slightly from the old index-based values
+//! -- expected, not a bug; see p127's own module doc for the real numbers.
 
+use crate::p127_intimacy_gradient::sample_intimacy_field;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
-use street_smarts_core::nir::{Building, Neighborhood, RoofSegment};
+use street_smarts_core::geometry::LngLat;
+use street_smarts_core::nir::{Building, InteriorCell, Neighborhood, PatternField, RoofSegment};
 use street_smarts_core::opinion::SourceCitation;
+
+/// Vertex-averaged centroid of `cell`'s own polygon -- the same convention
+/// every other operator in this crate uses for a polygon's own "origin"
+/// (see `p107_wings_of_light`/`p96_number_of_stories`), used as the query
+/// point when sampling this building's own `IntimacyField`, if it has one.
+fn cell_centroid(cell: &InteriorCell) -> LngLat {
+    let ring = &cell.polygon.outer;
+    LngLat::new(
+        ring.iter().map(|p| p.lng).sum::<f64>() / ring.len().max(1) as f64,
+        ring.iter().map(|p| p.lat).sum::<f64>() / ring.len().max(1) as f64,
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P116Params {
@@ -147,6 +179,7 @@ impl PatternOperator for P116CascadeOfRoofs {
         let mut n_cascaded = 0usize;
         let mut n_skipped_no_roof = 0usize;
         let mut n_skipped_too_few_cells = 0usize;
+        let mut n_field_sampled = 0usize;
 
         for b in &nbhd.buildings {
             let Some(roof) = &b.roof else {
@@ -158,12 +191,30 @@ impl PatternOperator for P116CascadeOfRoofs {
                 continue;
             }
 
+            // Prefer sampling this building's own real IntimacyField (P127's
+            // continuous public-to-private gradient) at each cell's own
+            // centroid over reading that cell's discrete `depth` -- see this
+            // file's own "v0.2" module doc for why that's a real, honest
+            // improvement, not just a refactor. Falls back to `cell.depth`
+            // when no field is attached (courtyard buildings, or a solid
+            // building too small for P127 to have sliced at all).
+            let intimacy_field = nbhd.pattern_fields.iter().find_map(|f| match f {
+                PatternField::Intimacy(i) if i.building_id == b.id => Some(i),
+                _ => None,
+            });
+            if intimacy_field.is_some() {
+                n_field_sampled += 1;
+            }
+
             let rise = roof.ridge_height_m - roof.eave_height_m;
             let segments: Vec<RoofSegment> = b
                 .interior_cells
                 .iter()
                 .map(|cell| {
-                    let depth = cell.depth.clamp(0.0, 1.0);
+                    let depth = match intimacy_field {
+                        Some(field) => sample_intimacy_field(field, cell_centroid(cell)),
+                        None => cell.depth.clamp(0.0, 1.0),
+                    };
                     let fraction = 1.0 - depth * (1.0 - params.min_ridge_fraction);
                     let mut form = roof.clone();
                     form.ridge_height_m = roof.eave_height_m + rise * fraction;
@@ -192,16 +243,23 @@ impl PatternOperator for P116CascadeOfRoofs {
             headline: format!("Cascaded {} real building roof(s) into per-cell segments.", n_cascaded),
             steps: vec![format!(
                 "{} building(s) cascaded, {} real roof segment(s) total (one per interior cell); {} \
-                 skipped (no roof yet), {} skipped (fewer than 2 interior_cells).",
+                 skipped (no roof yet), {} skipped (fewer than 2 interior_cells). {} building(s) \
+                 sampled a real IntimacyField for ridge height (continuous); the rest fell back to \
+                 InteriorCell.depth (courtyard buildings, or no field attached).",
                 n_cascaded,
                 new_buildings.iter().map(|b| b.roof_segments.len()).sum::<usize>(),
-                n_skipped_no_roof, n_skipped_too_few_cells
+                n_skipped_no_roof, n_skipped_too_few_cells, n_field_sampled
             )],
             caveats: vec![
                 "Reuses p127_intimacy_gradient's own interior-cell polygons as the roof's wing \
                  partition rather than computing an independent one -- a solid building's cells are \
                  parallel depth bands, a courtyard building's are ring bays, neither a literal \
                  branching L/U/H wing footprint. See this operator's own module doc.".into(),
+                "Ridge height still reads footprint geometry from P127's own cells (their polygons \
+                 ARE the roof segment footprints) -- only the DEPTH VALUE used to compute ridge \
+                 height is now field-sampled where a field is attached, not the partition itself. \
+                 See p127_intimacy_gradient's own 'v0.3' module doc for why the partition (unlike \
+                 the depth value) is a reasonable thing to still share.".into(),
                 "Only ridge_height_m cascades -- every segment keeps the parent roof's own shape and \
                  slope_azimuth_deg. A real cascade with per-wing roof shapes is a further refinement, \
                  not attempted here.".into(),
@@ -233,7 +291,7 @@ impl PatternOperator for P116CascadeOfRoofs {
 mod tests {
     use super::*;
     use street_smarts_core::geometry::{LngLat, Polygon};
-    use street_smarts_core::nir::{InteriorCell, NeighborhoodMeta, RoofForm, RoofShape};
+    use street_smarts_core::nir::{InteriorCell, IntimacyField, NeighborhoodMeta, RoofForm, RoofShape};
 
     fn m() -> f64 { 111_320.0 }
 
@@ -249,6 +307,24 @@ mod tests {
         InteriorCell {
             id: id.into(),
             polygon: Polygon::from_ring(square_ring(3.0)),
+            depth,
+            is_common: false,
+            kind: "room".into(),
+            connects_to: vec![],
+            floor: 0,
+        }
+    }
+
+    /// Same as `cell`, but its real polygon is shifted `offset_x_m` east
+    /// (local metres) of the origin -- used to give a cell a real, distinct
+    /// physical position `sample_intimacy_field` can tell apart, independent
+    /// of whatever (possibly wrong) `depth` label it also carries.
+    fn cell_at(id: &str, depth: f64, offset_x_m: f64) -> InteriorCell {
+        let dx = offset_x_m / m();
+        let ring: Vec<LngLat> = square_ring(3.0).iter().map(|p| LngLat::new(p.lng + dx, p.lat)).collect();
+        InteriorCell {
+            id: id.into(),
+            polygon: Polygon::from_ring(ring),
             depth,
             is_common: false,
             kind: "room".into(),
@@ -322,6 +398,53 @@ mod tests {
         }
         // the whole-building roof field is left untouched.
         assert!(b.roof.is_some());
+    }
+
+    #[test]
+    fn a_field_sampled_building_uses_real_position_not_the_raw_depth_label() {
+        // Both cells carry the SAME (deliberately wrong) depth label -- if
+        // this operator fell back to reading it, both would get identical
+        // ridge heights. Their real positions differ (east vs west of the
+        // field's own origin), so a real IntimacyField sample should still
+        // tell them apart correctly.
+        let field = IntimacyField {
+            building_id: "B1".into(),
+            origin: LngLat::new(0.0, 0.0),
+            axis_x: 1.0,
+            axis_y: 0.0,
+            s_min: -10.0,
+            s_max: 10.0,
+        };
+        let east = cell_at("c_east", 0.5, 8.0); // near s = +8 -> shallow (close to s_max)
+        let west = cell_at("c_west", 0.5, -8.0); // near s = -8 -> deep (close to s_min)
+        let mut n = nbhd(vec![building("B1", Some(roof(9.0, 11.0)), vec![east, west])]);
+        n.pattern_fields.push(PatternField::Intimacy(field));
+
+        let sub = P116CascadeOfRoofs.apply(&n, "*", &P116Params::defaults(), 0).unwrap();
+        let b = &sub.new_buildings[0];
+        assert_eq!(b.roof_segments.len(), 2);
+        assert!(
+            b.roof_segments[0].form.ridge_height_m > b.roof_segments[1].form.ridge_height_m,
+            "the east (shallow) cell should keep a taller ridge than the west (deep) cell, even \
+             though both carried the same cell.depth label -- got {:?} vs {:?}",
+            b.roof_segments[0].form.ridge_height_m, b.roof_segments[1].form.ridge_height_m
+        );
+    }
+
+    #[test]
+    fn no_field_attached_falls_back_to_cell_depth() {
+        // Same building/cells as above, but with NO IntimacyField attached
+        // -- confirms the fallback path (cell.depth) still works exactly as
+        // before this change, for a courtyard building or an older
+        // serialized fixture.
+        let east = cell_at("c_east", 0.0, 8.0);
+        let west = cell_at("c_west", 1.0, -8.0);
+        let n = nbhd(vec![building("B1", Some(roof(9.0, 11.0)), vec![east, west])]);
+        let sub = P116CascadeOfRoofs.apply(&n, "*", &P116Params::defaults(), 0).unwrap();
+        let b = &sub.new_buildings[0];
+        assert!((b.roof_segments[0].form.ridge_height_m - 11.0).abs() < 1e-9, "depth 0.0 should keep the full ridge");
+        let expected_deep = 9.0 + (11.0 - 9.0) * 0.35;
+        assert!((b.roof_segments[1].form.ridge_height_m - expected_deep).abs() < 1e-9, "depth 1.0 should keep the min_ridge_fraction floor");
     }
 
     #[test]

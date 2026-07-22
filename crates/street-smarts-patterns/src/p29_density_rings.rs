@@ -391,7 +391,7 @@ mod tests {
         let n = nbhd(vec![raw_parcel("SITE", 100.0)]);
         let sub = P29DensityRings.apply(&n, "SITE", &P29Params::defaults(), 0).unwrap();
         assert_eq!(sub.new_fields.len(), 1);
-        let PatternField::Density(field) = &sub.new_fields[0];
+        let PatternField::Density(field) = &sub.new_fields[0] else { panic!("expected a Density field") };
         assert!(field.radius_m > 50.0, "radius should reflect the real 100m half-side square, got {}", field.radius_m);
         assert_eq!(field.n_rings, 3);
         // No parcels/buildings touched -- this operator only attaches a field.
@@ -404,7 +404,7 @@ mod tests {
         let n = nbhd(vec![raw_parcel("SITE", 100.0)]);
         let params = P29Params { eccentricity_frac: 0.0, ..P29Params::defaults() };
         let sub = P29DensityRings.apply(&n, "SITE", &params, 0).unwrap();
-        let PatternField::Density(field) = &sub.new_fields[0];
+        let PatternField::Density(field) = &sub.new_fields[0] else { panic!("expected a Density field") };
         let (label, stories) = sample_density_field(field, field.center);
         assert_eq!(label, "core");
         assert!((stories - params.core_target_stories).abs() < 1e-9);
@@ -415,7 +415,7 @@ mod tests {
         let n = nbhd(vec![raw_parcel("SITE", 100.0)]);
         let params = P29Params { eccentricity_frac: 0.0, ..P29Params::defaults() };
         let sub = P29DensityRings.apply(&n, "SITE", &params, 0).unwrap();
-        let PatternField::Density(field) = &sub.new_fields[0];
+        let PatternField::Density(field) = &sub.new_fields[0] else { panic!("expected a Density field") };
         let far = LngLat::new(field.center.lng + 10.0, field.center.lat);
         let (label, stories) = sample_density_field(field, far);
         assert_eq!(label, "edge");
@@ -427,8 +427,8 @@ mod tests {
         let n = nbhd(vec![raw_parcel("SITE", 100.0)]);
         let dead_center = P29DensityRings.apply(&n, "SITE", &P29Params { eccentricity_frac: 0.0, ..P29Params::defaults() }, 0).unwrap();
         let shifted = P29DensityRings.apply(&n, "SITE", &P29Params { eccentricity_frac: 0.5, ..P29Params::defaults() }, 0).unwrap();
-        let PatternField::Density(d0) = &dead_center.new_fields[0];
-        let PatternField::Density(d1) = &shifted.new_fields[0];
+        let PatternField::Density(d0) = &dead_center.new_fields[0] else { panic!("expected a Density field") };
+        let PatternField::Density(d1) = &shifted.new_fields[0] else { panic!("expected a Density field") };
         assert!(
             (d0.center.lng - d1.center.lng).abs() > 1e-9 || (d0.center.lat - d1.center.lat).abs() > 1e-9,
             "eccentricity_frac > 0 should move the field center off the plain centroid"

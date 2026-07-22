@@ -247,7 +247,7 @@ impl PatternOperator for P96NumberOfStories {
         // `tests/p96_number_of_stories.rs`'s own
         // `honors_the_ordinary_cap_with_only_a_few_widely_spaced_exceptions`
         // for the regression this fix keeps closed.
-        let density_field = nbhd.pattern_fields.iter().find_map(|f| match f { PatternField::Density(d) => Some(d) });
+        let density_field = nbhd.pattern_fields.iter().find_map(|f| match f { PatternField::Density(d) => Some(d), _ => None });
         let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, p) in pads.iter().enumerate() {
             let tier = p.density_tier.clone().unwrap_or_else(|| "unspecified".into());

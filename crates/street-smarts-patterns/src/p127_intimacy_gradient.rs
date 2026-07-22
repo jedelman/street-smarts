@@ -73,6 +73,54 @@
 //! the real eastside-baseline fixture: P191 0.021 -> 0.394 overall (0.64
 //! for solid-building cells specifically; courtyard bays are unaffected by
 //! this change, and unaffected on purpose -- see the note above).
+//!
+//! # v0.3: `IntimacyField`, closing PATTERN_ORDERING_AUDIT.md's own
+//! self-critique (§4.5)
+//!
+//! `p116_cascade_of_roofs` used to read `InteriorCell.depth` directly off
+//! this operator's own already-individuated cells to decide each roof
+//! segment's ridge height -- a real, correct dependency given the old
+//! schema, but the audit named it honestly as an instance of the exact
+//! premature-individuation pattern it was auditing: Alexander's own number
+//! for Cascade of Roofs (116) is LOWER than Intimacy Gradient's (127), i.e.
+//! canonically a larger, prior pattern, being forced to borrow a smaller,
+//! later one's specific discretization just because there was nowhere
+//! else to read "which parts of this building matter more" from.
+//!
+//! For a SOLID building, `depth` was always a real closed-form linear
+//! gradient before it ever got discretized into bands -- `solid_bands`
+//! (below) computes exactly `(s_max - s(point)) / (s_max - s_min)` along
+//! one real axis, then slices that continuum into `n_bands` equal steps
+//! only because `InteriorCell` needs discrete polygons to exist at all.
+//! The continuum itself is cheap to keep: `IntimacyField` stores the same
+//! `origin`/`axis`/`s_min`/`s_max` this operator already computes, and
+//! `sample_intimacy_field` (below) evaluates it at ANY point, not just a
+//! cell's own centroid -- the same "attach the field, let a later stage
+//! sample it" move `DensityField`/`sample_density_field` made for P29/P37.
+//! `p116_cascade_of_roofs` now samples this directly instead of reading
+//! `cell.depth`; see that operator's own module doc for what changed.
+//!
+//! **Solid buildings only, honestly.** A courtyard building's depth is
+//! angular arc-length position around its own ring (`courtyard_bays`,
+//! below) -- not reducible to a handful of scalars without also carrying
+//! the ring geometry itself. No `IntimacyField` is attached for those;
+//! anything sampling depth for a courtyard building (or a solid building
+//! too small to slice at all) falls back to reading `InteriorCell.depth`
+//! directly, exactly as if this field didn't exist -- the same
+//! backward-compatible fallback `DensityField`'s own consumers use.
+//!
+//! **A real, expected numeric difference from before, not a bug.**
+//! Sampling the continuous field at a cell's own centroid does NOT
+//! reproduce that cell's old index-based `depth` (`k / (n_bands - 1)`)
+//! exactly -- the index-based value only depends on a cell's ORDINAL
+//! position among its siblings, while the field-sampled value depends on
+//! the cell's real physical position along the axis. For evenly-sized
+//! bands the two are close but not identical (e.g. 3 bands: index depths
+//! are 0, 0.5, 1.0; field-sampled at each band's own centroid are roughly
+//! 0.17, 0.5, 0.83). This is the real point of the fix, not an
+//! approximation error: the index-based value was itself an individuation
+//! artifact (how many bands P127 happened to choose), and the field gives
+//! `p116_cascade_of_roofs` the continuous answer instead.
 
 use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
@@ -80,7 +128,8 @@ use crate::planar::{centroid, clip_half_plane, lnglat_to_local, local_to_ring, r
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::components::BuildingTypology;
-use street_smarts_core::nir::{Building, InteriorCell, Neighborhood};
+use street_smarts_core::geometry::LngLat;
+use street_smarts_core::nir::{Building, InteriorCell, IntimacyField, Neighborhood, PatternField};
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,12 +209,14 @@ impl PatternOperator for P127IntimacyGradient {
         }
 
         let mut new_buildings: Vec<Building> = Vec::new();
+        let mut new_fields: Vec<PatternField> = Vec::new();
         let mut replaced: Vec<String> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut n_solid = 0;
         let mut n_courtyard = 0;
         let mut n_single_cell = 0;
         let mut n_skipped = 0;
+        let mut n_fields_attached = 0;
 
         for b in &nbhd.buildings {
             if b.polygon.outer.len() < 3 {
@@ -194,7 +245,12 @@ impl PatternOperator for P127IntimacyGradient {
                     continue;
                 }
                 n_solid += 1;
-                solid_bands(&b.id, &outer_local, target, params, &origin)
+                let (cells, field) = solid_bands(&b.id, &outer_local, target, params, &origin);
+                if let Some(f) = field {
+                    new_fields.push(PatternField::Intimacy(f));
+                    n_fields_attached += 1;
+                }
+                cells
             };
 
             if cells.is_empty() {
@@ -219,8 +275,8 @@ impl PatternOperator for P127IntimacyGradient {
         }
 
         steps.push(format!(
-            "Partitioned {} building(s): {} solid (parallel bands), {} courtyard (ring bays), {} single-cell (too small to slice), {} skipped.",
-            new_buildings.len(), n_solid, n_courtyard, n_single_cell, n_skipped
+            "Partitioned {} building(s): {} solid (parallel bands), {} courtyard (ring bays), {} single-cell (too small to slice), {} skipped. {} real IntimacyField(s) attached (solid buildings only; see this operator's own \"v0.3\" module doc).",
+            new_buildings.len(), n_solid, n_courtyard, n_single_cell, n_skipped, n_fields_attached
         ));
 
         let trace = SubdivisionTrace {
@@ -249,6 +305,10 @@ impl PatternOperator for P127IntimacyGradient {
                  not arbitrary, but a real deviation made specifically so bands read as rectangles \
                  under p191_shape_of_indoor_space's own axis-aligned check. See this file's own \
                  'v0.2' module doc.".into(),
+                "IntimacyField is only attached for solid buildings that actually got sliced -- \
+                 courtyard buildings and single-cell (too-small) solid buildings get none, and any \
+                 consumer sampling depth for those falls back to reading InteriorCell.depth \
+                 directly. See this file's own 'v0.3' module doc.".into(),
             ],
             seed: _seed,
             params: params.as_map(),
@@ -266,7 +326,7 @@ impl PatternOperator for P127IntimacyGradient {
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
-            new_fields: vec![],
+            new_fields,
         })
     }
 }
@@ -353,7 +413,7 @@ fn solid_bands(
     target: Option<Pt2>,
     params: &P127Params,
     origin: &street_smarts_core::geometry::LngLat,
-) -> Vec<InteriorCell> {
+) -> (Vec<InteriorCell>, Option<IntimacyField>) {
     let u = depth_axis(outer_local, target);
     let perp = Pt2::new(-u.y, u.x);
     let c = centroid(outer_local);
@@ -367,7 +427,7 @@ fn solid_bands(
     }
     let span = s_max - s_min;
     if span < params.min_span_m || span <= 0.0 {
-        return vec![InteriorCell {
+        return (vec![InteriorCell {
             id: format!("{building_id}_cell_0"),
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(outer_local, origin)),
             depth: 0.0,
@@ -375,7 +435,7 @@ fn solid_bands(
             kind: "room".into(),
             connects_to: vec![],
             floor: 0,
-        }];
+        }], None);
     }
 
     let n_bands = ((span / params.band_depth_m).round().max(1.0)) as usize;
@@ -409,7 +469,40 @@ fn solid_bands(
         cell.id = format!("{building_id}_cell_{i}");
         cell.depth = if total > 1 { i as f64 / (total - 1) as f64 } else { 0.0 };
     }
-    cells
+
+    // The real closed-form gradient this whole partition was sliced from --
+    // `s_min`/`s_max`/`u` are already exactly what `sample_intimacy_field`
+    // needs, computed once above; nothing left to derive. Attached even
+    // when a degenerate band got dropped (`total` < `n_bands`) -- the field
+    // itself doesn't depend on how many bands survived clipping.
+    let field = IntimacyField {
+        building_id: building_id.to_string(),
+        origin: *origin,
+        axis_x: u.x,
+        axis_y: u.y,
+        s_min,
+        s_max,
+    };
+    (cells, Some(field))
+}
+
+/// Sample `field`'s own real linear depth gradient at any real point --
+/// NOT limited to a specific `InteriorCell`'s centroid. Reuses the exact
+/// same projection math `solid_bands` used to slice the building in the
+/// first place (`s = (point - origin) . axis`, `depth = (s_max - s) /
+/// (s_max - s_min)`, clamped 0..1), so a sample at a cell's own centroid
+/// tracks that cell's real position continuously rather than repeating its
+/// discrete band index -- see `p116_cascade_of_roofs`'s own use of this,
+/// and `PATTERN_ORDERING_AUDIT.md` §4.5/§6e for why that distinction is
+/// the whole point.
+pub fn sample_intimacy_field(field: &IntimacyField, point: LngLat) -> f64 {
+    let local = lnglat_to_local(&point, &field.origin);
+    let s = local.x * field.axis_x + local.y * field.axis_y;
+    let span = field.s_max - field.s_min;
+    if span.abs() < 1e-9 {
+        return 0.0;
+    }
+    ((field.s_max - s) / span).clamp(0.0, 1.0)
 }
 
 /// Total length of `ring`'s own closed boundary.
@@ -751,5 +844,99 @@ mod tests {
     fn no_buildings_is_an_error_not_a_silent_no_op() {
         let n = nbhd(vec![], vec![]);
         assert!(P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).is_err());
+    }
+
+    #[test]
+    fn a_sliced_solid_building_gets_a_real_intimacy_field() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert_eq!(sub.new_fields.len(), 1, "one IntimacyField should be attached for the one sliced solid building");
+        let PatternField::Intimacy(field) = &sub.new_fields[0] else { panic!("expected an Intimacy field") };
+        assert_eq!(field.building_id, "B1");
+        assert!(field.s_max > field.s_min, "s_max should exceed s_min for a real, non-degenerate span");
+    }
+
+    #[test]
+    fn a_single_cell_building_gets_no_intimacy_field() {
+        // Too small to slice (side_m well under min_span_m) -- single cell,
+        // no real gradient to attach a field for.
+        let n = nbhd(vec![solid_building("B1", 2.0)], vec![]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert_eq!(sub.new_buildings[0].interior_cells.len(), 1);
+        assert!(sub.new_fields.is_empty(), "a single-cell building has no real gradient to attach a field for");
+    }
+
+    #[test]
+    fn a_courtyard_building_gets_no_intimacy_field() {
+        let outer = square_ring(40.0);
+        let m = 1.0 / 111_320.0;
+        let inner: Vec<LngLat> = {
+            let s = 15.0 * m;
+            let off = 12.5 * m;
+            vec![
+                LngLat::new(off, off), LngLat::new(off + s, off),
+                LngLat::new(off + s, off + s), LngLat::new(off, off + s),
+                LngLat::new(off, off),
+            ]
+        };
+        let b = Building {
+            id: "CY1".into(),
+            polygon: Polygon::from_parts(vec![PolygonPart { outer, holes: vec![inner] }]),
+            height_m: Some(7.0),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: Some(2),
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        let n = nbhd(vec![b], vec![]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert!(!sub.new_buildings[0].interior_cells.is_empty());
+        assert!(sub.new_fields.is_empty(), "courtyard buildings don't get an IntimacyField -- see this file's own 'v0.3' module doc");
+    }
+
+    #[test]
+    fn sampling_the_field_at_each_cells_own_centroid_tracks_real_depth_order() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        let PatternField::Intimacy(field) = &sub.new_fields[0] else { panic!("expected an Intimacy field") };
+        let b = &sub.new_buildings[0];
+        assert!(b.interior_cells.len() >= 2);
+
+        // Sampling at each cell's own centroid should be close to (but not
+        // necessarily bit-identical to) that cell's own index-based depth --
+        // see this file's own 'v0.3' module doc for why they can differ --
+        // and, crucially, should preserve the SAME real ascending order.
+        let mut sampled: Vec<f64> = Vec::new();
+        for cell in &b.interior_cells {
+            let ring = &cell.polygon.outer;
+            let c = LngLat::new(
+                ring.iter().map(|p| p.lng).sum::<f64>() / ring.len() as f64,
+                ring.iter().map(|p| p.lat).sum::<f64>() / ring.len() as f64,
+            );
+            sampled.push(sample_intimacy_field(field, c));
+        }
+        let mut sorted = sampled.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(sampled, sorted, "field-sampled depth should already come out in increasing order across the real cells");
+        assert!(sampled[0] >= -1e-9 && sampled[0] < 0.3, "shallowest cell should sample near 0");
+        assert!(*sampled.last().unwrap() > 0.7, "deepest cell should sample near 1");
     }
 }

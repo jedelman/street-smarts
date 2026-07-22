@@ -223,6 +223,7 @@ impl PatternOperator for P37HouseCluster {
         // behavior exactly (density_tier/target_stories left unset).
         let density_field = nbhd.pattern_fields.iter().find_map(|f| match f {
             PatternField::Density(d) => Some(d),
+            _ => None,
         });
 
         let mut all_new_parcels: Vec<Parcel> = Vec::new();
@@ -486,6 +487,7 @@ impl P37HouseCluster {
         let sub = self.apply(&nbhd, parcel_id, params, seed)?;
         let density_field = nbhd.pattern_fields.iter().find_map(|f| match f {
             PatternField::Density(d) => Some(d),
+            _ => None,
         });
         let new_ids: Vec<String> = sub.new_parcels.iter().map(|p| p.id.clone()).collect();
         let new_tiers: Vec<(String, DensityTier)> = density_field
