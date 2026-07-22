@@ -1,9 +1,0 @@
-{
-  "source": "Poly Haven (polyhaven.com), HDRI \"Kloofendal 43d Clear (Pure Sky)\" by Greg Zaal",
-  "asset_url": "https://polyhaven.com/a/kloofendal_43d_clear_puresky",
-  "download_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_43d_clear_puresky_1k.hdr",
-  "license": "CC0 1.0 Universal (public domain) -- Poly Haven's site-wide asset license, no attribution required; credited here anyway as this project's own convention for any real external data (see data/military-circle-context-buildings.geojson's own _provenance).",
-  "resolution": "1k (2048x1024) -- the smallest Poly Haven offers, chosen deliberately: only used as real-time IBL lighting + a background skybox for a small procedural massing model, not a hero background image, so higher resolution would be wasted bytes.",
-  "fetched_at": "2026-07-21",
-  "purpose": "Real directional sky lighting (a real midday sun, real sky-dome ambient) for the public/index.html vibe-render gallery's <model-viewer> embeds (model-viewer's own skybox-image/environment-image attributes) -- gives real cast shadows and a real bright-exterior/dim-interior contrast the flat procedural \"neutral\" environment-image model-viewer ships with can't produce, since that has no real directional component."
-}
