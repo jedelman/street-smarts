@@ -145,21 +145,24 @@ jobs:
         # as real headroom data accumulates -- don't just raise it if it's
         # ever hit without asking why the bundle grew first.
         #
-        # Raised 300,000 -> 310,000 after asking why: PR #27's real growth
-        # (a new p21_four_story_limit generator, and the IntimacyField
-        # primitive + its p116/p127 consumers -- both genuine new pattern-
-        # language functionality, not bloat) pushed the actual gzip size to
-        # 300,362 measured on CI (run 29956884133) -- this budget had only
-        # ~2,650 bytes (0.9%) of headroom left even before that PR, per the
-        # prior successful run (297,348 bytes, run 29955908752), so it was
-        # always going to trip on the next real feature regardless of size.
-        # New budget keeps a similar proportional margin (~3% over the real
-        # measured number) rather than a token bump to just clear this one
-        # PR.
+        # Raised 300,000 -> 310,000 after asking why (PR #27): real gzip
+        # size hit 300,362 with only ~2,650 bytes of headroom left even
+        # before that PR's own genuine growth (a new p21_four_story_limit
+        # generator, the IntimacyField primitive + its p116/p127
+        # consumers) -- see this workflow's own git history for the full
+        # measured numbers behind that first bump.
+        #
+        # Raised again 310,000 -> 1,000,000, explicitly authorized by the
+        # repo owner rather than re-derived from a new measurement -- the
+        # project was ratcheting this budget up roughly every other real
+        # feature commit, which is more churn than the check is worth at
+        # this bundle size; SPEC.md §3.5's actual hard ceiling was always
+        # 5MB compressed. Still a real, enforced ceiling, just one with
+        # enough headroom not to need another PR to raise it again soon.
         run: |
           RAW=$(stat -c%s public/pkg/street_smarts_web_bg.wasm)
           GZIP=$(gzip -c public/pkg/street_smarts_web_bg.wasm | wc -c)
-          BUDGET_GZIP_BYTES=310000
+          BUDGET_GZIP_BYTES=1000000
           echo "WASM raw   : ${RAW} bytes"
           echo "WASM gzip  : ${GZIP} bytes (budget: ${BUDGET_GZIP_BYTES} bytes)"
           if [ "$GZIP" -gt "$BUDGET_GZIP_BYTES" ]; then
