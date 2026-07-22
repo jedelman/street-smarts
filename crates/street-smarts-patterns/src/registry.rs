@@ -2,6 +2,7 @@
 
 use crate::block_grouping::BlockGrouping;
 use crate::building_shape::BuildingShape;
+use crate::p21_four_story_limit::P21FourStoryLimit;
 use crate::p29_density_rings::P29DensityRings;
 use crate::p37_house_cluster::P37HouseCluster;
 use crate::p95_building_complex::P95BuildingComplex;
@@ -101,8 +102,9 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
         Box::new(P61SmallPublicSquares),
-        Box::new(P96NumberOfStories),
+        Box::new(P21FourStoryLimit),
         Box::new(P108ConnectedBuildings),
+        Box::new(P96NumberOfStories),
         Box::new(P117ShelteringRoof),
         Box::new(P118RoofGarden),
         Box::new(P124ActivityPockets),

@@ -37,26 +37,37 @@
 //!      placed on that block, plus street corridors from step 3 -- each pad
 //!      inherits its source block's P29 density tier/target. `pad_inset_m`
 //!      is now a construction-joint-sized 0.1m, not a real setback.
-//!   6. P108 Connected Buildings (once, site-scale): merges pads separated
-//!      by nothing but that construction joint into one continuous
+//!   6. P21 Four-Story Limit (once, site-scale): caps every pad's
+//!      field-inherited target at the ordinary ceiling -- a pure per-pad
+//!      read of whatever P29/P37 already sampled onto it, needing nothing
+//!      P108 (next) produces. Split out of P96 (PATTERN_ORDERING_AUDIT.md
+//!      §4.2 -- a "mixed" deviation, half of which really was a free-
+//!      standing field read forced to wait on P108 for no real reason), so
+//!      it now runs at its own true earliest position, right after P95.
+//!   7. P108 Connected Buildings (once, site-scale): merges pads separated
+//!      by nothing but a construction joint into one continuous
 //!      party-wall footprint -- pads separated by a real reserved gap
 //!      (street, square, common land) stay apart. Runs before P96/P107 so
 //!      daylight-depth shaping sees the real, final connected mass; see
 //!      p108's own module doc for why that deviates from Alexander's
 //!      numbering (108, after Wings of Light).
-//!   7. P96 Number of Stories (once, site-scale): turns each pad's
-//!      inherited tier target into a real per-pad story count, capping
-//!      ordinary buildings at 4 stories (P21 Four-Story Limit) with a very
-//!      few, widely-spaced exceptions where a tier's target calls for more.
-//!   8. P107 (once, site-scale): shape every P95/P108 pad for daylight
+//!   8. P96 Number of Stories (once, site-scale): picks the very few pads
+//!      that get to exceed P21's ordinary cap, "placed with great care...
+//!      widely spaced" -- genuinely needs P108's final merged footprint to
+//!      rank (largest-first) and space them, so runs here, not alongside
+//!      P21 above. Resamples P29's own field at each pad's real, final
+//!      centroid rather than trusting inherited `density_tier`, closing a
+//!      caveat P108's own module doc names honestly (merged pads don't
+//!      reconcile tier against their cluster-mates).
+//!   9. P107 (once, site-scale): shape every P95/P108 pad for daylight
 //!      depth, reading P96's `target_stories` assignment for real height --
-//!      unless P96 didn't run, the flat `assumed_height_m` fallback applies
-//!      exactly as before P96 existed. Already filters by
+//!      unless P21/P96 didn't run, the flat `assumed_height_m` fallback
+//!      applies exactly as before either existed. Already filters by
 //!      `use_category == "p95_building_pad"` across the whole neighborhood
 //!      regardless of which block a pad came from, and no longer applies
 //!      its own setback on top of a P95/P108 pad's own gap (see p107's
 //!      "v0.2" module doc).
-//!   9. P117 Sheltering Roof (once, site-scale): assigns every real
+//!   10. P117 Sheltering Roof (once, site-scale): assigns every real
 //!      building with a real `height_m` a real shed roof (eave = its own
 //!      real height_m, ridge = that plus a real, modest roof_rise_m),
 //!      sloping down to true north -- also closes P162 North Face's own
@@ -70,7 +81,7 @@
 //!      roof honestly satisfies both patterns at once, and what it
 //!      deliberately doesn't claim (P116's per-wing cascade, P118's roof
 //!      garden, P119/P166's canopy geometry).
-//!   10. P118 Roof Garden (once, site-scale): overwrites the site's own
+//!   11. P118 Roof Garden (once, site-scale): overwrites the site's own
 //!      `max_gardens` tallest real buildings from P117's sloped shed roof
 //!      to a flat, occupiable garden roof. Used to wait until after P221
 //!      purely for real `Building.floors` to rank by -- P107 now derives
@@ -86,7 +97,7 @@
 //!      tried and rejected (it tanked P117/P162's own real sloped-roof
 //!      score site-wide on this pipeline's real fixture). Not fatal if no
 //!      building qualifies.
-//!   11. P124 Activity Pockets (once, site-scale): bumps a small, real,
+//!   12. P124 Activity Pockets (once, site-scale): bumps a small, real,
 //!      partly enclosed pocket out from up to max_pockets_per_plaza
 //!      buildings bordering each real Plaza (from P61), reading "jut
 //!      forward into the open space" literally -- a real projection
@@ -98,7 +109,7 @@
 //!      note on why it splices the bump into the ring directly rather
 //!      than using subtract_convex + union_pieces (the same reassembly-
 //!      reliability problem P95/P133 already hit).
-//!   12. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+//!   13. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
 //!      real ground-floor arcade canopy, plus a gallery canopy at every
 //!      real upper story, on whichever wall best faces the nearest real
 //!      street/open space. Reads the FINAL footprint (whatever P124 left
@@ -110,7 +121,7 @@
 //!      P124, its own real earliest valid position. Not fatal if no
 //!      building has a real street/open-
 //!      space target within threshold. See p119_arcades's own module doc.
-//!   13. P127 Intimacy Gradient (once, site-scale): partitions every
+//!   14. P127 Intimacy Gradient (once, site-scale): partitions every
 //!      building's ground floor into a depth-ordered sequence of cells
 //!      (public wall/entrance bay -> deepest point). Still needs P107's
 //!      final footprint, which P124 (above) may have bumped -- P124
@@ -121,13 +132,13 @@
 //!      (127 < 197) at zero cost. See `p127_intimacy_gradient`'s own
 //!      module doc for the full sourced sequence Alexander's own text
 //!      lays out (127 -> 128 -> 129 -> 130 -> 131 -> 132 -> 133...).
-//!   14. P197 Thick Walls (once, site-scale): assigns every real building a
+//!   15. P197 Thick Walls (once, site-scale): assigns every real building a
 //!      real, nonzero `wall_thickness_m`, capped relative to its own real
 //!      footprint. Runs after P107, P124, and P117 -- every downstream
 //!      stage clones and mutates the buildings those produced, so this
 //!      field survives untouched to the end. Deliberately scalar-only,
 //!      not carved geometry -- see p197_thick_walls's own module doc.
-//!   15. P116 Cascade of Roofs (once, site-scale): partitions every
+//!   16. P116 Cascade of Roofs (once, site-scale): partitions every
 //!      already-roofed building's roof into per-cell `RoofSegment`s whose
 //!      ridge height cascades with P127's own cell `depth` -- the same
 //!      "social hierarchy of the spaces below" Alexander's own text names,
@@ -137,22 +148,22 @@
 //!      p116_cascade_of_roofs's own module doc for why it reuses P127's
 //!      cell polygons as the roof's wing partition instead of computing a
 //!      separate one.
-//!   16. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!   17. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity. No real
 //!      dependency on P130 either direction (PATTERN_ORDERING_AUDIT.md
 //!      §4.6 -- P130 never changes cell geometry or count) -- placed here,
 //!      ahead of P130, to match BOTH Alexander's own ascending numbering
 //!      (129 < 130) AND his own cited textual sequence (127 -> 128 -> 129
 //!      -> 130 -> 131...) at zero cost.
-//!   17. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   18. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
 //!      change, see the module's own doc for why.
-//!   18. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   19. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   19. P133 Staircase as a Stage (once, site-scale): carves a real
+//!   20. P133 Staircase as a Stage (once, site-scale): carves a real
 //!      stair-core strip out of the common-area cell of every multi-story
 //!      building, open to the room it interrupts. Needs P131's
 //!      `connects_to` graph, P129's `is_common` flag, and real
@@ -168,13 +179,13 @@
 //!      own doc for the clip_half_plane-based strip technique, borrowed
 //!      from P131's own passage cell, and the union_pieces bug it
 //!      replaced.
-//!   20. P221 (once, site-scale): place real window/door openings on every
+//!   21. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   21. P160 Building Edge (once, site-scale): places a real wall niche
+//!   22. P160 Building Edge (once, site-scale): places a real wall niche
 //!      flanking every real door P221 already placed, on the same wall
 //!      edge. Runs after P221 for the real door data to flank -- a
 //!      genuine Class C dependency (PATTERN_ORDERING_AUDIT.md §4.8), not a
@@ -190,6 +201,7 @@
 //! client-side in JS, since it needs to update the map after each stage
 //! rather than only at the end.
 
+use crate::p21_four_story_limit::{P21FourStoryLimit, P21Params};
 use crate::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use crate::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use crate::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
@@ -403,11 +415,27 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P95BuildingComplex.name());
     }
 
+    // P21 Four-Story Limit (once, site-scale): caps every pad's
+    // field-inherited target at the ordinary ceiling -- a pure per-pad
+    // read that needs nothing from P108's merge (PATTERN_ORDERING_AUDIT.md
+    // §4.2), so it runs right here, before P108, at its own real earliest
+    // position. p96_number_of_stories (below) picks the very few
+    // exceptions after P108 has produced final, merged footprints.
+    if let Ok(sub21) = P21FourStoryLimit.apply(&nbhd, "*", &P21Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub21);
+        trace.push(P21FourStoryLimit.name());
+    }
+
     if let Ok(sub108) = P108ConnectedBuildings.apply(&nbhd, "*", &P108Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub108);
         trace.push(P108ConnectedBuildings.name());
     }
 
+    // P96 Number of Stories (once, site-scale): picks the very few pads
+    // that get to exceed P21's ordinary cap, "placed with great care...
+    // widely spaced" -- needs P108's final merged footprint to rank and
+    // space them (PATTERN_ORDERING_AUDIT.md §4.2), so runs here, after
+    // P108, not before it like P21 above.
     if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &P96Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub96);
         trace.push(P96NumberOfStories.name());

@@ -87,6 +87,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "builds pads around whatever P37/P61 left on each block; each pad inherits its block's P29 density tier",
     },
     PatternNode {
+        id: "p21_four_story_limit", alexander_number: Some(21),
+        requires: &["p95_building_complex"],
+        completes: &[],
+        why: "caps every pad's field-inherited target at the ordinary ceiling -- a pure per-pad read that needs nothing from p108_connected_buildings, so it runs right after p95_building_complex, before P108 merges any pads (PATTERN_ORDERING_AUDIT.md §4.2, splitting this half out of what used to be a single p96_number_of_stories pass)",
+    },
+    PatternNode {
         id: "p108_connected_buildings", alexander_number: Some(108), requires: &["p95_building_complex"], completes: &["p95_building_complex"],
         why: "merges P95 pads separated only by a construction joint into one footprint, before P96/P107 read pad geometry -- they'd see stale, about-to-be-merged boundaries otherwise",
     },
@@ -94,7 +100,7 @@ pub const LANGUAGE: &[PatternNode] = &[
         id: "p96_number_of_stories", alexander_number: Some(96),
         requires: &["p95_building_complex", "p108_connected_buildings"],
         completes: &[],
-        why: "turns each pad's inherited density tier into a real story count, capped by P21 Four-Story Limit; needs P108's final pad boundaries",
+        why: "picks the very few pads that get to exceed P21's ordinary cap, \"placed with great care... widely spaced\" -- genuinely needs P108's final merged footprint to rank and space them (PATTERN_ORDERING_AUDIT.md §4.2), unlike P21's own ordinary-cap half above. Doesn't strictly require p21_four_story_limit to have run (falls back to its own default_target_stories the same way it always has if P21 didn't), so not listed as a requires entry",
     },
     PatternNode {
         id: "p107_wings_of_light", alexander_number: Some(107),

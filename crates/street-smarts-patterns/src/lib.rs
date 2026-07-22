@@ -20,6 +20,7 @@ pub mod path_network;
 pub mod planar;
 pub mod predicates;
 pub mod prng;
+pub mod p21_four_story_limit;
 pub mod p29_density_rings;
 pub mod p37_house_cluster;
 pub mod p95_building_complex;

@@ -38,6 +38,21 @@ earliest real position: P118 right after P117, P119 right after P124, and
 P133 right after P131 — restoring Alexander's own exact canonical position
 (131 < 133) for that last one. See §6c.
 
+**Update, same session (3):** after the Class C "mixed" split (§4.2, §6d)
+shipped, the real order is now
+
+```
+P29 → P37 → P52 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 →
+P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P160
+```
+
+— a new stage, `p21_four_story_limit` (Alexander's own P21, already named
+in P96's own citation but not previously given a generator), now runs
+right after P95, before P108. It does the ordinary-cap half of what used
+to be a single P96 pass — the half that never actually needed P108's
+merge. `p96_number_of_stories` still runs after P108, now doing only the
+exception-selection half that genuinely does. See §6d.
+
 This is **not** Alexander's own ascending pattern-number order. `registry.rs`'s own
 doc comment already names the actual organizing principle: *"larger, more-fixed
 patterns first, smaller ones nested inside what came before"* — Alexander's real
@@ -92,7 +107,7 @@ data-flow, not about correcting a misreading of the source text.
 | # | Deviation (runs after, canonically before) | Class | Status |
 |---|---|---|---|
 | 1 | P52 → **P29** | **A. Premature individuation** | ✅ Fixed (§6) |
-| 2 | P108 → **P96** | **C. Mixed** (partially A, partially genuine) | Open |
+| 2 | P108 → **P96** | **C. Mixed** (partially A, partially genuine) | ✅ Fixed (§6d) |
 | 3 | P124 → **P117** | **D. Free reorder** | ✅ Fixed (§6b) |
 | 4 | P197 → **P127** | **D. Free reorder** | ✅ Fixed (§6b) |
 | 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) | Open |
@@ -474,9 +489,85 @@ computed and set to the same value by the time rendering happened, so
 final geometry is unaffected — only *when* the field gets populated
 changed).
 
-Remaining open items: the Class C mixed case (P108→P96, §4.2 — splitting
-P96 into a field-sampled base assignment plus a still-necessarily-late
-exception-selection step), and item 2 (P116's own field, §4.5).
+Remaining open items (at that point): the Class C mixed case (P108→P96,
+§4.2 — splitting P96 into a field-sampled base assignment plus a still-
+necessarily-late exception-selection step), and item 2 (P116's own field,
+§4.5).
+
+## 6d. The P108→P96 split (Class C, mixed), also shipped this session
+
+§4.2's own diagnosis: P96 did two genuinely different jobs in one pass,
+both running after P108 purely because that's where the combined operator
+happened to sit. Only exception-selection (rank pads largest-first, space
+them apart) genuinely needs P108's FINAL merged pad set. The ordinary-cap
+half — "is this pad's tier target above or below 4 stories" — is a pure
+per-pad read of whatever P29/P37 already sampled onto it; it doesn't need
+P108, P96's own tier grouping, or anything about any OTHER pad.
+
+What actually landed:
+
+- **New generator: `p21_four_story_limit`** (`crates/street-smarts-
+  patterns/src/p21_four_story_limit.rs`). Alexander's own P21 — already
+  named in P96's own module doc and in this crate's
+  `street-smarts-opinions::p21_four_story_limit` detector, just never
+  given a generator of its own before. Runs once, site-scale, right after
+  P95 (before P108): for every building pad, caps `target_stories` at
+  `max_ordinary_stories` (writing `default_target_stories` first if P29
+  never ran). No grouping, no cross-pad computation — confirms the audit's
+  own framing that this half really was field-local, not individuation
+  work.
+- **`p96_number_of_stories` slimmed to exceptions + P99 main building
+  only**, still running after P108. Groups pads by their inherited
+  `density_tier` (P108-preserved, unaffected by P21) exactly as before.
+  The one real wrinkle: by the time this stage runs, P21 has already
+  overwritten every over-cap pad's own `target_stories` down to the
+  ordinary ceiling, so P96 can no longer read a group's real (pre-cap)
+  target off any pad directly. It now resamples P29's `DensityField`
+  once per group — at that group's own largest pad's centroid — to
+  recover what the field actually asked for. Falls back to whatever's
+  still on the pad if no field is attached, same as a pipeline that never
+  ran P29/P21.
+- **Pipeline wiring**: `pipeline.rs`, the ledger's `corrected_pipeline.rs`,
+  `registry.rs`, and `language_graph.rs`'s `LANGUAGE` table all updated —
+  P21 inserted between the per-block P95 loop and P108; P96 unchanged in
+  position (still right after P108).
+
+**Finding — a real correctness bug caught by this file's own integration
+test, not swept past.** The first version of the P96 resampling fix
+queried the field per PAD (at each individual pad's own centroid) rather
+than once per GROUP. That's more precise in principle, but it broke a
+real invariant: pads from the same P37 block, previously guaranteed to
+share one uniform, coarse `density_tier` (all sampled once at the block's
+own centroid), could now resolve to DIFFERENT ring labels purely from
+their own slightly different positions within that block — silently
+splitting what used to be one exception-candidate group into several.
+The spacing check only ever compares exceptions WITHIN one group, so two
+exceptions from two different resulting groups were never checked against
+each other — and `tests/p96_number_of_stories.rs`'s own
+`honors_the_ordinary_cap_with_only_a_few_widely_spaced_exceptions` caught
+exactly that on the real fixture: two real exceptions landed 58.3m apart,
+under the 80m `min_tall_spacing_m` floor. Fixed by keeping the group KEY
+as the inherited `density_tier` string (untouched by P21, so grouping
+stays exactly as coarse as before) and only using the field resample to
+recover one representative NUMERIC target per group, not per pad. Kept
+in the code as an explicit comment and cited in this operator's own
+module doc, the same "document the real failure, not just the fix" style
+as the P29 "no Edge block" finding in §6.
+
+Full workspace test suite green (all `ok`, zero `FAILED`/`panicked`,
+including this regression once fixed), clippy clean, and
+`scripts/vibe-render.sh` (both `clean_baseline` and `cluster_interior`
+scenarios) confirms the real gallery caption on `public/index.html` reads
+`P29 → P37 → P52 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 →
+P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 →
+P160` automatically, with the perceptual-hash regression gate still
+passing within the existing 4-bit tolerance (expected: final story
+assignments are numerically identical to the pre-split single-pass P96,
+just computed across two stages instead of one).
+
+Remaining open item: item 2 (P116's own "reuses someone else's
+individuation" pattern, §4.5) — the last item on the audit's original
+list.
 
 ## 7. Non-goals
 

@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 21-stage pipeline and risking
+//! each independently computing the same 22-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 21
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 22
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -23,6 +23,7 @@ use street_smarts_core::Scope;
 use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use street_smarts_patterns::p124_activity_pockets::{P124ActivityPockets, P124Params};
+use street_smarts_patterns::p21_four_story_limit::{P21FourStoryLimit, P21Params};
 use street_smarts_patterns::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use street_smarts_patterns::p118_roof_garden::{P118Params, P118RoofGarden};
 use street_smarts_patterns::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
@@ -67,7 +68,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 21-stage corrected pipeline against `root` via
+/// Runs the real 22-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -116,7 +117,14 @@ pub fn run_corrected_pipeline_via_ledger(
         try_run(store, &P95BuildingComplex, block_id, &P95Params::defaults().as_map(), block_seed, &mut cur, &mut commits);
     }
 
+    // P21's ordinary-cap half of what used to be a single P96 pass runs
+    // here -- a pure per-pad field read that needs nothing from P108's
+    // merge (PATTERN_ORDERING_AUDIT.md §4.2), so it runs at its own real
+    // earliest position, before P108.
+    try_run(store, &P21FourStoryLimit, "*", &P21Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // P96 now picks only the very few real exceptions to P21's cap, which
+    // genuinely needs P108's final merged footprint to rank and space them.
     try_run(store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // No real dependency on P124/P127/P197 either direction (PATTERN_
