@@ -42,16 +42,13 @@
 #     scripts/vibe-render.sh
 #
 # Output goes to $OUT_DIR (default: target/vibe-render/): the intermediate
-# pipeline JSON, the rendered PNG/SVG files, a per-scenario .glb (real
+# pipeline JSON, the rendered PNG/SVG files, and a per-scenario .glb (real
 # 3D model, drop straight into any glTF viewer -- see render.py's own
-# docstring), and clean_baseline_lineage.svg -- a self-contained animated
-# SVG (SMIL, no JS) of the same P37 -> per-block P95 -> P108 commit chain
-# unfolding in real geometry, from
-# street-smarts-ledger/examples/dump_lineage_animation.rs. Deliberately
-# the NON-satellite variant (dump_lineage_map.rs's combined satellite+graph
-# version is ~30x heavier, a base64-embedded raster tile) -- this repo
-# already gates its WASM bundle to a 300KB gzip budget, so a multi-MB
-# inline SVG isn't something to ship on the public page by default.
+# docstring). The animated-lineage SVG (street-smarts-ledger/examples/
+# dump_lineage_animation.rs) used to be generated and embedded here too;
+# dropped from the public gallery as a stale, hand-captioned section that
+# never got updated as the real pipeline order changed (the example itself
+# is still in the tree if it's wanted again).
 #
 # If $PUBLISH_DIR is set, every render (isometric PNGs, floor-plan SVGs,
 # .glb) is also copied there under fixed filenames, ready
@@ -80,13 +77,11 @@ has_scenario() { case " $SCENARIOS " in *" $1 "*) return 0 ;; *) return 1 ;; esa
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-echo "==> building dump_pipeline + dump_pipeline_seeding + dump_pipeline_chain + dump_lineage_animation examples"
+echo "==> building dump_pipeline + dump_pipeline_seeding + dump_pipeline_chain examples"
 cargo build --release -p street-smarts-patterns --example dump_pipeline --example dump_pipeline_seeding --example dump_pipeline_chain
-cargo build --release -p street-smarts-ledger --example dump_lineage_animation
 DUMP_BIN="target/release/examples/dump_pipeline"
 DUMP_SEEDING_BIN="target/release/examples/dump_pipeline_seeding"
 DUMP_CHAIN_BIN="target/release/examples/dump_pipeline_chain"
-DUMP_LINEAGE_ANIMATION_BIN="target/release/examples/dump_lineage_animation"
 
 echo "==> running corrected pipeline: clean_baseline"
 "$DUMP_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline.json"
@@ -120,9 +115,6 @@ if n != 1:
 with open(path, "w", encoding="utf-8") as f:
     f.write(new_html)
 PYEOF
-
-echo "==> rendering: clean_baseline lineage animation (real geometry, no satellite -- see dump_lineage_animation.rs)"
-"$DUMP_LINEAGE_ANIMATION_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline_lineage.svg" 1.2
 
 if has_scenario barrio_mallcore; then
   echo "==> running corrected pipeline: barrio_mallcore"

@@ -95,7 +95,6 @@ jobs:
           test -f public/vibe-render/clean_baseline.glb
           test -f public/vibe-render/clean_baseline_floorplan_ground.svg
           test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
-          test -f public/vibe-render/clean_baseline_lineage.svg
           test -f public/vibe-render/cluster_interior_isometric.png
           test -f public/vibe-render/cluster_interior.glb
           test -f public/vibe-render/cluster_interior_interior_views.json
