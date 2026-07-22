@@ -216,6 +216,25 @@ pub fn render_language_doc() -> String {
     out
 }
 
+/// The same real `LANGUAGE` order as `render_language_doc`, collapsed to a
+/// compact "P37 -> P52 -> ... " arrow chain -- what a caption naming the
+/// pipeline's own real stage order actually wants (`render_language_doc`'s
+/// full requires/why detail is the wrong shape for a one-line summary).
+/// `examples/dump_pipeline_chain.rs` prints exactly this, so a build step
+/// (`scripts/vibe-render.sh`) can substitute the real, current order into
+/// `public/index.html` at deploy time instead of a hand-typed string that
+/// silently stops matching the real pipeline the moment a stage is added,
+/// removed, or reordered -- confirmed happening for real (this function
+/// was added specifically because `index.html`'s own caption had drifted:
+/// missing P124/P117/P197 even before P118/P119/P160 existed).
+pub fn render_arrow_chain() -> String {
+    LANGUAGE
+        .iter()
+        .map(|node| node.alexander_number.map(|n| format!("P{n}")).unwrap_or_else(|| node.id.to_string()))
+        .collect::<Vec<_>>()
+        .join(" \u{2192} ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +340,17 @@ mod tests {
         assert!(result.is_err(), "expected reordering P108 after P96/P107 to be caught");
         let violations = result.unwrap_err();
         assert!(violations.iter().any(|v| v.node == "p96_number_of_stories" && v.missing_requirement == "p108_connected_buildings"));
+    }
+
+    #[test]
+    fn arrow_chain_names_every_language_node_in_order() {
+        let chain = render_arrow_chain();
+        let parts: Vec<&str> = chain.split(" \u{2192} ").collect();
+        assert_eq!(parts.len(), LANGUAGE.len(), "arrow chain should have exactly one entry per LANGUAGE node, got: {chain}");
+        for (part, node) in parts.iter().zip(LANGUAGE) {
+            let expected = node.alexander_number.map(|n| format!("P{n}")).unwrap_or_else(|| node.id.to_string());
+            assert_eq!(*part, expected, "arrow chain entry doesn't match LANGUAGE's own real order");
+        }
     }
 
     /// The real `eastside-baseline.json` fixture, used instead of a

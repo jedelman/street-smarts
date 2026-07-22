@@ -80,15 +80,46 @@ has_scenario() { case " $SCENARIOS " in *" $1 "*) return 0 ;; *) return 1 ;; esa
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-echo "==> building dump_pipeline + dump_pipeline_seeding + dump_lineage_animation examples"
-cargo build --release -p street-smarts-patterns --example dump_pipeline --example dump_pipeline_seeding
+echo "==> building dump_pipeline + dump_pipeline_seeding + dump_pipeline_chain + dump_lineage_animation examples"
+cargo build --release -p street-smarts-patterns --example dump_pipeline --example dump_pipeline_seeding --example dump_pipeline_chain
 cargo build --release -p street-smarts-ledger --example dump_lineage_animation
 DUMP_BIN="target/release/examples/dump_pipeline"
 DUMP_SEEDING_BIN="target/release/examples/dump_pipeline_seeding"
+DUMP_CHAIN_BIN="target/release/examples/dump_pipeline_chain"
 DUMP_LINEAGE_ANIMATION_BIN="target/release/examples/dump_lineage_animation"
 
 echo "==> running corrected pipeline: clean_baseline"
 "$DUMP_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline.json"
+
+# Substitute the real, current pipeline stage order (language_graph::LANGUAGE,
+# the same table validate_order checks against the real traced pipeline
+# execution) into public/index.html's gallery caption, between the
+# PIPELINE_CHAIN:START/END markers -- so that caption structurally cannot
+# drift from the real pipeline the way it silently did before (missing
+# P124/P117/P197 even before P118/P119/P160 were added). Plain python3, not
+# the render.py venv -- this only needs stdlib re, and runs before the venv
+# is set up below.
+echo "==> substituting real pipeline stage chain into public/index.html"
+CHAIN="$("$DUMP_CHAIN_BIN")"
+python3 - "$CHAIN" <<'PYEOF'
+import re
+import sys
+
+chain = sys.argv[1]
+path = "public/index.html"
+with open(path, "r", encoding="utf-8") as f:
+    html = f.read()
+new_html, n = re.subn(
+    r"<!-- PIPELINE_CHAIN:START -->.*?<!-- PIPELINE_CHAIN:END -->",
+    lambda _m: f"<!-- PIPELINE_CHAIN:START -->{chain}<!-- PIPELINE_CHAIN:END -->",
+    html,
+    flags=re.DOTALL,
+)
+if n != 1:
+    raise SystemExit(f"expected exactly 1 PIPELINE_CHAIN marker pair in {path}, found {n}")
+with open(path, "w", encoding="utf-8") as f:
+    f.write(new_html)
+PYEOF
 
 echo "==> rendering: clean_baseline lineage animation (real geometry, no satellite -- see dump_lineage_animation.rs)"
 "$DUMP_LINEAGE_ANIMATION_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline_lineage.svg" 1.2
