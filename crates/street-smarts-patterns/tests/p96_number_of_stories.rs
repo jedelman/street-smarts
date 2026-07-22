@@ -1,5 +1,5 @@
 //! Real integration tests for P96 Number of Stories, built on the real
-//! P37 -> P29 -> [P61+P95] chain against the baseline mall parcel, so pads
+//! P29 -> P37 -> [P61+P95] chain against the baseline mall parcel, so pads
 //! carry real, varied density tiers (not synthetic ones).
 
 use street_smarts_core::nir::Neighborhood;
@@ -15,11 +15,11 @@ fn pads_from_real_mall_parcel() -> Neighborhood {
     let raw = std::fs::read_to_string("../../data/eastside-baseline.json").expect("fixture present");
     let baseline: Neighborhood = serde_json::from_str(&raw).expect("parseable");
 
-    let sub37 = P37HouseCluster.apply(&baseline, "00001129", &P37Params::defaults(), 42).unwrap();
-    let mut nbhd = apply_subdivision(&baseline, &sub37);
+    let sub29 = P29DensityRings.apply(&baseline, "00001129", &P29Params::defaults(), 42).unwrap();
+    let with_field = apply_subdivision(&baseline, &sub29);
 
-    let sub29 = P29DensityRings.apply(&nbhd, "*", &P29Params::defaults(), 42).unwrap();
-    nbhd = apply_subdivision(&nbhd, &sub29);
+    let sub37 = P37HouseCluster.apply(&with_field, "00001129", &P37Params::defaults(), 42).unwrap();
+    let mut nbhd = apply_subdivision(&with_field, &sub37);
 
     let block_ids: Vec<String> = nbhd.parcels.iter()
         .filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_"))

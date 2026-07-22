@@ -93,6 +93,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// P37 already provides them up front.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
+        Box::new(P29DensityRings),
         Box::new(P37HouseCluster),
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
@@ -100,7 +101,6 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
         Box::new(P61SmallPublicSquares),
-        Box::new(P29DensityRings),
         Box::new(P96NumberOfStories),
         Box::new(P108ConnectedBuildings),
         Box::new(P124ActivityPockets),

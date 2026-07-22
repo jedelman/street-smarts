@@ -80,17 +80,22 @@ pub fn run_corrected_pipeline_via_ledger(
     let mut cur = root;
     let mut commits: Vec<Commit> = Vec::new();
 
+    // P29 now runs at its own true canonical position (29 < 37) -- see
+    // p29_density_rings's own module doc and PATTERN_ORDERING_AUDIT.md.
+    // Needs the same raw parcel_id P37 is about to carve, not "*"; only
+    // attaches a real DensityField, doesn't touch any parcel. P37 samples
+    // it (if present) as it individuates each new block.
+    try_run(store, &P29DensityRings, parcel_id, &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P37HouseCluster, parcel_id, &P37Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &PathNetwork, "*", &PathNetworkParams::defaults().as_map(), seed, &mut cur, &mut commits);
-    try_run(store, &P29DensityRings, "*", &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     // Site-scale square budget split across blocks by area -- same
     // computation `pipeline.rs` itself uses, via its own real `pub fn`
     // rather than a second, independently-maintained copy.
-    let after_p29 = store.materialize(&cur).unwrap_or_else(|e| panic!("commit {cur:?} must materialize: {e}"));
-    let block_ids: Vec<String> = after_p29.select_ids(&Scope::Block);
+    let after_blocks = store.materialize(&cur).unwrap_or_else(|e| panic!("commit {cur:?} must materialize: {e}"));
+    let block_ids: Vec<String> = after_blocks.select_ids(&Scope::Block);
     let block_areas: Vec<f64> = block_ids.iter()
-        .map(|id| after_p29.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
+        .map(|id| after_blocks.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
         .collect();
     let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
     let square_counts = allocate_squares_by_area(&block_areas, total_squares);

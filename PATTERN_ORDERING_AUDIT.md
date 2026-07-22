@@ -11,6 +11,16 @@ P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P124 → P117 
 P127 → P116 → P130 → P129 → P131 → P221 → P133 → P118 → P119 → P160
 ```
 
+**Update, same session, after §5's first item shipped:** the real order is now
+
+```
+P29 → P37 → P52 → P61 → P95 → P108 → P96 → P107 → P124 → P117 → P197 →
+P127 → P116 → P130 → P129 → P131 → P221 → P133 → P118 → P119 → P160
+```
+
+— P29 moved to its own true canonical position, ahead of P37. See §6 for the
+real implementation and what it actually cost/changed.
+
 This is **not** Alexander's own ascending pattern-number order. `registry.rs`'s own
 doc comment already names the actual organizing principle: *"larger, more-fixed
 patterns first, smaller ones nested inside what came before"* — Alexander's real
@@ -270,7 +280,79 @@ produces something *sampled*, not *consumed*, by everything downstream — worth
 proposing as a `PassInfo.field_writes` addition to that spec once the P29
 prototype (item 1) proves the pattern in real code.
 
-## 6. Non-goals
+## 6. Item 1, implemented: `DensityField`, P29 before P37
+
+Shipped in the same session. What actually landed, and two real findings from
+building it:
+
+- **The primitive**: `street_smarts_core::nir::PatternField` (an enum, one
+  variant per producing pattern) and `DensityField` (P29's own data: `center`,
+  `radius_m`, `core_target_stories`, `edge_target_stories`, `n_rings`) — pure
+  data in the schema crate, same split every other operator-specific NIR type
+  uses (`RoofForm` is data, `p116_cascade_of_roofs` is the math). Named
+  `PatternField`, not `Field` — `street_smarts_patterns::field` already
+  defines an unrelated `Field` (a rasterized pressure grid for Voronoi seed
+  placement), and `p37_house_cluster.rs` needs both in scope at once.
+  `Neighborhood.pattern_fields: Vec<PatternField>` and a matching
+  `Subdivision.new_fields` carry it through the existing subdivision/
+  apply-and-merge machinery unchanged.
+- **P29 itself**: now takes the same raw site `parcel_id` `p37_house_cluster`
+  is about to carve (not `"*"`), reads that parcel's own polygon directly, and
+  returns a `Subdivision` that touches no parcel at all — only
+  `new_fields: vec![PatternField::Density(field)]`. Runs genuinely first in
+  the real pipeline now (`P29 → P37 → P52 → ...`), needing nothing P37 used to
+  provide.
+- **P37 samples it**: `p29_density_rings::sample_density_field` (and a
+  `_ring` variant returning the raw `(ring_idx, n_rings)` for the native
+  `DensityTier` component path) is called once per new block, at the moment
+  it's individuated, to set `density_tier`/`target_stories` directly — no
+  separate later pass. Missing field → both stay `None`, identical to a
+  pipeline that never ran P29, so this is fully backward compatible.
+  `p29_density_rings::run_native`'s old dual-write responsibility (writing a
+  `DensityTier` component) moved to `p37_house_cluster::run_native` for the
+  same reason — P29 no longer individuates anything, so it has nothing left
+  to dual-write.
+
+**Finding 1 — this really was a live bug, not a hypothetical.** Confirmed by
+building it: P29's field needs a center and radius from the RAW site polygon
+alone, computed via the exact same vertex-averaging convention every other
+operator in this crate already uses for a footprint's own "origin." Nothing
+about the math needed blocks to exist — the old block-dependency was pure
+schema limitation, exactly as diagnosed in §4.1.
+
+**Finding 2 — the eccentricity/radius approximation changed, honestly, and a
+test that depended on the OLD approximation's accidental guarantee broke.**
+The pre-field version measured `radius_m` as the distance to the farthest
+*block centroid*, which tautologically put something at the outer edge by
+construction (blocks are inside the site, so the farthest one IS the edge,
+by definition). The field-based version measures `radius_m` from the raw
+parcel's own farthest *vertex* — a real, honest measure of the site's own
+irregular shape, but not one that guarantees any block will ever sample into
+it. Confirmed on the real `MILITARY_CIRCLE_ASSEMBLED` fixture: the site's
+farthest vertex sits ~584m from the field center, but P37's own Voronoi-
+carved blocks only ever land within ~371m of it (normalized distance ≤
+0.635, never reaching the outer third/"edge" tier). This is not a bug to
+paper over by shrinking the radius until a block happens to land past 0.667
+— it's an honest reflection of a real, irregularly-shaped 25-parcel
+assembly whose block layout doesn't explore its own full, jagged extent.
+The test that assumed "at least one Edge block" (a guarantee that only ever
+held because of the old, tautological radius definition) was rewritten to
+check real tier *variety* instead — see `tests/p37_run_native.rs`'s own
+`run_native_gives_real_tier_variety_on_a_real_multi_ring_site` for the full
+reasoning.
+
+Full workspace test suite green (including `pipeline_ledger_consistency`,
+`corrected_pipeline_real_traced_order_is_valid`, and
+`every_cascade_contract_holds_on_the_real_fixture`, all of which exercise the
+real reordered pipeline against the real fixture), clippy clean, and
+`scripts/vibe-render.sh` confirms the real gallery caption on
+`public/index.html` now reads `P29 → P37 → P52 → ...` automatically (no
+manual edit) with the perceptual-hash regression gate still passing.
+
+Item 2 (P116's own "reuses someone else's individuation" pattern, §4.5) and
+the Class B `floors`-hoisting fix (§4.7) remain open, not attempted here.
+
+## 7. Non-goals
 
 - This audit does not claim every remaining ascending-order stretch (P37→P52→P61,
   P95→P108, P96→P107, P107→P124, P117→P197, P127→P129→P131, P131→P221) is free of

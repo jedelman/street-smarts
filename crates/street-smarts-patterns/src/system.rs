@@ -83,7 +83,6 @@ impl<T: DynOperator + ?Sized> System for T {
 mod tests {
     use super::*;
     use crate::p29_density_rings::P29DensityRings;
-    use crate::p37_house_cluster::P37HouseCluster;
     use crate::registry::all_operators_v01;
     use street_smarts_core::nir::Neighborhood;
 
@@ -93,34 +92,23 @@ mod tests {
         serde_json::from_str(&raw).expect("parseable")
     }
 
-    /// P29 requires real BLOCK_n parcels (P37's output) to have something to
-    /// tag -- same real-pipeline dependency `language_graph::LANGUAGE`
-    /// declares. Runs P37 first via the plain apply_json path so this
-    /// fixture-building step doesn't itself depend on System.
-    fn baseline_after_p37() -> Neighborhood {
-        let baseline = eastside_baseline_fixture();
-        let sub37 = P37HouseCluster
-            .apply_json(&baseline, "MILITARY_CIRCLE_ASSEMBLED", &JsonValue::Null, 42)
-            .expect("P37 should succeed on the real baseline");
-        apply_subdivision(&baseline, &sub37)
-    }
-
     #[test]
     fn generic_system_wrapper_matches_direct_apply_subdivision() {
         // Prove the generic path is truly zero-behavior-change: running
         // P29 through System::run and reading its resulting World back out
         // as a Neighborhood must equal running the same operator directly
         // through apply_json + apply_subdivision, the pre-System path
-        // every existing caller still uses.
-        let baseline = baseline_after_p37();
+        // every existing caller still uses. P29 now runs on the raw site
+        // parcel directly -- no P37 pre-step needed.
+        let baseline = eastside_baseline_fixture();
         let world = World::from_neighborhood(&baseline);
 
         let direct_sub = P29DensityRings
-            .apply_json(&baseline, "*", &JsonValue::Null, 42)
-            .expect("P29 should succeed once real BLOCK_n parcels exist");
+            .apply_json(&baseline, "MILITARY_CIRCLE_ASSEMBLED", &JsonValue::Null, 42)
+            .expect("P29 should succeed on the real raw site parcel");
         let direct_nbhd = apply_subdivision(&baseline, &direct_sub);
 
-        let system_world = System::run(&P29DensityRings, &world, "*", &JsonValue::Null, 42)
+        let system_world = System::run(&P29DensityRings, &world, "MILITARY_CIRCLE_ASSEMBLED", &JsonValue::Null, 42)
             .expect("System::run should succeed identically");
         let system_nbhd = system_world.to_neighborhood();
 
@@ -129,6 +117,7 @@ mod tests {
         a.parcels.sort_by(|x, y| x.id.cmp(&y.id));
         b.parcels.sort_by(|x, y| x.id.cmp(&y.id));
         assert_eq!(a.parcels, b.parcels, "System::run's generic wrapper must produce identical parcel state to the direct apply_subdivision path");
+        assert_eq!(a.pattern_fields, b.pattern_fields, "System::run's generic wrapper must produce the same attached field too");
     }
 
     #[test]

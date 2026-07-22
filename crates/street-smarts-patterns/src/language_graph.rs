@@ -65,16 +65,16 @@ pub struct PatternNode {
 /// this module's own tests (`language_ids_match_real_operator_names`).
 pub const LANGUAGE: &[PatternNode] = &[
     PatternNode {
+        id: "p29_density_rings", alexander_number: Some(29), requires: &[], completes: &[],
+        why: "computes a real density FIELD over the raw site parcel's own polygon -- Alexander's own true canonical position (29 < 37), needs nothing but the raw parcel every pipeline already starts with. See PATTERN_ORDERING_AUDIT.md for the real bug this closes (this used to run AFTER p37_house_cluster, tagging its blocks directly, purely because the old schema had nowhere else to attach an undivided-land value)",
+    },
+    PatternNode {
         id: "p37_house_cluster", alexander_number: Some(37), requires: &[], completes: &[],
-        why: "carves the raw parcel into human-scaled blocks; every later stage operates on P37's BLOCK_n parcels, not the raw site",
+        why: "carves the raw parcel into human-scaled blocks; every later stage operates on P37's BLOCK_n parcels, not the raw site. Samples p29_density_rings's own field (if present) at each new block's centroid to set density_tier/target_stories directly -- not a hard requirement (works fine, just untagged, if P29 didn't run), so not listed as a `requires` entry",
     },
     PatternNode {
         id: "path_network", alexander_number: Some(52), requires: &["p37_house_cluster"], completes: &[],
         why: "connects P37's blocks to each other; needs real BLOCK_n parcels to route between",
-    },
-    PatternNode {
-        id: "p29_density_rings", alexander_number: Some(29), requires: &["p37_house_cluster"], completes: &[],
-        why: "tags each BLOCK_n with a density tier from its distance to the site's density center; needs real blocks to tag, so it runs here even though Alexander's own numbering (29) is well before House Cluster (37)",
     },
     PatternNode {
         id: "p61_small_public_squares", alexander_number: Some(61), requires: &["p37_house_cluster"], completes: &[],
@@ -333,9 +333,9 @@ mod tests {
         // about to be erased. Confirm the graph would catch it if
         // reintroduced.
         let bad_order = &[
+            "p29_density_rings",
             "p37_house_cluster",
             "path_network",
-            "p29_density_rings",
             "p61_small_public_squares",
             "p95_building_complex",
             "p96_number_of_stories",

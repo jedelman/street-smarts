@@ -1,19 +1,28 @@
 //! The corrected pipeline, end to end: Alexander's own pattern numbering
-//! (37 < 52 < 61 < 95 < 107) run in that order, instead of the old
+//! (29 < 37 < 52 < 61 < 95 < 107) run in that order, instead of the old
 //! pipeline's P95 -> BlockGrouping -> PathNetwork -> P107 -> P61.
 //!
 //! Sequence:
-//!   1. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks,
+//!   1. P29 Density Rings (once, site-scale): computes a real density
+//!      FIELD over the raw site parcel's own polygon -- Alexander's own
+//!      true canonical position (29 < 37), now possible because
+//!      `Neighborhood.pattern_fields` gives a larger, prior pattern
+//!      somewhere to attach its own output without waiting for a smaller
+//!      one (a block) to already exist. See p29's own module doc and
+//!      `PATTERN_ORDERING_AUDIT.md` (repo root) for the real bug this
+//!      closes. Not fatal if it fails (a degenerate site polygon) --
+//!      P37 below tolerates a missing field exactly like a pipeline that
+//!      never ran P29 at all.
+//!   2. P37 (once, site-scale): carve the raw parcel into BLOCK_n blocks,
 //!      each with an informal `OpenSpaceKind::Common` patch reserved for
-//!      that cluster's own shared land (see p37's module doc).
-//!   2. PathNetwork/P52 (once, site-scale): connect the blocks -- unchanged
+//!      that cluster's own shared land (see p37's module doc). Samples
+//!      P29's real field (if step 1 produced one) at each new block's own
+//!      centroid as it's created, setting `density_tier`/`target_stories`
+//!      directly -- the individuation moment itself, not a separate later
+//!      pass over already-carved blocks.
+//!   3. PathNetwork/P52 (once, site-scale): connect the blocks -- unchanged
 //!      code, already filters by `spec.starts_with("BLOCK_")`, which P37
 //!      produces directly.
-//!   3. P29 Density Rings (once, site-scale): tags each BLOCK_n with a
-//!      density tier and target story count from its distance to the
-//!      site's own density center -- see p29's module doc for why it runs
-//!      here instead of at its real Alexander-numbered position (29, well
-//!      before House Cluster).
 //!   4. P61 (site-scale budget, spread across blocks): Alexander's "a few"
 //!      public squares means a handful across the WHOLE site, not
 //!      `max_squares` repeated on every block -- see p61's own module doc,
@@ -25,7 +34,7 @@
 //!      on that block (`place_new_squares_n` subtracts existing reserved
 //!      open space before seeding).
 //!   5. Per block: P95 (reworked) builds pads around whatever P37/P61
-//!      placed on that block, plus street corridors from step 2 -- each pad
+//!      placed on that block, plus street corridors from step 3 -- each pad
 //!      inherits its source block's P29 density tier/target. `pad_inset_m`
 //!      is now a construction-joint-sized 0.1m, not a real setback.
 //!   6. P108 Connected Buildings (once, site-scale): merges pads separated
@@ -298,18 +307,26 @@ pub fn run_corrected_pipeline_with_p37_traced(
 ) -> (Neighborhood, Vec<&'static str>) {
     let mut trace: Vec<&'static str> = Vec::new();
 
-    let sub37 = P37HouseCluster.apply(baseline, parcel_id, p37_params, seed).unwrap();
-    let mut nbhd = apply_subdivision(baseline, &sub37);
+    // P29 now runs at its own true canonical position (29 < 37) -- see
+    // p29_density_rings's own module doc and PATTERN_ORDERING_AUDIT.md.
+    // It needs nothing but the RAW site parcel `baseline` already has, and
+    // only attaches a real DensityField to `pattern_fields`; it doesn't
+    // touch any parcel. Not fatal if it fails (a degenerate parcel
+    // polygon): P37 below tolerates a missing field exactly like a
+    // pipeline that never ran P29 at all.
+    let mut nbhd = baseline.clone();
+    if let Ok(sub29) = P29DensityRings.apply(&nbhd, parcel_id, &P29Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub29);
+        trace.push(P29DensityRings.name());
+    }
+
+    let sub37 = P37HouseCluster.apply(&nbhd, parcel_id, p37_params, seed).unwrap();
+    nbhd = apply_subdivision(&nbhd, &sub37);
     trace.push(P37HouseCluster.name());
 
     let sub52 = PathNetwork.apply(&nbhd, "*", &PathNetworkParams::defaults(), seed).unwrap();
     nbhd = apply_subdivision(&nbhd, &sub52);
     trace.push(PathNetwork.name());
-
-    if let Ok(sub29) = P29DensityRings.apply(&nbhd, "*", &P29Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub29);
-        trace.push(P29DensityRings.name());
-    }
 
     let block_ids: Vec<String> = nbhd.select_ids(&Scope::Block);
     let block_areas: Vec<f64> = block_ids.iter()
@@ -445,7 +462,7 @@ pub fn run_corrected_pipeline_with_p37_traced(
 
     // AFTER P221, not right after P131 -- Building.floors isn't set until
     // P221 derives it from real height. See p133's own module doc and
-    // this file's own doc comment (step 14) for the full story.
+    // this file's own doc comment (step 18) for the full story.
     if let Ok(sub133) = P133StaircaseAsAStage.apply(&nbhd, "*", &P133Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub133);
         trace.push(P133StaircaseAsAStage.name());
