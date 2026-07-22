@@ -51,6 +51,23 @@
 //! directly on a raw parcel still gets a real yard, since nothing else
 //! reserved one. A P95 pad's own inset is treated as the authoritative gap;
 //! P107 builds right to that boundary.
+//!
+//! # v0.3: also sets `Building.floors`, closing a real ordering bug
+//!
+//! `Building.floors` used to stay `None` until `p221_natural_doors_and_
+//! windows` derived it from `height_m` -- which meant P133/P118/P119, each
+//! of which only needed the FLOOR COUNT (not doors or windows), had to wait
+//! for P221 anyway, running well after their own real Alexander numbering
+//! would put them. Real bug, not a design choice: see `PATTERN_ORDERING_
+//! AUDIT.md` §4.7. This operator already computes `height_m` from
+//! `target_stories * floor_to_floor_m` (or `assumed_height_m`) right here --
+//! deriving `floors` from the SAME `height_m`/`floor_to_floor_m` at the
+//! same moment, instead of leaving P221 to re-derive it later from a
+//! SECOND, independently-configurable `floor_to_floor_m` param that only
+//! happened to share the same default (3.5m), closes the wait AND a latent
+//! consistency risk (the two `floor_to_floor_m` knobs silently disagreeing)
+//! in one move. P221 still computes its own fallback for buildings that
+//! didn't come through P107 -- see its own module doc.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::planar::{
@@ -284,6 +301,15 @@ impl P107WingsOfLight {
                 let height_jitter = (prng.next_f64() - 0.5) * 1.5;
                 (params.assumed_height_m + height_jitter).max(2.5)
             };
+            // Derived from the SAME height_m/floor_to_floor_m this operator
+            // just used, right at the moment height_m itself becomes real --
+            // not left for p221_natural_doors_and_windows to re-derive
+            // later from a SECOND, independently-configurable
+            // floor_to_floor_m param that happened to share the same
+            // default (3.5) but could silently drift from this one. See
+            // PATTERN_ORDERING_AUDIT.md §4.7: P133/P118/P119 all used to
+            // wait for P221 purely for this single derived scalar.
+            let floors = (height_m / params.floor_to_floor_m).round().max(1.0) as u32;
 
             let building_id = format!("{}_building", parcel.id);
             if short_side <= params.max_wing_width_m {
@@ -297,7 +323,7 @@ impl P107WingsOfLight {
                     typology: Some(BuildingTypology::SolidV01.to_label().into()),
                     year_built: None,
                     parcel_id: Some(parcel.id.clone()),
-                    floors: None,
+                    floors: Some(floors),
                     openings: vec![],
                     interior_cells: vec![],
                     wall_thickness_m: None,
@@ -321,7 +347,7 @@ impl P107WingsOfLight {
                         typology: Some(BuildingTypology::SolidFallbackV01.to_label().into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
-                        floors: None,
+                        floors: Some(floors),
                         openings: vec![],
                         interior_cells: vec![],
                         wall_thickness_m: None,
@@ -342,7 +368,7 @@ impl P107WingsOfLight {
                         typology: Some(BuildingTypology::CourtyardV01.to_label().into()),
                         year_built: None,
                         parcel_id: Some(parcel.id.clone()),
-                        floors: None,
+                        floors: Some(floors),
                         openings: vec![],
                         interior_cells: vec![],
                         wall_thickness_m: None,

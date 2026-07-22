@@ -46,7 +46,14 @@
 //! placement is downstream of a real footprint+height, both of which only
 //! exist once `p107_wings_of_light` (or the older `building_shape` stub)
 //! has run. For each building:
-//! - `floors = round(height_m / floor_to_floor_m)`.
+//! - `floors` is read directly from `b.floors` if `p107_wings_of_light`
+//!   already set it (see that operator's own "v0.3" module doc -- it
+//!   derives floors from the SAME height_m/floor_to_floor_m it just used,
+//!   right when height_m becomes real, closing a real ordering bug
+//!   PATTERN_ORDERING_AUDIT.md §4.7 names). Falls back to `round(height_m /
+//!   floor_to_floor_m)` -- this operator's own `floor_to_floor_m` param --
+//!   only for a building that didn't come through P107 (e.g. a standalone
+//!   test fixture), so this operator stays usable on its own.
 //! - Walks the outer wall ring, and the courtyard ring too for buildings
 //!   P107 shaped as `p107_courtyard_v01` -- courtyard-facing walls get
 //!   windows exactly like street-facing ones, since a courtyard building's
@@ -353,9 +360,18 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
                 n_skipped += 1;
                 continue;
             }
-            let floors = ((b.height_m.unwrap_or(params.floor_to_floor_m)) / params.floor_to_floor_m)
-                .round()
-                .max(1.0) as u32;
+            // Prefer the real floors P107 already derived (from the SAME
+            // height_m/floor_to_floor_m relationship, at the moment
+            // height_m became real) over recomputing it here from this
+            // operator's own, separately-configurable floor_to_floor_m --
+            // see this file's own module doc and p107_wings_of_light's
+            // "v0.3" section. Fallback only for a building that didn't
+            // come through P107.
+            let floors = b.floors.unwrap_or_else(|| {
+                ((b.height_m.unwrap_or(params.floor_to_floor_m)) / params.floor_to_floor_m)
+                    .round()
+                    .max(1.0) as u32
+            });
 
             let origin = b.polygon.centroid();
             let outer_local = ring_to_local(&b.polygon.outer, &origin);

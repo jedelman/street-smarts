@@ -70,22 +70,50 @@
 //!      roof honestly satisfies both patterns at once, and what it
 //!      deliberately doesn't claim (P116's per-wing cascade, P118's roof
 //!      garden, P119/P166's canopy geometry).
-//!   10. P124 Activity Pockets (once, site-scale): bumps a small, real,
+//!   10. P118 Roof Garden (once, site-scale): overwrites the site's own
+//!      `max_gardens` tallest real buildings from P117's sloped shed roof
+//!      to a flat, occupiable garden roof. Used to wait until after P221
+//!      purely for real `Building.floors` to rank by -- P107 now derives
+//!      floors itself, at the same moment it derives height_m (PATTERN_
+//!      ORDERING_AUDIT.md §4.7), so this runs right after P117 to match
+//!      Alexander's own ascending numbering (117 < 118) at zero real cost:
+//!      P118 only ever touches `roof`, nothing P124/P127/P197/P221 read
+//!      or write. A real bonus, not just neutral -- P116 (below) now sees
+//!      each building's FINAL roof, already flat where P118 applied,
+//!      instead of building a cascade from a shed roof about to be
+//!      overwritten anyway. A small fixed count, not a floor threshold --
+//!      see p118_roof_garden's own module doc for why a threshold was
+//!      tried and rejected (it tanked P117/P162's own real sloped-roof
+//!      score site-wide on this pipeline's real fixture). Not fatal if no
+//!      building qualifies.
+//!   11. P124 Activity Pockets (once, site-scale): bumps a small, real,
 //!      partly enclosed pocket out from up to max_pockets_per_plaza
 //!      buildings bordering each real Plaza (from P61), reading "jut
 //!      forward into the open space" literally -- a real projection
 //!      OUTWARD from the building's own footprint, toward the plaza, not
-//!      a recession into it. Runs right after P107/P117 and strictly
-//!      before P197/P127/P221 -- all of which need the FINAL building
+//!      a recession into it. Runs right after P107/P117/P118 and strictly
+//!      before P127/P197/P119/P221 -- all of which need the FINAL building
 //!      footprint, not a stale pre-bump one. See p124_activity_pockets's
 //!      own module doc for the geometric reading and its own hard-won
 //!      note on why it splices the bump into the ring directly rather
 //!      than using subtract_convex + union_pieces (the same reassembly-
 //!      reliability problem P95/P133 already hit).
-//!   11. P127 Intimacy Gradient (once, site-scale): partitions every
+//!   12. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+//!      real ground-floor arcade canopy, plus a gallery canopy at every
+//!      real upper story, on whichever wall best faces the nearest real
+//!      street/open space. Reads the FINAL footprint (whatever P124 left
+//!      it as -- not a hard requirement, same real reason P197 doesn't
+//!      hard-require P124 either: it's a real but skippable step,
+//!      currently a no-op on the real eastside-baseline fixture) and real
+//!      `Building.floors` for P166's "every story" claim -- floors no
+//!      longer needs P221 (see P118 above), so this runs right after
+//!      P124, its own real earliest valid position. Not fatal if no
+//!      building has a real street/open-
+//!      space target within threshold. See p119_arcades's own module doc.
+//!   13. P127 Intimacy Gradient (once, site-scale): partitions every
 //!      building's ground floor into a depth-ordered sequence of cells
 //!      (public wall/entrance bay -> deepest point). Still needs P107's
-//!      final footprint, which P124 (just above) may have bumped -- P124
+//!      final footprint, which P124 (above) may have bumped -- P124
 //!      itself already requires running before P127 (see its own module
 //!      doc). No real dependency on P197 either direction
 //!      (PATTERN_ORDERING_AUDIT.md §4.4: a free reorder), so placed here,
@@ -93,73 +121,66 @@
 //!      (127 < 197) at zero cost. See `p127_intimacy_gradient`'s own
 //!      module doc for the full sourced sequence Alexander's own text
 //!      lays out (127 -> 128 -> 129 -> 130 -> 131 -> 132 -> 133...).
-//!   12. P197 Thick Walls (once, site-scale): assigns every real building a
+//!   14. P197 Thick Walls (once, site-scale): assigns every real building a
 //!      real, nonzero `wall_thickness_m`, capped relative to its own real
 //!      footprint. Runs after P107, P124, and P117 -- every downstream
 //!      stage clones and mutates the buildings those produced, so this
 //!      field survives untouched to the end. Deliberately scalar-only,
 //!      not carved geometry -- see p197_thick_walls's own module doc.
-//!   13. P116 Cascade of Roofs (once, site-scale): partitions every
+//!   15. P116 Cascade of Roofs (once, site-scale): partitions every
 //!      already-roofed building's roof into per-cell `RoofSegment`s whose
 //!      ridge height cascades with P127's own cell `depth` -- the same
 //!      "social hierarchy of the spaces below" Alexander's own text names,
 //!      reused rather than independently re-derived. Runs right after P127
-//!      -- needs both P117's whole-building `roof` and P127's real
-//!      `interior_cells` to exist first. See p116_cascade_of_roofs's own
-//!      module doc for why it reuses P127's cell polygons as the roof's
-//!      wing partition instead of computing a separate one.
-//!   14. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!      -- needs both P117's (possibly P118-flattened) whole-building
+//!      `roof` and P127's real `interior_cells` to exist first. See
+//!      p116_cascade_of_roofs's own module doc for why it reuses P127's
+//!      cell polygons as the roof's wing partition instead of computing a
+//!      separate one.
+//!   16. P129 Common Areas at the Heart (once, site-scale): marks which of
 //!      P127's cells is nearest the plan's center of gravity. No real
 //!      dependency on P130 either direction (PATTERN_ORDERING_AUDIT.md
 //!      §4.6 -- P130 never changes cell geometry or count) -- placed here,
 //!      ahead of P130, to match BOTH Alexander's own ascending numbering
 //!      (129 < 130) AND his own cited textual sequence (127 -> 128 -> 129
 //!      -> 130 -> 131...) at zero cost.
-//!   15. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   17. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
 //!      change, see the module's own doc for why.
-//!   16. P131 The Flow Through Rooms (once, site-scale): connects P127's
+//!   18. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
 //!      loop with one passage cell only when short and wide enough (Pattern
 //!      132's own cited ~50ft/15m threshold, folded into this operator).
-//!   17. P221 (once, site-scale): place real window/door openings on every
+//!   19. P133 Staircase as a Stage (once, site-scale): carves a real
+//!      stair-core strip out of the common-area cell of every multi-story
+//!      building, open to the room it interrupts. Needs P131's
+//!      `connects_to` graph, P129's `is_common` flag, and real
+//!      `Building.floors` -- all three are real by this point (P107 now
+//!      derives floors itself; PATTERN_ORDERING_AUDIT.md §4.7), so this
+//!      runs right after P131, Alexander's own exact canonical position
+//!      (131 < 133) -- restoring the very ordering this operator's own
+//!      module doc used to record as its real, hard-won bug (running here
+//!      used to leave every building's `floors` at `None`, since only
+//!      P221 derived it, silently matching nothing). Doesn't read or
+//!      write anything P221 touches (confirmed: p221 never reads
+//!      `interior_cells`) -- real, independent geometry. See the module's
+//!      own doc for the clip_half_plane-based strip technique, borrowed
+//!      from P131's own passage cell, and the union_pieces bug it
+//!      replaced.
+//!   20. P221 (once, site-scale): place real window/door openings on every
 //!      building P107 just produced -- floor count from real height, window
 //!      bays from real wall geometry, door on whichever wall faces the
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   18. P133 Staircase as a Stage (once, site-scale): carves a real
-//!      stair-core strip out of the common-area cell of every multi-story
-//!      building, open to the room it interrupts. Runs AFTER P221, not
-//!      right after P131 where Alexander's own numbering would put it --
-//!      `Building.floors` (this operator's multi-story filter) isn't set
-//!      until P221 derives it from real height; running P133 earlier left
-//!      every building's `floors` at `None`, so the filter matched nothing
-//!      and the pipeline's own `if let Ok(...)` silently swallowed the
-//!      resulting error. See the module's own doc for the full story (also
-//!      covers the clip_half_plane-based strip technique, borrowed from
-//!      P131's own passage cell, and the union_pieces bug it replaced).
-//!   19. P118 Roof Garden (once, site-scale): overwrites the site's own
-//!      `max_gardens` tallest real buildings from P117's sloped shed roof
-//!      to a flat, occupiable garden roof. Runs after P221 for the same
-//!      reason P133 does -- needs real `Building.floors` to rank by. A
-//!      small fixed count, not a floor threshold -- see p118_roof_garden's
-//!      own module doc for why a threshold was tried and rejected (it
-//!      tanked P117/P162's own real sloped-roof score site-wide on this
-//!      pipeline's real fixture).
-//!   20. P119 Arcades / P166 Gallery Surround (once, site-scale): places a
-//!      real ground-floor arcade canopy, plus a gallery canopy at every
-//!      real upper story, on whichever wall best faces the nearest real
-//!      street/open space. Also needs real `Building.floors` (P166's
-//!      "every story" claim), so runs after P221. Not fatal if no
-//!      building has a real street/open-space target within threshold.
-//!      See p119_arcades's own module doc.
 //!   21. P160 Building Edge (once, site-scale): places a real wall niche
 //!      flanking every real door P221 already placed, on the same wall
-//!      edge. Runs after P221 for the real door data to flank. Not fatal
-//!      if no door has room for a niche on either side. See
-//!      p160_building_edge's own module doc.
+//!      edge. Runs after P221 for the real door data to flank -- a
+//!      genuine Class C dependency (PATTERN_ORDERING_AUDIT.md §4.8), not a
+//!      free reorder like the others above. Not fatal if no door has room
+//!      for a niche on either side. See p160_building_edge's own module
+//!      doc.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -423,9 +444,39 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P117ShelteringRoof.name());
     }
 
+    // P118 Roof Garden (once, site-scale): overwrites the site's own
+    // max_gardens tallest real buildings from P117's sloped shed roof to a
+    // flat, occupiable garden roof. Used to wait for P221 purely for real
+    // Building.floors -- P107 now derives floors itself (PATTERN_ORDERING_
+    // AUDIT.md §4.7), so this runs right after P117 to match Alexander's
+    // own ascending numbering (117 < 118) at zero real cost: P118 only
+    // touches `roof`, never footprint/cells/openings. A real bonus, not
+    // just neutral -- p116_cascade_of_roofs (below) now sees each
+    // building's FINAL roof (already flat where P118 applied) instead of
+    // building degenerate cascade segments from a shed roof P118 was about
+    // to overwrite anyway. Not fatal if no building qualifies.
+    if let Ok(sub118) = P118RoofGarden.apply(&nbhd, "*", &P118Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub118);
+        trace.push(P118RoofGarden.name());
+    }
+
     if let Ok(sub124) = P124ActivityPockets.apply(&nbhd, "*", &P124Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub124);
         trace.push(P124ActivityPockets.name());
+    }
+
+    // P119 Arcades / P166 Gallery Surround (once, site-scale): places a
+    // real ground-floor arcade plus upper-story galleries on each
+    // building's real street/open-space-facing wall. Needs P124's FINAL
+    // footprint (a real dependency -- Class C, not free) and real
+    // Building.floors for P166's "every story" claim -- P107 now derives
+    // floors itself (PATTERN_ORDERING_AUDIT.md §4.7), so this no longer
+    // needs to wait for P221 specifically; runs right after P124, its own
+    // real earliest valid position. Not fatal if no building has a real
+    // facing target within threshold.
+    if let Ok(sub119) = P119Arcades.apply(&nbhd, "*", &P119Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub119);
+        trace.push(P119Arcades.name());
     }
 
     // P127 Intimacy Gradient (once, site-scale): partitions every
@@ -481,36 +532,27 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P131TheFlowThroughRooms.name());
     }
 
-    if let Ok(sub221) = P221NaturalDoorsAndWindows.apply(&nbhd, "*", &P221Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub221);
-        trace.push(P221NaturalDoorsAndWindows.name());
-    }
-
-    // AFTER P221, not right after P131 -- Building.floors isn't set until
-    // P221 derives it from real height. See p133's own module doc and
-    // this file's own doc comment (step 18) for the full story.
+    // P133 Staircase as a Stage (once, site-scale): carves a real
+    // stair-core strip out of the common-area cell of every multi-story
+    // building, open to the room it interrupts. Needs P131's connects_to
+    // graph, P129's is_common flag, and real Building.floors -- all three
+    // are real by this point (P107 now derives floors itself; PATTERN_
+    // ORDERING_AUDIT.md §4.7), so this runs right after P131, Alexander's
+    // own exact canonical position (131 < 133), restoring the numbering
+    // this operator's own module doc records as its original real bug
+    // (running here used to leave floors at None, since only P221 derived
+    // it). Doesn't read or write anything P221 touches (openings) -- real,
+    // independent geometry (interior stair core vs exterior wall
+    // punches), confirmed by reading p221's own code: it never reads
+    // interior_cells.
     if let Ok(sub133) = P133StaircaseAsAStage.apply(&nbhd, "*", &P133Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub133);
         trace.push(P133StaircaseAsAStage.name());
     }
 
-    // P118 Roof Garden (once, site-scale): overwrites every real
-    // sufficiently-tall building's P117 sloped roof with a flat,
-    // occupiable one. Needs real Building.floors (only P221 sets it), so
-    // runs here, not right after P117. Not fatal if no building qualifies.
-    if let Ok(sub118) = P118RoofGarden.apply(&nbhd, "*", &P118Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub118);
-        trace.push(P118RoofGarden.name());
-    }
-
-    // P119 Arcades / P166 Gallery Surround (once, site-scale): places a
-    // real ground-floor arcade plus upper-story galleries on each
-    // building's real street/open-space-facing wall. Also needs real
-    // Building.floors for P166's "every story" claim, so runs after P221.
-    // Not fatal if no building has a real facing target within threshold.
-    if let Ok(sub119) = P119Arcades.apply(&nbhd, "*", &P119Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub119);
-        trace.push(P119Arcades.name());
+    if let Ok(sub221) = P221NaturalDoorsAndWindows.apply(&nbhd, "*", &P221Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub221);
+        trace.push(P221NaturalDoorsAndWindows.name());
     }
 
     // P160 Building Edge (once, site-scale): places a real wall niche

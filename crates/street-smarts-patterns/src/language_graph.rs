@@ -109,10 +109,22 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "assigns every real P107/P96 building with a real height_m a real shed roof sloped to true north; also closes P162 North Face's own specifically-north claim by the same geometry (P162 has no separate generator of its own to list here) -- needs real height_m, which P107 already guarantees (via P96's story count or its own assumed_height_m fallback). No real dependency on P124/P127/P197 either direction (PATTERN_ORDERING_AUDIT.md §4.3/§4.4: a free reorder) -- placed here to match Alexander's own ascending numbering (117 < 124) at zero cost",
     },
     PatternNode {
+        id: "p118_roof_garden", alexander_number: Some(118),
+        requires: &["p117_sheltering_roof"],
+        completes: &[],
+        why: "overwrites P117's sloped shed roof with a flat, occupiable one on the site's tallest buildings, ranked by real Building.floors -- P107 derives floors itself now (PATTERN_ORDERING_AUDIT.md §4.7), transitively guaranteed the moment p117_sheltering_roof (which itself requires p107_wings_of_light) has run, so this no longer needs p221_natural_doors_and_windows -- placed right after P117 to match Alexander's own ascending numbering (117 < 118) at zero real cost",
+    },
+    PatternNode {
         id: "p124_activity_pockets", alexander_number: Some(124),
         requires: &["p107_wings_of_light", "p61_small_public_squares"],
         completes: &[],
-        why: "carves a real pocket from buildings bordering a real Plaza; needs P107's real final footprints and P61's real Plazas, and must run before P197/P127/P221 read the final footprint",
+        why: "carves a real pocket from buildings bordering a real Plaza; needs P107's real final footprints and P61's real Plazas, and must run before P127/P197/P119/P221 read the final footprint",
+    },
+    PatternNode {
+        id: "p119_arcades", alexander_number: Some(119),
+        requires: &["p107_wings_of_light"],
+        completes: &[],
+        why: "places a real ground-floor arcade (P119) plus a gallery at every real upper story (P166) on the building's street/open-space-facing wall; needs the FINAL footprint (whatever P124 left it as) and real Building.floors, transitively guaranteed via p107_wings_of_light -- no longer needs p221_natural_doors_and_windows (PATTERN_ORDERING_AUDIT.md §4.7). Doesn't strictly REQUIRE p124_activity_pockets to have run -- same real reason p197_thick_walls doesn't, see that node's own why: P124 is a real but skippable step (currently a no-op on the real eastside-baseline fixture), just needs to run after it if it did, which pipeline.rs's own real call order already guarantees",
     },
     PatternNode {
         id: "p127_intimacy_gradient", alexander_number: Some(127), requires: &["p107_wings_of_light"], completes: &[],
@@ -126,7 +138,7 @@ pub const LANGUAGE: &[PatternNode] = &[
         id: "p116_cascade_of_roofs", alexander_number: Some(116),
         requires: &["p117_sheltering_roof", "p127_intimacy_gradient"],
         completes: &[],
-        why: "partitions each P117 whole-building roof into per-cell RoofSegments whose ridge height cascades with P127's own real depth gradient; needs both P117's real roof and P127's real interior_cells to exist first",
+        why: "partitions each P117 whole-building roof into per-cell RoofSegments whose ridge height cascades with P127's own real depth gradient; needs both P117's real roof (possibly P118-flattened by now) and P127's real interior_cells to exist first",
     },
     PatternNode {
         id: "p129_common_areas_at_the_heart", alexander_number: Some(129), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],
@@ -141,32 +153,20 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "connects P127's cells into a chain or loop; needs P127's cells to connect",
     },
     PatternNode {
-        id: "p221_natural_doors_and_windows", alexander_number: Some(221), requires: &["p107_wings_of_light"], completes: &[],
-        why: "places real window/door openings using P107's building geometry; also the first operator to set Building.floors from real height, which P133 depends on",
-    },
-    PatternNode {
         id: "p133_staircase_as_a_stage", alexander_number: Some(133),
-        requires: &["p129_common_areas_at_the_heart", "p131_the_flow_through_rooms", "p221_natural_doors_and_windows"],
+        requires: &["p129_common_areas_at_the_heart", "p131_the_flow_through_rooms"],
         completes: &[],
-        why: "carves a stair core from the common-area cell of multi-story buildings; needs Building.floors (only P221 sets it) and P129/P131's cell structure to carve from",
+        why: "carves a stair core from the common-area cell of multi-story buildings; needs P129/P131's cell structure to carve from and real Building.floors, transitively guaranteed via p107_wings_of_light -- no longer needs p221_natural_doors_and_windows (PATTERN_ORDERING_AUDIT.md §4.7), restoring Alexander's own exact canonical position (131 < 133)",
     },
     PatternNode {
-        id: "p118_roof_garden", alexander_number: Some(118),
-        requires: &["p117_sheltering_roof", "p221_natural_doors_and_windows"],
-        completes: &[],
-        why: "overwrites P117's sloped shed roof with a flat, occupiable one on tall-enough buildings; needs a real roof to overwrite (P117) and real Building.floors (only P221 sets it) for its own floor-count criterion",
-    },
-    PatternNode {
-        id: "p119_arcades", alexander_number: Some(119),
-        requires: &["p107_wings_of_light", "p221_natural_doors_and_windows"],
-        completes: &[],
-        why: "places a real ground-floor arcade (P119) plus a gallery at every real upper story (P166) on the building's street/open-space-facing wall; needs real footprint geometry (P107) and real Building.floors for the every-story claim (only P221 sets it)",
+        id: "p221_natural_doors_and_windows", alexander_number: Some(221), requires: &["p107_wings_of_light"], completes: &[],
+        why: "places real window/door openings using P107's building geometry; reads (not writes) the real Building.floors P107 already derived, for its own per-floor window-shrinking rule",
     },
     PatternNode {
         id: "p160_building_edge", alexander_number: Some(160),
         requires: &["p221_natural_doors_and_windows"],
         completes: &[],
-        why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank",
+        why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank -- a genuine, non-free dependency (PATTERN_ORDERING_AUDIT.md §4.8), unlike P118/P119/P133 above",
     },
 ];
 

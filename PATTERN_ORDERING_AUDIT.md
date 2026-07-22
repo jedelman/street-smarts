@@ -24,6 +24,20 @@ P127/P197, P129/P130 each swapped to match ascending numbering at zero real
 cost. See §6/§6b for the real implementation and what it actually
 cost/changed.
 
+**Update, same session (2):** after the Class B `floors`-hoist (§4.7, §6c)
+shipped, the real order is now
+
+```
+P29 → P37 → P52 → P61 → P95 → P108 → P96 → P107 → P117 → P118 → P124 →
+P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P160
+```
+
+— `Building.floors` is now derived by P107 itself (right after `height_m`),
+so P118, P119, and P133 no longer wait on P221 at all. Each moved to its own
+earliest real position: P118 right after P117, P119 right after P124, and
+P133 right after P131 — restoring Alexander's own exact canonical position
+(131 < 133) for that last one. See §6c.
+
 This is **not** Alexander's own ascending pattern-number order. `registry.rs`'s own
 doc comment already names the actual organizing principle: *"larger, more-fixed
 patterns first, smaller ones nested inside what came before"* — Alexander's real
@@ -83,9 +97,9 @@ data-flow, not about correcting a misreading of the source text.
 | 4 | P197 → **P127** | **D. Free reorder** | ✅ Fixed (§6b) |
 | 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) | Open |
 | 6 | P130 → **P129** | **D. Free reorder** (admitted in the code itself) | ✅ Fixed (§6b) |
-| 7 | P221 → **P133** | **B. Hoisted-derived-attribute bug** | Open |
-| 8 | P133 → **P118** | **B. Hoisted-derived-attribute bug** | Open |
-| 9 | P133 → **P119** | **B. Hoisted-derived-attribute bug** | Open |
+| 7 | P221 → **P133** | **B. Hoisted-derived-attribute bug** | ✅ Fixed (§6c) |
+| 8 | P133 → **P118** | **B. Hoisted-derived-attribute bug** | ✅ Fixed (§6c) |
+| 9 | P133 → **P119** | **B. Hoisted-derived-attribute bug** | ✅ Fixed (§6c) |
 | 10 | P133 → **P160** | **C. Genuine sequential dependency** | N/A — correct as-is |
 
 - **A — Premature individuation (real field candidates).** The larger pattern's
@@ -385,10 +399,84 @@ gallery caption picks up the new order automatically and the perceptual-hash
 gate still passes (expected: these are independent scalar-setting stages,
 reordering them doesn't change final geometry).
 
+Remaining open items (at that point): the Class C mixed case (P108→P96,
+§4.2 — splitting P96 into a field-sampled base assignment plus a still-
+necessarily-late exception-selection step), the Class B `floors`-hoist
+(§4.7, fixes P133/P118/P119 at once), and item 2 (P116's own field, §4.5).
+
+## 6c. The `floors`-hoist (Class B), also shipped this session
+
+§5's recommendation 2 — §4.7's diagnosis was that `Building.floors` only
+waited for P221 because of where the derivation *happened to be written*,
+not because P133/P118/P119 have any real dependency on doors or windows.
+Confirmed again while implementing: `p221_natural_doors_and_windows.rs`
+computed `floors` from `height_m` alone, discarding the fact that
+`height_m` is already final three steps earlier, at P107.
+
+What actually landed:
+
+- **`p107_wings_of_light.rs`** now derives `floors` itself, immediately
+  after computing `height_m` in the same `apply()`:
+  `(height_m / floor_to_floor_m).round().max(1.0) as u32`, and sets
+  `Building.floors = Some(floors)` at all three construction sites (solid,
+  solid-fallback, courtyard). Same formula P221 used to run, just moved to
+  where its one real input (`height_m`) is actually finalized.
+- **`p221_natural_doors_and_windows.rs`** now reads `b.floors` if P107
+  already set it, and only falls back to recomputing from `height_m` (with
+  its own, separately-configurable `floor_to_floor_m`) for buildings that
+  didn't come through P107. `updated.floors` is still set on its output
+  either way, so nothing downstream of P221 changes behavior.
+- **Repositioning**, each pattern moved to its own newly-valid earliest
+  real position rather than all three bunched at the old P221-adjacent
+  spot:
+  - **P118 (Roof Garden)** → right after P117. It only ever needed
+    `floors` (to filter multi-story buildings) plus P117's roof — both now
+    available immediately after P107/P117 run.
+  - **P119 (Arcades)** → right after P124. `p119_arcades.rs` reads the
+    building's FINAL footprint, which isn't settled until P124 (Activity
+    Pockets) has had its chance to bump it outward — the one part of the
+    old ordering that was a real, not hoisted, constraint.
+  - **P133 (Staircase as a Stage)** → right after P131. Needs P131's
+    `connects_to`, P129's `is_common`, and now `floors` — all real by that
+    point. This restores Alexander's own exact canonical position
+    (131 < 133) exactly, the only one of the ten deviations where the fix
+    lands on the literal textbook order rather than just a locally-cheaper
+    one.
+
+**Finding — a self-introduced bug caught by the pipeline's own regression
+test, worth recording honestly.** While wiring `language_graph.rs`'s new
+`p119_arcades` node, I first declared `requires: &["p124_activity_pockets"]`
+as a hard dependency, since P119 now runs immediately after P124 in the
+real call order. `corrected_pipeline_real_traced_order_is_valid` failed
+immediately: P124 is documented (`p124_activity_pockets.rs`'s own module
+doc) as a real stage that **currently never actually qualifies on the real
+`eastside-baseline` fixture** — it's legitimately, always skipped there.
+Declaring it a hard requirement made an unsatisfiable claim the validator
+correctly rejected. P197's own `LANGUAGE` node already has the identical
+situation and states its resolution directly: P197 doesn't require P124 to
+have *run*, only to run *after* it *if* it did, which `pipeline.rs`'s own
+real call order already guarantees regardless. Fixed P119's node the same
+way — `requires: &["p107_wings_of_light"]` only, with a `why` string that
+explains the P124 non-requirement by citing P197's precedent — and softened
+`pipeline.rs`'s own step-12 doc comment, which had overstated this as "a
+real, Class C dependency, not free" before the correction.
+
+Full workspace test suite green (all `ok`, zero `FAILED`/`panicked`),
+clippy clean (only pre-existing style warnings, e.g.
+`clippy::manual_range_contains` in unrelated files), and
+`scripts/vibe-render.sh` (both `clean_baseline` and `cluster_interior`
+scenarios) confirms the real gallery caption on `public/index.html` reads
+`P29 → P37 → P52 → P61 → P95 → P108 → P96 → P107 → P117 → P118 → P124 →
+P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P160`
+automatically, with the perceptual-hash regression gate still passing
+within the existing 4-bit tolerance (expected: `floors` was already being
+computed and set to the same value by the time rendering happened, so
+final geometry is unaffected — only *when* the field gets populated
+changed).
+
 Remaining open items: the Class C mixed case (P108→P96, §4.2 — splitting
 P96 into a field-sampled base assignment plus a still-necessarily-late
-exception-selection step), the Class B `floors`-hoist (§4.7, fixes P133/
-P118/P119 at once), and item 2 (P116's own field, §4.5).
+exception-selection step), and item 2 (P116's own field, §4.5).
 
 ## 7. Non-goals
 
