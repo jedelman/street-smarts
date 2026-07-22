@@ -119,25 +119,34 @@ pub fn run_corrected_pipeline_via_ledger(
     try_run(store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    // Right after P107, strictly before P197/P127/P221 -- all of which
-    // need the FINAL building footprint. See pipeline.rs's own step 9 doc.
-    try_run(store, &P124ActivityPockets, "*", &P124Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // No real dependency on P124/P127/P197 either direction (PATTERN_
+    // ORDERING_AUDIT.md §4.3/§4.4: a free reorder) -- ordered here to
+    // match Alexander's own ascending numbering. See pipeline.rs's own
+    // step 9 doc.
     try_run(store, &P117ShelteringRoof, "*", &P117Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    // Right after P107/P124 -- every downstream stage clones-and-mutates
-    // the buildings P107/P124 produced, so wall_thickness_m survives
-    // untouched. See pipeline.rs's own step 10 doc.
-    try_run(store, &P197ThickWalls, "*", &P197Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Right after P107/P117, strictly before P197/P127/P221 -- all of
+    // which need the FINAL building footprint. See pipeline.rs's own
+    // step 10 doc.
+    try_run(store, &P124ActivityPockets, "*", &P124Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P127IntimacyGradient, "*", &P127Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Right after P107/P124/P117 -- every downstream stage clones-and-
+    // mutates the buildings those produced, so wall_thickness_m survives
+    // untouched. See pipeline.rs's own step 12 doc.
+    try_run(store, &P197ThickWalls, "*", &P197Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P116CascadeOfRoofs, "*", &P116Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // No real dependency on P130 either direction (PATTERN_ORDERING_
+    // AUDIT.md §4.6) -- ordered here to match Alexander's own ascending
+    // numbering AND his own cited textual sequence. See pipeline.rs's own
+    // step 14 doc.
     try_run(store, &P129CommonAreasAtTheHeart, "*", &P129Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P131TheFlowThroughRooms, "*", &P131Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P221NaturalDoorsAndWindows, "*", &P221Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // AFTER P221, not right after P131 -- Building.floors isn't set until
-    // P221 derives it from real height. See pipeline.rs's own step 14 doc.
+    // P221 derives it from real height. See pipeline.rs's own step 18 doc.
     try_run(store, &P133StaircaseAsAStage, "*", &P133Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Same real "needs Building.floors" reason as P133 -- see pipeline.rs's
-    // own step 18/19/20 docs.
+    // own step 19/20/21 docs.
     try_run(store, &P118RoofGarden, "*", &P118Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P119Arcades, "*", &P119Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P160BuildingEdge, "*", &P160Params::defaults().as_map(), seed, &mut cur, &mut commits);

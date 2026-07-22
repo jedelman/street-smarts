@@ -11,15 +11,18 @@ P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P124 → P117 
 P127 → P116 → P130 → P129 → P131 → P221 → P133 → P118 → P119 → P160
 ```
 
-**Update, same session, after §5's first item shipped:** the real order is now
+**Update, same session:** after item 1 (P29) and the three free reorders
+(§6b) shipped, the real order is now
 
 ```
-P29 → P37 → P52 → P61 → P95 → P108 → P96 → P107 → P124 → P117 → P197 →
-P127 → P116 → P130 → P129 → P131 → P221 → P133 → P118 → P119 → P160
+P29 → P37 → P52 → P61 → P95 → P108 → P96 → P107 → P117 → P124 → P127 →
+P197 → P116 → P129 → P130 → P131 → P221 → P133 → P118 → P119 → P160
 ```
 
-— P29 moved to its own true canonical position, ahead of P37. See §6 for the
-real implementation and what it actually cost/changed.
+— P29 moved to its own true canonical position ahead of P37, and P117/P124,
+P127/P197, P129/P130 each swapped to match ascending numbering at zero real
+cost. See §6/§6b for the real implementation and what it actually
+cost/changed.
 
 This is **not** Alexander's own ascending pattern-number order. `registry.rs`'s own
 doc comment already names the actual organizing principle: *"larger, more-fixed
@@ -72,18 +75,18 @@ data-flow, not about correcting a misreading of the source text.
 
 ## 3. The ten deviations, classified
 
-| # | Deviation (runs after, canonically before) | Class |
-|---|---|---|
-| 1 | P52 → **P29** | **A. Premature individuation** |
-| 2 | P108 → **P96** | **C. Mixed** (partially A, partially genuine) |
-| 3 | P124 → **P117** | **D. Free reorder** |
-| 4 | P197 → **P127** | **D. Free reorder** |
-| 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) |
-| 6 | P130 → **P129** | **D. Free reorder** (admitted in the code itself) |
-| 7 | P221 → **P133** | **B. Hoisted-derived-attribute bug** |
-| 8 | P133 → **P118** | **B. Hoisted-derived-attribute bug** |
-| 9 | P133 → **P119** | **B. Hoisted-derived-attribute bug** |
-| 10 | P133 → **P160** | **C. Genuine sequential dependency** |
+| # | Deviation (runs after, canonically before) | Class | Status |
+|---|---|---|---|
+| 1 | P52 → **P29** | **A. Premature individuation** | ✅ Fixed (§6) |
+| 2 | P108 → **P96** | **C. Mixed** (partially A, partially genuine) | Open |
+| 3 | P124 → **P117** | **D. Free reorder** | ✅ Fixed (§6b) |
+| 4 | P197 → **P127** | **D. Free reorder** | ✅ Fixed (§6b) |
+| 5 | P127 → **P116** | **A. Premature individuation** (see §4.5 — also self-critique) | Open |
+| 6 | P130 → **P129** | **D. Free reorder** (admitted in the code itself) | ✅ Fixed (§6b) |
+| 7 | P221 → **P133** | **B. Hoisted-derived-attribute bug** | Open |
+| 8 | P133 → **P118** | **B. Hoisted-derived-attribute bug** | Open |
+| 9 | P133 → **P119** | **B. Hoisted-derived-attribute bug** | Open |
+| 10 | P133 → **P160** | **C. Genuine sequential dependency** | N/A — correct as-is |
 
 - **A — Premature individuation (real field candidates).** The larger pattern's
   own computation doesn't actually need anything a smaller, later pattern
@@ -351,6 +354,41 @@ manual edit) with the perceptual-hash regression gate still passing.
 
 Item 2 (P116's own "reuses someone else's individuation" pattern, §4.5) and
 the Class B `floors`-hoisting fix (§4.7) remain open, not attempted here.
+
+## 6b. The three free reorders (Class D), also shipped this session
+
+§5's recommendation 3 — zero real dependency either way, per §§4.3/4.4/4.6 —
+implemented immediately after item 1, since they cost nothing to verify. Real
+execution order for this cluster is now:
+
+```
+... P107 → P117 → P124 → P127 → P197 → P116 → P129 → P130 → P131 → P221 ...
+```
+
+(was `P124 → P117 → P197 → P127 → P116 → P130 → P129 → P131`). Three swaps:
+
+- **P117 ↔ P124** — P117 only reads `height_m`, never footprint; moved ahead
+  to match ascending numbering (117 < 124).
+- **P127 ↔ P197** — neither reads the other's output; moved P127 ahead to
+  match ascending numbering (127 < 197). P116 (which needs both P117's roof
+  and P127's cells) stays valid since both still precede it.
+- **P129 ↔ P130** — P130 was already admitted arbitrary in its own module
+  doc; moved P129 ahead to match BOTH ascending numbering (129 < 130) and
+  Alexander's own cited textual sequence (127 → 128 → 129 → 130 → 131...).
+
+All three updated in `pipeline.rs` (real call order + module doc), the ledger
+mirror (`corrected_pipeline.rs`), `language_graph.rs`'s checkable `LANGUAGE`
+table, and `registry.rs`'s operator list, for consistency. Full workspace
+test suite green with zero changes needed to any test — exactly what "no
+real dependency" predicts. `scripts/vibe-render.sh` confirms the real
+gallery caption picks up the new order automatically and the perceptual-hash
+gate still passes (expected: these are independent scalar-setting stages,
+reordering them doesn't change final geometry).
+
+Remaining open items: the Class C mixed case (P108→P96, §4.2 — splitting
+P96 into a field-sampled base assignment plus a still-necessarily-late
+exception-selection step), the Class B `floors`-hoist (§4.7, fixes P133/
+P118/P119 at once), and item 2 (P116's own field, §4.5).
 
 ## 7. Non-goals
 

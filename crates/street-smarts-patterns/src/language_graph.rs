@@ -103,24 +103,24 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "shapes every pad for daylight depth using P96's story count for real height; needs P108's merged footprints and P96's story assignment",
     },
     PatternNode {
+        id: "p117_sheltering_roof", alexander_number: Some(117),
+        requires: &["p107_wings_of_light"],
+        completes: &[],
+        why: "assigns every real P107/P96 building with a real height_m a real shed roof sloped to true north; also closes P162 North Face's own specifically-north claim by the same geometry (P162 has no separate generator of its own to list here) -- needs real height_m, which P107 already guarantees (via P96's story count or its own assumed_height_m fallback). No real dependency on P124/P127/P197 either direction (PATTERN_ORDERING_AUDIT.md §4.3/§4.4: a free reorder) -- placed here to match Alexander's own ascending numbering (117 < 124) at zero cost",
+    },
+    PatternNode {
         id: "p124_activity_pockets", alexander_number: Some(124),
         requires: &["p107_wings_of_light", "p61_small_public_squares"],
         completes: &[],
         why: "carves a real pocket from buildings bordering a real Plaza; needs P107's real final footprints and P61's real Plazas, and must run before P197/P127/P221 read the final footprint",
     },
     PatternNode {
-        id: "p117_sheltering_roof", alexander_number: Some(117),
-        requires: &["p107_wings_of_light"],
-        completes: &[],
-        why: "assigns every real P107/P96 building with a real height_m a real shed roof sloped to true north; also closes P162 North Face's own specifically-north claim by the same geometry (P162 has no separate generator of its own to list here) -- needs real height_m, which P107 already guarantees (via P96's story count or its own assumed_height_m fallback)",
+        id: "p127_intimacy_gradient", alexander_number: Some(127), requires: &["p107_wings_of_light"], completes: &[],
+        why: "partitions each P107 building's ground floor into a depth-ordered cell sequence; needs real building footprints. No real dependency on P197 either direction (PATTERN_ORDERING_AUDIT.md §4.4: a free reorder) -- placed here to match Alexander's own ascending numbering (127 < 197) at zero cost",
     },
     PatternNode {
         id: "p197_thick_walls", alexander_number: Some(197), requires: &["p107_wings_of_light"], completes: &[],
         why: "assigns every real P107/P124 building a real wall_thickness_m, capped relative to its own footprint; every downstream stage clones-and-mutates from here, so the field survives untouched. Doesn't strictly REQUIRE p124_activity_pockets to have run (P124 is a real but skippable step, not every fixture has a building close enough to a Plaza to qualify) -- just needs to run after it if it did, which pipeline.rs's own real call order already guarantees",
-    },
-    PatternNode {
-        id: "p127_intimacy_gradient", alexander_number: Some(127), requires: &["p107_wings_of_light"], completes: &[],
-        why: "partitions each P107 building's ground floor into a depth-ordered cell sequence; needs real building footprints",
     },
     PatternNode {
         id: "p116_cascade_of_roofs", alexander_number: Some(116),
@@ -129,12 +129,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "partitions each P117 whole-building roof into per-cell RoofSegments whose ridge height cascades with P127's own real depth gradient; needs both P117's real roof and P127's real interior_cells to exist first",
     },
     PatternNode {
-        id: "p130_entrance_room", alexander_number: Some(130), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],
-        why: "labels the P127 cell at depth 0.0 as the entrance -- a label only, needs P127's cells to exist",
+        id: "p129_common_areas_at_the_heart", alexander_number: Some(129), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],
+        why: "marks the P127 cell nearest the plan's center of gravity; needs P127's cells. No real dependency on P130 either direction (PATTERN_ORDERING_AUDIT.md §4.6 -- P130 never changes cell geometry or count) -- placed here to match BOTH Alexander's own ascending numbering (129 < 130) AND his own cited textual sequence (127 -> 128 -> 129 -> 130 -> 131...) at zero cost",
     },
     PatternNode {
-        id: "p129_common_areas_at_the_heart", alexander_number: Some(129), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],
-        why: "marks the P127 cell nearest the plan's center of gravity; needs P127's cells",
+        id: "p130_entrance_room", alexander_number: Some(130), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],
+        why: "labels the P127 cell at depth 0.0 as the entrance -- a label only, needs P127's cells to exist",
     },
     PatternNode {
         id: "p131_the_flow_through_rooms", alexander_number: Some(131), requires: &["p127_intimacy_gradient"], completes: &["p127_intimacy_gradient"],

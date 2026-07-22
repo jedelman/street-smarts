@@ -56,43 +56,49 @@
 //!      regardless of which block a pad came from, and no longer applies
 //!      its own setback on top of a P95/P108 pad's own gap (see p107's
 //!      "v0.2" module doc).
-//!   9. P124 Activity Pockets (once, site-scale): bumps a small, real,
+//!   9. P117 Sheltering Roof (once, site-scale): assigns every real
+//!      building with a real `height_m` a real shed roof (eave = its own
+//!      real height_m, ridge = that plus a real, modest roof_rise_m),
+//!      sloping down to true north -- also closes P162 North Face's own
+//!      specifically-north claim by the same real geometry. Only needs
+//!      real height (already real by this point via P96/P107's own
+//!      fallback), not footprint or wall thickness -- no real dependency
+//!      on P124/P127/P197 either direction (PATTERN_ORDERING_AUDIT.md
+//!      §4.3/§4.4: a free reorder), so placed here, ahead of P124, to
+//!      match Alexander's own ascending numbering (117 < 124) at zero
+//!      cost. See p117_sheltering_roof's own module doc for why one shed
+//!      roof honestly satisfies both patterns at once, and what it
+//!      deliberately doesn't claim (P116's per-wing cascade, P118's roof
+//!      garden, P119/P166's canopy geometry).
+//!   10. P124 Activity Pockets (once, site-scale): bumps a small, real,
 //!      partly enclosed pocket out from up to max_pockets_per_plaza
 //!      buildings bordering each real Plaza (from P61), reading "jut
 //!      forward into the open space" literally -- a real projection
 //!      OUTWARD from the building's own footprint, toward the plaza, not
-//!      a recession into it. Runs right after P107 and strictly before
-//!      P197/P127/P221 -- all of which need the FINAL building footprint,
-//!      not a stale pre-bump one. See p124_activity_pockets's own module
-//!      doc for the geometric reading and its own hard-won note on why it
-//!      splices the bump into the ring directly rather than using
-//!      subtract_convex + union_pieces (the same reassembly-reliability
-//!      problem P95/P133 already hit).
-//!   10. P117 Sheltering Roof (once, site-scale): assigns every real
-//!      building with a real `height_m` a real shed roof (eave = its own
-//!      real height_m, ridge = that plus a real, modest roof_rise_m),
-//!      sloping down to true north -- also closes P162 North Face's own
-//!      specifically-north claim by the same real geometry.
-//!      Runs after P107/P124 (only needs real height, not footprint or
-//!      wall thickness) and before P197 so wall thickness applies to the
-//!      final, roofed building the same as everything else downstream.
-//!      See p117_sheltering_roof's own module doc for why one shed roof
-//!      honestly satisfies both patterns at once, and what it deliberately
-//!      doesn't claim (P116's per-wing cascade, P118's roof garden, P119/
-//!      P166's canopy geometry).
-//!   11. P197 Thick Walls (once, site-scale): assigns every real building a
+//!      a recession into it. Runs right after P107/P117 and strictly
+//!      before P197/P127/P221 -- all of which need the FINAL building
+//!      footprint, not a stale pre-bump one. See p124_activity_pockets's
+//!      own module doc for the geometric reading and its own hard-won
+//!      note on why it splices the bump into the ring directly rather
+//!      than using subtract_convex + union_pieces (the same reassembly-
+//!      reliability problem P95/P133 already hit).
+//!   11. P127 Intimacy Gradient (once, site-scale): partitions every
+//!      building's ground floor into a depth-ordered sequence of cells
+//!      (public wall/entrance bay -> deepest point). Still needs P107's
+//!      final footprint, which P124 (just above) may have bumped -- P124
+//!      itself already requires running before P127 (see its own module
+//!      doc). No real dependency on P197 either direction
+//!      (PATTERN_ORDERING_AUDIT.md §4.4: a free reorder), so placed here,
+//!      ahead of P197, to match Alexander's own ascending numbering
+//!      (127 < 197) at zero cost. See `p127_intimacy_gradient`'s own
+//!      module doc for the full sourced sequence Alexander's own text
+//!      lays out (127 -> 128 -> 129 -> 130 -> 131 -> 132 -> 133...).
+//!   12. P197 Thick Walls (once, site-scale): assigns every real building a
 //!      real, nonzero `wall_thickness_m`, capped relative to its own real
 //!      footprint. Runs after P107, P124, and P117 -- every downstream
 //!      stage clones and mutates the buildings those produced, so this
 //!      field survives untouched to the end. Deliberately scalar-only,
 //!      not carved geometry -- see p197_thick_walls's own module doc.
-//!   12. P127 Intimacy Gradient (once, site-scale): partitions every
-//!      building's ground floor into a depth-ordered sequence of cells
-//!      (public wall/entrance bay -> deepest point). Runs right after P107
-//!      -- canonical numbering (107 < 127) needs no reordering here. See
-//!      `p127_intimacy_gradient`'s own module doc for the full sourced
-//!      sequence Alexander's own text lays out (127 -> 128 -> 129 -> 130 ->
-//!      131 -> 132 -> 133...).
 //!   13. P116 Cascade of Roofs (once, site-scale): partitions every
 //!      already-roofed building's roof into per-cell `RoofSegment`s whose
 //!      ridge height cascades with P127's own cell `depth` -- the same
@@ -102,13 +108,16 @@
 //!      `interior_cells` to exist first. See p116_cascade_of_roofs's own
 //!      module doc for why it reuses P127's cell polygons as the roof's
 //!      wing partition instead of computing a separate one.
-//!   14. P130 Entrance Room (once, site-scale): tags the cell P127 built at
+//!   14. P129 Common Areas at the Heart (once, site-scale): marks which of
+//!      P127's cells is nearest the plan's center of gravity. No real
+//!      dependency on P130 either direction (PATTERN_ORDERING_AUDIT.md
+//!      §4.6 -- P130 never changes cell geometry or count) -- placed here,
+//!      ahead of P130, to match BOTH Alexander's own ascending numbering
+//!      (129 < 130) AND his own cited textual sequence (127 -> 128 -> 129
+//!      -> 130 -> 131...) at zero cost.
+//!   15. P130 Entrance Room (once, site-scale): tags the cell P127 built at
 //!      depth 0.0 as `kind: "entrance"` -- a label only, no geometry
-//!      change, see the module's own doc for why. Kept next to P127
-//!      instead of Alexander's own post-P129 position since nothing about
-//!      it depends on run order relative to P129.
-//!   15. P129 Common Areas at the Heart (once, site-scale): marks which of
-//!      P127's cells is nearest the plan's center of gravity.
+//!      change, see the module's own doc for why.
 //!   16. P131 The Flow Through Rooms (once, site-scale): connects P127's
 //!      cells -- a closed loop for free on courtyard buildings (the ring
 //!      already is one), a chain for solid buildings, closed into a real
@@ -399,30 +408,43 @@ pub fn run_corrected_pipeline_with_p37_traced(
     // qualifies on the real eastside-baseline fixture (see
     // p124_activity_pockets's own module doc for the real measured
     // numbers), so this stage is a real no-op there today, not broken.
-    if let Ok(sub124) = P124ActivityPockets.apply(&nbhd, "*", &P124Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub124);
-        trace.push(P124ActivityPockets.name());
-    }
-
     // P117 Sheltering Roof (once, site-scale): assigns every real building
     // with a real height_m a real shed roof, sloped down to true north --
     // also closes P162 North Face's own specifically-north claim by the
     // same geometry. Only needs height_m (already real by this point via
-    // P96/P107's own fallback), not footprint or wall thickness, so its
-    // exact position relative to P124/P197 isn't load-bearing the way
-    // P124<P197 is -- placed here (after P124, before P197) simply to keep
-    // every "shape the building further" stage grouped together before
-    // P197's own scalar-only pass. See p117_sheltering_roof's own module
-    // doc for what it does and deliberately doesn't claim.
+    // P96/P107's own fallback), not footprint or wall thickness -- no real
+    // dependency on P124/P127/P197 either direction (PATTERN_ORDERING_
+    // AUDIT.md §4.3/§4.4: a free reorder), so placed here, ahead of P124,
+    // to match Alexander's own ascending numbering (117 < 124) at zero
+    // cost. See p117_sheltering_roof's own module doc for what it does
+    // and deliberately doesn't claim.
     if let Ok(sub117) = P117ShelteringRoof.apply(&nbhd, "*", &P117Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub117);
         trace.push(P117ShelteringRoof.name());
     }
 
+    if let Ok(sub124) = P124ActivityPockets.apply(&nbhd, "*", &P124Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub124);
+        trace.push(P124ActivityPockets.name());
+    }
+
+    // P127 Intimacy Gradient (once, site-scale): partitions every
+    // building's ground floor into a depth-ordered cell sequence. No real
+    // dependency on P197 either direction (PATTERN_ORDERING_AUDIT.md
+    // §4.4: a free reorder) -- placed here, ahead of P197, to match
+    // Alexander's own ascending numbering (127 < 197) at zero cost. Still
+    // needs P107's final footprint, which P124 (just above) may have
+    // bumped -- P124 itself already requires running before P127 (see its
+    // own module doc), so this ordering is unaffected.
+    if let Ok(sub127) = P127IntimacyGradient.apply(&nbhd, "*", &P127Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub127);
+        trace.push(P127IntimacyGradient.name());
+    }
+
     // P197 Thick Walls (once, site-scale): assigns every real building a
     // real wall_thickness_m, capped relative to its own footprint. Runs
-    // after P107 (and after P124/P117, so a bumped, roofed building's
-    // final footprint is what gets a thickness) -- every downstream stage
+    // after P107, P124, and P117, so a bumped, roofed building's final
+    // footprint is what gets a thickness -- every downstream stage
     // clones-and-mutates from here, so the field survives to the end of
     // the pipeline untouched. See p197_thick_walls's own module doc.
     if let Ok(sub197) = P197ThickWalls.apply(&nbhd, "*", &P197Params::defaults(), seed) {
@@ -430,24 +452,28 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P197ThickWalls.name());
     }
 
-    if let Ok(sub127) = P127IntimacyGradient.apply(&nbhd, "*", &P127Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub127);
-        trace.push(P127IntimacyGradient.name());
-    }
-
     if let Ok(sub116) = P116CascadeOfRoofs.apply(&nbhd, "*", &P116Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub116);
         trace.push(P116CascadeOfRoofs.name());
     }
 
-    if let Ok(sub130) = P130EntranceRoom.apply(&nbhd, "*", &P130Params::defaults(), seed) {
-        nbhd = apply_subdivision(&nbhd, &sub130);
-        trace.push(P130EntranceRoom.name());
-    }
-
+    // P129 Common Areas at the Heart (once, site-scale): marks which of
+    // P127's cells is nearest the plan's center of gravity. No real
+    // dependency on P130 either direction (PATTERN_ORDERING_AUDIT.md
+    // §4.6 -- P130 never changes cell geometry or count, so nothing about
+    // this operator's own center-of-gravity computation depends on
+    // whether the entrance cell has been relabeled yet) -- placed here,
+    // ahead of P130, to match BOTH Alexander's own ascending numbering
+    // (129 < 130) AND his own cited textual sequence (127 -> 128 -> 129 ->
+    // 130 -> 131...) at zero cost.
     if let Ok(sub129) = P129CommonAreasAtTheHeart.apply(&nbhd, "*", &P129Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub129);
         trace.push(P129CommonAreasAtTheHeart.name());
+    }
+
+    if let Ok(sub130) = P130EntranceRoom.apply(&nbhd, "*", &P130Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub130);
+        trace.push(P130EntranceRoom.name());
     }
 
     if let Ok(sub131) = P131TheFlowThroughRooms.apply(&nbhd, "*", &P131Params::defaults(), seed) {
