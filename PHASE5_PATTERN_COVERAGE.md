@@ -154,6 +154,19 @@ doc's earlier note assumed would be needed), and cascades `ridge_height_m` down 
 real `depth`. All five opinions now score real `Value`s (not `NoView`) on every real fixture this
 pipeline ships, wired into both `pipeline.rs` and the ledger mirror, and into `render.py`.
 
+**2026-07-23 update: P115 closed too, separately -- it was never actually part of the "all
+five" cluster above.** `p115_courtyards_which_live` doesn't need roof geometry at all; its own
+real gap was that `p221_natural_doors_and_windows` shaped every courtyard's hole ring with an
+empty door-edge list, so every real courtyard this pipeline produced had windows only, zero
+doors, on its own courtyard wall. `p221`'s own new `choose_courtyard_door_edges` (its "v0.3"
+module doc) now places `courtyard_door_target` (default 3, matching Alexander's own "two or
+three") real doors, spread around the hole ring by angle so they sit on genuinely different
+walls. Measured on the real fixture: P115 Value 1.000 (17/17 real courtyard buildings, 3/3 real
+courtyard doors each). New `CascadeContract` entry added (`cascade_contracts.rs`) recording this
+-- honestly noted there as a real code-level relationship this project's own audit found, not an
+Alexander cross-reference (no direct citation edge exists between P221 and P115 in
+`data/apl-pattern-graph.json`).
+
 ### Extend `p221_natural_doors_and_windows.rs` (openings)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

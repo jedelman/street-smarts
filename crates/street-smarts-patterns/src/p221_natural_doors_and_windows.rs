@@ -57,7 +57,10 @@
 //! - Walks the outer wall ring, and the courtyard ring too for buildings
 //!   P107 shaped as `p107_courtyard_v01` -- courtyard-facing walls get
 //!   windows exactly like street-facing ones, since a courtyard building's
-//!   inner wall is real daylight, not decoration.
+//!   inner wall is real daylight, not decoration. `courtyard_door_target`
+//!   real doors (default 3, P115 Courtyards Which Live) open onto the
+//!   courtyard too, spread around it by angle -- see the "v0.3" module doc
+//!   section below.
 //! - Divides each wall segment long enough (`min_wall_segment_m`) into
 //!   `room_width_m`-wide bays and places one `Window` opening per bay per
 //!   floor, shrinking width and height by `size_falloff_per_floor` per
@@ -118,6 +121,26 @@
 //!   next-best distinct qualifying wall edge. Cannot check "mutually
 //!   visible" at all -- no line-of-sight/occlusion model exists in this
 //!   pipeline to verify one door can actually be seen from the other.
+//!
+//! # v0.3: real courtyard doors, closing P115's own real gap
+//!
+//! Every courtyard's hole ring used to be shaped with an empty door-edge
+//! list (`place_wall_openings(&hole_local, true, &[], ...)`) -- every bay
+//! got a window, never a door, on every real courtyard this pipeline ever
+//! produced. `street-smarts-opinions::p115_courtyards_which_live` named
+//! this exactly (its own module doc: "literally zero doors opening onto
+//! it -- exactly the opposite of Alexander's 'two or three doors'
+//! requirement"). `choose_courtyard_door_edges` (below) now picks
+//! `courtyard_door_target` (default 3, matching that opinion's own
+//! `TARGET_DOORS`) real doors, spread around the hole ring by angle from
+//! its own centroid rather than clustered on one wall -- Alexander's own
+//! text ties the door count directly to "the natural paths which connect
+//! these doors pass across the courtyard," which only means something
+//! real if the doors sit on genuinely different sides for a path to cross
+//! between. Doesn't check that those paths actually get built (no
+//! path-routing-through-interior-space data exists in this schema, same
+//! honest limit P115's own opinion names) or add the roofed veranda/porch
+//! half of the pattern (no such structure exists anywhere in this schema).
 
 use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
@@ -180,6 +203,13 @@ pub struct P221Params {
     /// entrance even if it isn't a P108-merged courtyard -- P102 Family
     /// of Entrances' "buildings large enough to need more than one door."
     pub multi_entrance_perimeter_m: f64,
+    /// Target number of real doors opening onto a courtyard building's
+    /// hole ring -- P115 Courtyards Which Live's own literal "at least
+    /// two or three doors open from the building into it." Spread around
+    /// the ring by angle (see `choose_courtyard_door_edges`), not all on
+    /// one wall, so the doors' own natural paths have a real courtyard to
+    /// cross between them.
+    pub courtyard_door_target: f64,
 }
 
 impl Parameters for P221Params {
@@ -255,6 +285,11 @@ impl Parameters for P221Params {
                 "Outer-perimeter threshold above which a building gets a second entrance (P102).",
                 20.0, 300.0, 100.0,
             ).with_unit("m"),
+            ParamSpec::float(
+                "courtyard_door_target",
+                "Target number of real doors opening onto a courtyard's hole ring, spread by angle (P115).",
+                0.0, 5.0, 3.0,
+            ).with_unit("doors"),
         ]
     }
     fn defaults() -> Self {
@@ -273,6 +308,7 @@ impl Parameters for P221Params {
             life_facing_threshold_m: 30.0,
             street_opening_width_frac: 0.75,
             multi_entrance_perimeter_m: 100.0,
+            courtyard_door_target: 3.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
@@ -291,6 +327,7 @@ impl Parameters for P221Params {
             self.life_facing_threshold_m,
             self.street_opening_width_frac,
             self.multi_entrance_perimeter_m,
+            self.courtyard_door_target,
         ]
     }
     fn from_vector(v: &[f64]) -> Self {
@@ -310,6 +347,7 @@ impl Parameters for P221Params {
         if let (Some(s), Some(x)) = (schema.get(11), v.get(11)) { p.life_facing_threshold_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(12), v.get(12)) { p.street_opening_width_frac = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(13), v.get(13)) { p.multi_entrance_perimeter_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(14), v.get(14)) { p.courtyard_door_target = s.clamp(*x); }
         p
     }
 }
@@ -415,7 +453,19 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
                     if let Some(hole) = part.holes.first() {
                         let hole_local = ring_to_local(hole, &origin);
                         if hole_local.len() >= 3 {
-                            place_wall_openings(&hole_local, true, &[], target_local, walkable_target_local, floors, params, &mut openings);
+                            // P115 Courtyards Which Live: real doors opening onto
+                            // the courtyard, spread around it by angle -- not the
+                            // empty door_edges this used to pass (see this file's
+                            // own "v0.3" module doc for the real gap that closed).
+                            let courtyard_doors: Vec<(usize, bool)> = choose_courtyard_door_edges(
+                                &hole_local,
+                                params.courtyard_door_target.round().max(0.0) as usize,
+                                params.min_wall_segment_m,
+                            )
+                                .into_iter()
+                                .map(|i| (i, false))
+                                .collect();
+                            place_wall_openings(&hole_local, true, &courtyard_doors, target_local, walkable_target_local, floors, params, &mut openings);
                         }
                     }
                 }
@@ -490,6 +540,10 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
                 "P165's widened door is still an ordinary Door opening (not a new opening type) --\
                  just wider when it's chosen by real facing toward a street/open-space target, not \
                  a literal full-wall-height storefront.".into(),
+                "Courtyard doors (P115) are spread by angle around the hole ring, but nothing \
+                 checks that the paths connecting them actually cross the courtyard, or adds the \
+                 roofed veranda/porch Alexander's own text also calls for -- neither has any data \
+                 to check against in this schema.".into(),
             ],
             seed: _seed,
             params: params.as_map(),
@@ -617,6 +671,66 @@ fn choose_door_wall(ring: &[Pt2], target_local: Option<Pt2>, min_len: f64, exclu
     }
 }
 
+/// Pick up to `target` edges of a courtyard's hole `ring`, spread around it
+/// by angle from the ring's own centroid rather than clustered on one wall
+/// -- P115 Courtyards Which Live's "at least two or three doors... and the
+/// natural paths which connect these doors pass across the courtyard" only
+/// means something real if the doors sit on genuinely different sides.
+/// Divides the full circle into `target` angular sectors and picks the
+/// longest qualifying (>= `min_len`) edge in each; a sector with no
+/// qualifying edge (an irregular hole with fewer real long sides than
+/// `target`) is filled afterward from whatever longest candidates are left,
+/// so a real hole still gets as close to `target` doors as its own edge
+/// count allows, rather than silently under-placing.
+fn choose_courtyard_door_edges(ring: &[Pt2], target: usize, min_len: f64) -> Vec<usize> {
+    let n = ring.len();
+    if n < 2 || target == 0 {
+        return vec![];
+    }
+    let c = centroid(ring);
+    let candidates: Vec<(usize, f64, f64)> = (0..n)
+        .filter_map(|i| {
+            let a = ring[i];
+            let b = ring[(i + 1) % n];
+            let len = a.dist(b);
+            if len < min_len {
+                return None;
+            }
+            let mid = Pt2::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+            let angle = (mid.y - c.y).atan2(mid.x - c.x);
+            Some((i, angle, len))
+        })
+        .collect();
+    if candidates.is_empty() {
+        return vec![];
+    }
+    let target = target.min(candidates.len());
+
+    let mut chosen: Vec<usize> = Vec::with_capacity(target);
+    let two_pi = 2.0 * std::f64::consts::PI;
+    for k in 0..target {
+        let lo = -std::f64::consts::PI + k as f64 * two_pi / target as f64;
+        let hi = -std::f64::consts::PI + (k as f64 + 1.0) * two_pi / target as f64;
+        let best = candidates.iter()
+            .filter(|&&(i, angle, _)| angle >= lo && angle < hi && !chosen.contains(&i))
+            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+        if let Some(&(i, _, _)) = best {
+            chosen.push(i);
+        }
+    }
+    if chosen.len() < target {
+        let mut remaining: Vec<&(usize, f64, f64)> = candidates.iter().filter(|&&(i, _, _)| !chosen.contains(&i)).collect();
+        remaining.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+        for &(i, _, _) in remaining {
+            if chosen.len() >= target {
+                break;
+            }
+            chosen.push(i);
+        }
+    }
+    chosen
+}
+
 /// Place window (and, on the chosen door edge(s), one door each) openings
 /// along every long-enough segment of `ring`, per floor, per `room_width_m`
 /// bay. `door_edges` is `(edge_index, opens_to_real_street)` -- the second
@@ -722,7 +836,7 @@ fn place_wall_openings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use street_smarts_core::geometry::{LngLat, Polygon};
+    use street_smarts_core::geometry::{LngLat, Polygon, PolygonPart};
     use street_smarts_core::nir::{NeighborhoodMeta, Street};
 
     fn nbhd(buildings: Vec<Building>, streets: Vec<Street>) -> Neighborhood {
@@ -760,6 +874,34 @@ mod tests {
             ]),
             height_m: Some(height_m),
             typology: Some("p107_solid_v01".into()),
+            year_built: None,
+            parcel_id: Some("PAD_1".into()),
+            floors: None,
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+    }
+
+    fn courtyard_building(id: &str, outer_side_m: f64, hole_side_m: f64, height_m: f64) -> Building {
+        let m = 1.0 / 111_320.0;
+        let os = outer_side_m / 2.0 * m;
+        let hs = hole_side_m / 2.0 * m;
+        Building {
+            id: id.into(),
+            polygon: Polygon::from_parts(vec![PolygonPart {
+                outer: vec![
+                    LngLat::new(-os, -os), LngLat::new(os, -os),
+                    LngLat::new(os, os), LngLat::new(-os, os), LngLat::new(-os, -os),
+                ],
+                holes: vec![vec![
+                    LngLat::new(-hs, -hs), LngLat::new(hs, -hs),
+                    LngLat::new(hs, hs), LngLat::new(-hs, hs), LngLat::new(-hs, -hs),
+                ]],
+            }]),
+            height_m: Some(height_m),
+            typology: Some("p107_courtyard_v01".into()),
             year_built: None,
             parcel_id: Some("PAD_1".into()),
             floors: None,
@@ -893,5 +1035,47 @@ mod tests {
         let sub = P221NaturalDoorsAndWindows.apply(&n, "*", &P221Params::defaults(), 1).expect("should place openings");
         let doors: Vec<_> = sub.new_buildings[0].openings.iter().filter(|o| o.kind == OpeningKind::Door).collect();
         assert_eq!(doors.len(), 2, "a courtyard-typed building should get two entrances regardless of its own perimeter");
+    }
+
+    /// P115 Courtyards Which Live: a real courtyard (a building with an
+    /// actual polygon hole) gets courtyard_door_target real doors opening
+    /// onto its own hole ring, spread across distinct wall edges -- not the
+    /// old empty door_edges that left every courtyard bay a window.
+    #[test]
+    fn a_courtyard_gets_real_doors_spread_across_distinct_walls() {
+        let b = courtyard_building("CY1", 40.0, 16.0, 9.0);
+        let n = nbhd(vec![b], vec![]);
+        let sub = P221NaturalDoorsAndWindows
+            .apply(&n, "*", &P221Params::defaults(), 1)
+            .expect("should place openings");
+        let b = &sub.new_buildings[0];
+        let courtyard_doors: Vec<_> = b.openings.iter()
+            .filter(|o| o.kind == OpeningKind::Door && o.on_hole)
+            .collect();
+        assert_eq!(courtyard_doors.len(), 3, "expected P221Params::defaults()'s courtyard_door_target (3) real courtyard doors, got {}", courtyard_doors.len());
+        let mut edges: Vec<usize> = courtyard_doors.iter().map(|o| o.ring_index).collect();
+        edges.sort();
+        edges.dedup();
+        assert_eq!(edges.len(), 3, "the 3 courtyard doors should sit on 3 distinct wall edges, got edges {edges:?}");
+        // The outer ring should still get its own ordinary (non-hole) door.
+        assert!(b.openings.iter().any(|o| o.kind == OpeningKind::Door && !o.on_hole), "the outer wall should still get its own real door");
+    }
+
+    #[test]
+    fn courtyard_door_target_zero_leaves_the_courtyard_windows_only() {
+        let params = P221Params { courtyard_door_target: 0.0, ..P221Params::defaults() };
+        let b = courtyard_building("CY1", 40.0, 16.0, 9.0);
+        let n = nbhd(vec![b], vec![]);
+        let sub = P221NaturalDoorsAndWindows
+            .apply(&n, "*", &params, 1)
+            .expect("should place openings");
+        let courtyard_doors = sub.new_buildings[0].openings.iter()
+            .filter(|o| o.kind == OpeningKind::Door && o.on_hole)
+            .count();
+        assert_eq!(courtyard_doors, 0, "courtyard_door_target = 0 should leave the courtyard ring windows-only, matching the pre-fix default");
+        let courtyard_windows = sub.new_buildings[0].openings.iter()
+            .filter(|o| o.kind == OpeningKind::Window && o.on_hole)
+            .count();
+        assert!(courtyard_windows > 0, "the courtyard ring should still get real windows");
     }
 }

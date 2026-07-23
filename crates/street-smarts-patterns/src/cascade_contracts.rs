@@ -588,6 +588,22 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
               windows checked; 74% have real street/open-space activity within 25m). Floor set \
               safely below that.",
     },
+    CascadeContract {
+        generator: "p221_natural_doors_and_windows",
+        generator_pattern: 221,
+        opinion: "p115_courtyards_which_live",
+        opinion_pattern: 115,
+        check: CascadeCheck::MinValue(0.8),
+        why: "No direct citation edge in data/apl-pattern-graph.json (P221's cites/cited_by lists \
+              don't include 115, nor vice versa) -- this is a real code-level relationship this \
+              project's own P115 audit found, not an Alexander cross-reference, named honestly as \
+              such. p221_natural_doors_and_windows is the only real producer of Opening{kind: Door, \
+              on_hole: true} (its own 'v0.3' module doc): before that section shipped, every real \
+              courtyard's hole ring got an empty door-edge list, so every courtyard building this \
+              pipeline ever produced scored 0.0 on p115's door_count sub-score. Measured on the \
+              real fixture: Value 1.000 (17/17 real courtyard buildings, 3/3 real courtyard doors \
+              each, all with a real larger open space within 150m). Floor set safely below that.",
+    },
     // -- p117_sheltering_roof (P117). --
     CascadeContract {
         generator: "p117_sheltering_roof",
