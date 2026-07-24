@@ -22,6 +22,65 @@ read directly from this repo's own already-cited opinion files. None of it is in
 
 ---
 
+## 2026-07-24 pattern-upgrade pass: status and flagged future work
+
+A full pass through this doc's remaining "real generator candidate" list, in Alexander's own
+number order. Outcome, for the record:
+
+**Real fixes shipped** (each: measured on the real fixture, full `cargo test --workspace` +
+`cargo clippy` + `vibe-render.sh` + perceptual-hash verification, committed and pushed
+individually):
+- **P112 Entrance Transition** -- real `entrance_depth_m` band/bay in P127, calibrated
+  empirically against a real regression it caused at a naive default.
+- **P30 Activity Nodes** -- P61's raw-land squares now anchor to real street-convergence
+  points; a real placement-budget bug caught and fixed along the way.
+- **P128 Indoor Sunlight** -- real, textually-grounded south tie-break in P129 (not a P127
+  axis change); a real side-effect on an unrelated cascade contract caught and honestly
+  resolved.
+- **P31 Promenade** -- upgraded from a stale, factually-inaccurate permanent `NoView` to a
+  real graph-connectivity check, now that P61 populates `ActivityNode` for real.
+
+**Investigated and correctly closed as non-issues** (real measurement showed no gap worth
+touching):
+- **P120 Paths and Goals** -- already 1.000 / 0.667 on two real parcels, no code change needed.
+- **P163 Outdoor Room** -- already real and decent (68-71%), no generator change needed.
+- **P22 Nine Per Cent Parking** -- already correctly triaged as program data, not geometry
+  (needs a parking-lot type and a demand assumption this pipeline has no real basis for).
+- **P198 Closets Between Rooms** -- deliberately not attempted: Alexander's own text
+  presupposes a room-use decision ("mark all the ROOMS WHERE YOU WANT closets") this codebase
+  has consistently refused to fabricate anywhere else.
+- **P114 Hierarchy of Open Space** -- already 44-50%, no clean single-generator fix found
+  without real render-baseline risk.
+
+### Flagged for a later pass -- real gaps, deliberately deferred, not abandoned
+
+Per direct instruction (2026-07-24): these four are real, confirmed gaps this pass chose not to
+force (each needs a genuine structural change, not a scoped tie-break, and touches shared logic
+other tests/renders depend on) -- but they're wanted eventually, not written off. Picking any of
+these back up should start from its own dated note earlier in this file for the full
+investigation and real measured numbers.
+
+- **P98 Circulation Realms** -- needs a real nested realm-and-gateway zoning concept (multi-block
+  or multi-building-complex scale) that doesn't exist anywhere in this schema yet. The biggest
+  lift of the four: a new organizational concept, not an extension of an existing one.
+- **P38 Row Houses** -- real aspect-ratio check already passes reasonably (50-100%) but on a
+  tiny real sample (1-5 buildings); a real fix means biasing `p95_building_complex`/
+  `p108_connected_buildings`'s own pad-shaping toward elongation near pedestrian streets, which
+  affects every other building this pipeline produces too.
+- **P100 Pedestrian Street** -- entrance density along real Pedestrian streets is measurably low
+  (15-73%); root cause is `p95_building_complex` not knowing about `p61_small_public_squares`'
+  own connector-street geometry when siting pads. Needs real cross-generator coordination between
+  those two operators.
+- **P95 pad-seeding -> P105/P161** -- `p105_south_facing_outdoors`'s orientation check sits at
+  42-49%, statistically indistinguishable from an unbiased layout (confirming no compass
+  preference exists anywhere in building-vs-open-space placement today). A real fix means giving
+  `p95_building_complex`'s own pad-seeding a deliberate north/south preference relative to
+  adjacent open space -- not a small per-building tie-break like P129's, but a bias threaded
+  through the packing/stratified-seed algorithm that places every pad this pipeline produces.
+  Closing this would also very likely help `p161_sunny_place`, which reuses the same real check.
+
+---
+
 ## A side note on scope
 
 Nine patterns this codebase already fully builds (generator + opinion) are **not on the 68-list at
