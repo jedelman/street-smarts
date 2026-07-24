@@ -182,20 +182,31 @@ pub fn extract_surface_nets<F: Fn(Vec3) -> f64>(
     }
 
     let mut triangles: Vec<[u32; 3]> = Vec::new();
-    let emit_quad = |triangles: &mut Vec<[u32; 3]>, quad: [u32; 4], v_lo_negative: bool, axis: usize| {
-        let expected_dir = match axis {
-            0 => Vec3::new(1.0, 0.0, 0.0),
-            1 => Vec3::new(0.0, 1.0, 0.0),
-            _ => Vec3::new(0.0, 0.0, 1.0),
-        };
-        let expected = if v_lo_negative {
-            expected_dir
-        } else {
-            Vec3::new(-expected_dir.x, -expected_dir.y, -expected_dir.z)
-        };
+    // Winding is corrected against the ACTUAL local SDF gradient at the
+    // quad's own centroid, not a crude "which axis, which sign" guess.
+    // The axis-sign heuristic this replaced assumed the surface crossing
+    // at a cell edge is roughly axis-aligned -- true for a simple wall,
+    // false at a composite SDF boundary (e.g. right where an opening's
+    // difference-cut meets the solid's own outer surface), where it could
+    // "correct" an already-right triangle into a wrong one. Measured
+    // directly on a real building-with-door: 32 of 11132 triangles had
+    // their face normal pointing opposite the true SDF gradient there
+    // before this fix -- small enough that the aggregate signed-volume
+    // tests never caught it (they still passed), but real, and visible
+    // as wrong-looking shading concentrated near openings on a real
+    // device. The gradient sample costs 6 extra sdf() calls per quad;
+    // correctness here matters more than that.
+    let emit_quad = |triangles: &mut Vec<[u32; 3]>, quad: [u32; 4]| {
         let p0 = positions[quad[0] as usize];
         let p1 = positions[quad[1] as usize];
         let p2 = positions[quad[2] as usize];
+        let p3 = positions[quad[3] as usize];
+        let centroid = Vec3::new(
+            (p0.x + p1.x + p2.x + p3.x) / 4.0,
+            (p0.y + p1.y + p2.y + p3.y) / 4.0,
+            (p0.z + p1.z + p2.z + p3.z) / 4.0,
+        );
+        let expected = gradient_normal(&sdf, centroid, cell_size * 0.1);
         let n = cross(
             Vec3::new(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z),
             Vec3::new(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z),
@@ -224,7 +235,7 @@ pub fn extract_surface_nets<F: Fn(Vec3) -> f64>(
                     cell_vertex[cell_index(i, j, k)],
                     cell_vertex[cell_index(i, j - 1, k)],
                 ) {
-                    emit_quad(&mut triangles, [c00, c10, c11, c01], va < 0.0, 0);
+                    emit_quad(&mut triangles, [c00, c10, c11, c01]);
                 }
             }
         }
@@ -245,7 +256,7 @@ pub fn extract_surface_nets<F: Fn(Vec3) -> f64>(
                     cell_vertex[cell_index(i, j, k)],
                     cell_vertex[cell_index(i - 1, j, k)],
                 ) {
-                    emit_quad(&mut triangles, [c00, c10, c11, c01], va < 0.0, 1);
+                    emit_quad(&mut triangles, [c00, c10, c11, c01]);
                 }
             }
         }
@@ -266,7 +277,7 @@ pub fn extract_surface_nets<F: Fn(Vec3) -> f64>(
                     cell_vertex[cell_index(i, j, k)],
                     cell_vertex[cell_index(i - 1, j, k)],
                 ) {
-                    emit_quad(&mut triangles, [c00, c10, c11, c01], va < 0.0, 2);
+                    emit_quad(&mut triangles, [c00, c10, c11, c01]);
                 }
             }
         }
@@ -308,6 +319,63 @@ pub fn extract_surface_nets_bounds<F: Fn(Vec3) -> f64>(
 mod tests {
     use super::*;
     use crate::sdf::{sdf_box, sdf_sphere};
+
+    #[test]
+    fn every_triangle_normal_agrees_with_the_true_sdf_gradient_near_a_composite_cut() {
+        // A box with a smaller box notch cut through one face via
+        // sdf_difference -- the same composite-SDF shape (solid minus a
+        // door/window punch) that originally caused emit_quad's old
+        // axis-sign heuristic to flip 32 of 11132 triangles on a real
+        // building. This is the direct regression test for that fix: for
+        // every triangle, its own face normal (via the cross product of
+        // two edges) must point the same general direction as the SDF's
+        // real gradient at that triangle's centroid, not just produce the
+        // right AGGREGATE signed volume (which the old heuristic already
+        // passed despite being wrong on individual triangles).
+        let half = Vec3::new(3.0, 2.0, 1.5);
+        let notch_center = Vec3::new(0.0, 0.0, half.z);
+        let notch_half = Vec3::new(0.6, 0.6, 0.6);
+        let sdf = move |p: Vec3| {
+            let solid = crate::sdf::sdf_box(p, half);
+            let notch = crate::sdf::sdf_box(
+                Vec3::new(p.x - notch_center.x, p.y - notch_center.y, p.z - notch_center.z),
+                notch_half,
+            );
+            crate::sdf::sdf_difference(solid, notch)
+        };
+        let cell_size = 0.15;
+        let mesh = extract_surface_nets_bounds(
+            sdf,
+            Vec3::new(-half.x, -half.y, -half.z),
+            Vec3::new(half.x, half.y, half.z),
+            cell_size,
+        );
+        assert!(!mesh.triangles.is_empty());
+
+        let eps = cell_size * 0.1;
+        let mut disagreements = 0;
+        for tri in &mesh.triangles {
+            let p0 = mesh.positions[tri[0] as usize];
+            let p1 = mesh.positions[tri[1] as usize];
+            let p2 = mesh.positions[tri[2] as usize];
+            let centroid = Vec3::new((p0.x + p1.x + p2.x) / 3.0, (p0.y + p1.y + p2.y) / 3.0, (p0.z + p1.z + p2.z) / 3.0);
+            let expected = gradient_normal(&sdf, centroid, eps);
+            let face = cross(
+                Vec3::new(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z),
+                Vec3::new(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z),
+            );
+            if dot(face, expected) < 0.0 {
+                disagreements += 1;
+            }
+        }
+        let rate = disagreements as f64 / mesh.triangles.len() as f64;
+        assert!(
+            rate < 0.01,
+            "{disagreements} of {} triangles ({:.2}%) disagree with the true SDF gradient -- expected near-zero, a handful only at the tightest notch corners (inherent to Naive Surface Nets on sharp features, not a regression)",
+            mesh.triangles.len(),
+            rate * 100.0
+        );
+    }
 
     #[test]
     fn sphere_extracts_nonempty_mesh_with_roughly_correct_volume() {

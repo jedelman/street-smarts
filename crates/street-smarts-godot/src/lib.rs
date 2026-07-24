@@ -250,10 +250,19 @@ impl NeighborhoodNode3D {
             child.queue_free();
         }
 
+        // CULL_DISABLED, not the default CULL_BACK: ground_features.rs
+        // emits a single winding per polygon (not a duplicate reversed-
+        // winding copy -- that was the earlier approach, dropped because
+        // two coincident triangles at identical positions is exactly the
+        // setup for z-fighting between the correctly-lit one and its
+        // backwards-normal twin), so these need both faces visible from a
+        // single triangle instead.
         let mut open_space_material = StandardMaterial3D::new_gd();
         open_space_material.set_albedo(Color::from_rgb(0.35, 0.55, 0.32));
+        open_space_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
         let mut street_material = StandardMaterial3D::new_gd();
         street_material.set_albedo(Color::from_rgb(0.27, 0.27, 0.29));
+        street_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
         let rebuild_start = std::time::Instant::now();
         let mut meshed = 0i32;

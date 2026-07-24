@@ -3,11 +3,19 @@ extends Camera3D
 ## Two camera modes sharing one Camera3D node:
 ## - ORBIT (default): one-finger drag orbits around `target`, two-finger
 ##   pinch zooms. Mouse-drag + scroll wheel mirror it for desktop testing.
-## - WALK: fixed eye height above the ground plane (walk_height_m), a
-##   virtual joystick (touch_joystick.gd) drives movement, one-finger drag
-##   looks around instead of orbiting. No collision -- see this file's own
-##   repo history / commit message for why that's a real, named gap, not
-##   an oversight.
+## - WALK: fixed eye height above the ground plane (walk_height_m).
+##   Tap-to-move (Diablo-style): a short tap raycasts from the camera
+##   through the tapped screen point onto the y=0 ground plane and walks
+##   there in a straight line, auto-facing the direction of travel. A
+##   one-finger DRAG still looks around (unchanged) and cancels any
+##   in-progress walk, so look always wins over a stale destination
+##   instead of fighting it. Replaces an earlier virtual-joystick control
+##   scheme (touch_joystick.gd, since removed) that coupled movement and
+##   look in a way that felt wrong on a real device -- straight-line only,
+##   no obstacle-avoiding pathfinding and no collision, so you can still
+##   walk through a building if you tap a point on the other side of one;
+##   a real navmesh needs real collision geometry on the buildings first,
+##   which doesn't exist yet either.
 ##
 ## Both modes build their look direction from the SAME (pitch, yaw) ->
 ## direction formula (see _look_direction()), which orbit's own
@@ -38,21 +46,25 @@ enum Mode { ORBIT, WALK }
 @export var walk_look_sensitivity: float = 0.006
 @export var walk_min_pitch: float = deg_to_rad(-80.0)
 @export var walk_max_pitch: float = deg_to_rad(80.0)
-@export var joystick_path: NodePath
+## A touch that moves less than this many pixels between press and release
+## counts as a tap (walk there); more than this counts as a look-drag.
+@export var tap_max_drag_px: float = 16.0
+@export var walk_arrive_epsilon_m: float = 0.3
 
 var mode: Mode = Mode.ORBIT
 var walk_position: Vector3 = Vector3.ZERO
 var walk_yaw: float = 0.0
 var walk_pitch: float = 0.0
 
-var _touch_points: Dictionary = {}  # touch index -> Vector2 position
+var _walk_target: Vector3 = Vector3.ZERO
+var _has_walk_target: bool = false
+
+var _touch_points: Dictionary = {}     # touch index -> current Vector2 position
+var _touch_start_pos: Dictionary = {}  # touch index -> Vector2 position at press
 var _last_pinch_span: float = 0.0
 var _mouse_dragging: bool = false
-var _joystick: Control = null
 
 func _ready() -> void:
-	if joystick_path != NodePath(""):
-		_joystick = get_node_or_null(joystick_path)
 	_update_transform()
 
 func _process(delta: float) -> void:
@@ -64,6 +76,7 @@ func _process(delta: float) -> void:
 ## themselves right after, same as neighborhood_controller.gd does.
 func set_mode_orbit() -> void:
 	mode = Mode.ORBIT
+	_has_walk_target = false
 	_update_transform()
 
 ## Switches to walk mode, spawning at `start_position` (ground level --
@@ -74,6 +87,7 @@ func set_mode_walk(start_position: Vector3, facing_yaw: float) -> void:
 	walk_position = start_position
 	walk_yaw = facing_yaw
 	walk_pitch = 0.0
+	_has_walk_target = false
 	_apply_walk_transform()
 
 func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
@@ -86,18 +100,35 @@ func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
 	_update_transform()
 
 func _walk_step(delta: float) -> void:
-	if _joystick == null:
-		return
-	var input: Vector2 = _joystick.output
-	if input.length() > 0.0:
-		var forward := _look_direction(walk_yaw, 0.0)
-		var right := Vector3(forward.z, 0.0, -forward.x)
-		# Joystick y is screen-space (drag UP = negative y in Godot's
-		# 2D coordinate convention) -- negate so pushing the nub up means
-		# "walk forward", not backward.
-		var move := (forward * -input.y + right * input.x) * walk_speed_mps * delta
-		walk_position += move
+	if _has_walk_target:
+		var to_target := _walk_target - walk_position
+		to_target.y = 0.0
+		var dist := to_target.length()
+		if dist < walk_arrive_epsilon_m:
+			_has_walk_target = false
+		else:
+			var step: float = min(walk_speed_mps * delta, dist)
+			var dir := to_target / dist
+			walk_position += dir * step
+			walk_yaw = atan2(dir.x, dir.z)
 	_apply_walk_transform()
+
+## Raycasts from the camera through `screen_pos` onto the y=0 ground
+## plane, and if it hits one in front of the camera, walks there. No
+## collision/navmesh exists yet, so this targets the flat ground
+## specifically, not whatever building geometry might be under the tap
+## on screen -- consistent with walk mode's existing "no collision, can
+## walk through walls" limitation, not a new one.
+func _try_set_walk_target(screen_pos: Vector2) -> void:
+	var ray_origin := project_ray_origin(screen_pos)
+	var ray_dir := project_ray_normal(screen_pos)
+	if absf(ray_dir.y) < 0.0001:
+		return  # looking parallel to the ground: no sane intersection
+	var t := -ray_origin.y / ray_dir.y
+	if t <= 0.0:
+		return  # ground plane is behind the camera
+	_walk_target = ray_origin + ray_dir * t
+	_has_walk_target = true
 
 func _apply_walk_transform() -> void:
 	position = walk_position + Vector3(0.0, walk_height_m, 0.0)
@@ -114,8 +145,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touch_points[event.index] = event.position
+			_touch_start_pos[event.index] = event.position
 		else:
+			var was_sole_touch: bool = _touch_points.size() == 1 and _touch_points.has(event.index)
+			if was_sole_touch and mode == Mode.WALK:
+				var start: Vector2 = _touch_start_pos.get(event.index, event.position)
+				if start.distance_to(event.position) <= tap_max_drag_px:
+					_try_set_walk_target(event.position)
 			_touch_points.erase(event.index)
+			_touch_start_pos.erase(event.index)
 		if _touch_points.size() != 2:
 			_last_pinch_span = 0.0
 	elif event is InputEventScreenDrag:
@@ -146,6 +184,9 @@ func _orbit(relative: Vector2) -> void:
 	_update_transform()
 
 func _look(relative: Vector2) -> void:
+	# A manual look always wins over a stale tap-to-move destination,
+	# rather than the two fighting over walk_yaw every frame.
+	_has_walk_target = false
 	walk_yaw -= relative.x * walk_look_sensitivity
 	walk_pitch = clamp(walk_pitch - relative.y * walk_look_sensitivity, walk_min_pitch, walk_max_pitch)
 	_apply_walk_transform()

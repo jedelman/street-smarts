@@ -45,12 +45,16 @@ impl FlatPolygon {
         // satisfy Mesh's own invariant that normals.len() == positions.len().
         let normals = vec![Vec3::new(0.0, 1.0, 0.0); positions.len()];
 
-        let mut triangles = Vec::with_capacity(triangles_2d.len() * 2);
-        for tri in &triangles_2d {
-            let (a, b, c) = (tri[0] as u32, tri[1] as u32, tri[2] as u32);
-            triangles.push([a, b, c]);
-            triangles.push([a, c, b]); // opposite winding: visible from underneath too
-        }
+        // Single winding, not both: two coincident triangles at the exact
+        // same 3 positions (the earlier approach, to be visible from
+        // underneath too) is exactly the setup for z-fighting -- the
+        // renderer has no principled way to pick which of two identical
+        // triangles is "in front", and can flicker between the correctly-
+        // lit one and its backwards-normal twin. street-smarts-godot's
+        // rebuild_3d_mesh() disables backface culling on the open-space/
+        // street materials instead, so this single winding stays visible
+        // from either side without a duplicate.
+        let triangles = triangles_2d.iter().map(|t| [t[0] as u32, t[1] as u32, t[2] as u32]).collect();
         Mesh { positions, normals, triangles }
     }
 }
@@ -272,9 +276,8 @@ mod tests {
         };
         let flat = open_space_polygon(&open_space, &origin).expect("valid quad footprint");
         let mesh = flat.to_mesh();
-        // Double-sided: 2 triangles per side x 2 sides = 4.
-        assert_eq!(mesh.triangles.len(), 4);
-        let front_face_area: f64 = mesh.triangles[..2]
+        assert_eq!(mesh.triangles.len(), 2, "a quad footprint should ear-clip into exactly 2 triangles");
+        let front_face_area: f64 = mesh.triangles
             .iter()
             .map(|t| {
                 let (a, b, c) = (mesh.positions[t[0] as usize], mesh.positions[t[1] as usize], mesh.positions[t[2] as usize]);
@@ -301,7 +304,7 @@ mod tests {
         assert_eq!(ribbons.len(), 2, "3 centerline points should produce 2 segments");
         for ribbon in &ribbons {
             let mesh = ribbon.to_mesh();
-            assert_eq!(mesh.triangles.len(), 4, "each rectangular segment should be 2 tris x 2 sides");
+            assert_eq!(mesh.triangles.len(), 2, "each rectangular segment should ear-clip into 2 triangles");
         }
     }
 }
