@@ -89,6 +89,18 @@ generator each would extend, since that's the real dependency structure.
 | 99 | Main Building | Tag one building as "main," central position, higher roof. | P29 already knows distance-from-center; P96 already assigns story counts -- tagging the nearest-to-center building and boosting its height is a real, small extension. |
 | 126 | Something Roughly in the Middle | One object (fountain/tree/statue) near where paths cross a square. | P61 squares already exist; this is placing one marker point inside them near path intersections -- small, concrete addition. |
 
+**2026-07-24 update: P38 investigated, not closed -- real sample too small to justify a
+geometry change.** `p38_row_houses` only evaluates buildings within 20m of a real
+`Pedestrian`-classified street, and this pipeline produces very few of those (mostly
+`p61_small_public_squares`' own connector streets between squares) -- measured on the real
+fixture: just 1-5 qualifying buildings per seed, scoring 0.500-1.000 (mean aspect ratio
+1.45-2.21, already close to or above the 1.5x target). Biasing `p95_building_complex`/
+`p108_connected_buildings`'s own pad-shaping or merge-direction toward elongation near
+pedestrian streets specifically would be a real, nontrivial change to shared pad-shaping logic
+that also affects every OTHER building this pipeline produces, for a benefit measurable on a
+handful of buildings at most on this fixture. Not attempted given that risk/reward; the real
+number is already reasonable, not badly broken.
+
 **2026-07-24 update: P30 closed, with an honestly small measured effect.**
 `p61_small_public_squares`' raw-land placement (`place_new_squares_n`, the path the real
 corrected pipeline actually calls) used plain `stratified_seeds` -- unbiased grid+jitter, no

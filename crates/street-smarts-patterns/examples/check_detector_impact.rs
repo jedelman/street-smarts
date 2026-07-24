@@ -40,6 +40,7 @@ const NEW_DETECTORS: &[&str] = &[
     "p128_indoor_sunlight",
     "p114_hierarchy_of_open_space",
     "p120_paths_and_goals",
+    "p38_row_houses",
 ];
 
 fn main() {
