@@ -279,6 +279,22 @@ cross-generator change, not a parameter tweak, and it's also fair to question wh
 landscaped link between two small squares is the kind of "pedestrian street" Alexander's own text
 describes (a real urban street lined with houses) in the first place. Deferred rather than forced.
 
+**2026-07-24 update: P198 reconsidered, deliberately not attempted -- this table's original idea
+conflicts with this codebase's own established discipline.** The idea above ("P127/P131's
+room-adjacency graph already knows which cells share a wall -- placing a closet cell there is a
+real, scoped extension") undersold a real problem: Alexander's own text for this pattern begins
+"Mark all the ROOMS WHERE YOU WANT closets" -- it presupposes a room-use decision (which rooms
+need storage) this pipeline has consistently and deliberately never made anywhere else (P127/P129's
+own module docs: "No use, ever" -- a cell's only properties are footprint and depth, never a
+program). Carving a closet at every geometrically-possible interior room-room boundary, with no
+way to decide which walls Alexander's text actually means, would be placing closets everywhere
+that's geometrically convenient rather than "where you want them" -- an arbitrary rule, not
+Alexander's selective one, and a real fabrication of a use-based decision this codebase has
+refused to make consistently. `p198_closets_between_rooms`'s own opinion already documents this
+exact honest gap (a permanent, deliberate `NoView`, not a stale placeholder) -- this update just
+confirms, after real consideration, that closing it would mean abandoning that discipline, not
+extending it.
+
 ### Extend `p95_building_complex.rs` / open-space shaping (enclosure quality)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|
@@ -340,6 +356,25 @@ proxy this opinion checks without any deliberate "route through a goal" step, on
 The existing `path_network` -> `p120_paths_and_goals` `CascadeContract` floor updated (0.4 -> 0.5)
 to reflect both real measured numbers. No generator change made -- there's no real gap left worth
 the risk of touching `path_network.rs`'s own real routing logic for.
+
+**2026-07-24 update: P31 upgraded from permanent NoView to a real (if low) score -- no new
+generator, just a stale module-doc claim caught and fixed.** `p31_promenade`'s own module doc used
+to say "no generator anywhere populates [activity_nodes]" -- no longer true, since this session's
+earlier P30 fix (`p61_small_public_squares`' own "v0.7" work, from a prior session) gave every
+placed square a real `ActivityNode`. There's still no "promenade" path type to check against
+(not invented here), but a real, honest proxy now exists: whether real streets actually LINK the
+real activity nodes into one connected spine. `p31_promenade` "v0.2" adds a real graph-connectivity
+check (union-find over ActivityNode pairs linked by a real street with an endpoint near each) --
+`1.0` for one fully connected spine, `0.0` for none. Measured on the real fixture: `0.000` across
+all three seeds (4 real ActivityNodes per seed, largest connected spine covers only 1). This is a
+real, honest, structurally-explained number, not a bug: `p61_small_public_squares` only links
+squares placed within the SAME per-block call (its own MST backbone); this fixture's own
+per-block square-budget allocation means the 4 real activity nodes usually land on different
+blocks with no real street connecting them directly. A real fix would need P61's own connector
+logic extended site-wide across blocks -- not attempted here, but the opinion itself is now
+honest and real rather than a stale, factually-inaccurate permanent NoView. Low risk, opinions-only
+change (4 new tests, no geometry/render impact) -- full verification: `cargo test --workspace` (0
+failed), `cargo clippy --workspace --all-targets` (0 errors).
 
 ### New minor addition
 | # | Pattern | Real prescription | Why it's plausible |

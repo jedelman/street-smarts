@@ -45,6 +45,7 @@ const NEW_DETECTORS: &[&str] = &[
     "p105_south_facing_outdoors",
     "p161_sunny_place",
     "p163_outdoor_room",
+    "p31_promenade",
 ];
 
 fn main() {
