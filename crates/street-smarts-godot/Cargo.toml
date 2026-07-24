@@ -1,0 +1,19 @@
+[package]
+name = "street-smarts-godot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+godot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+street-smarts-core = { workspace = true }
+street-smarts-opinions = { workspace = true }
+street-smarts-conflict = { workspace = true }
+street-smarts-patterns = { workspace = true }

@@ -1,0 +1,71 @@
+[gd_scene load_steps=5 format=3 uid="uid://c8n1s7m9k2x4"]
+
+[ext_resource type="Script" path="res://scripts/neighborhood_controller.gd" id="1_controller"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_top_color = Color(0.384, 0.525, 0.725, 1)
+sky_horizon_color = Color(0.686, 0.741, 0.812, 1)
+ground_bottom_color = Color(0.2, 0.2, 0.2, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 50, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 40, 60)
+fov = 60.0
+
+[node name="NeighborhoodNode3D" type="NeighborhoodNode3D" parent="."]
+
+[node name="Controller" type="Node" parent="."]
+script = ExtResource("1_controller")
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="UI"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 450.0
+offset_bottom = 300.0
+
+[node name="VBox" type="VBoxContainer" parent="UI/Panel"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="UI/Panel/VBox"]
+layout_mode = 2
+text = "Street Smarts: Provocation Engine"
+horizontal_alignment = 1
+
+[node name="GeometricChorusLabel" type="Label" parent="UI/Panel/VBox"]
+layout_mode = 2
+text = "Geometric Chorus: Evaluating..."
+
+[node name="ActivistChorusLabel" type="Label" parent="UI/Panel/VBox"]
+layout_mode = 2
+text = "Activist Chorus: Evaluating..."
+
+[node name="HumanPromptLabel" type="Label" parent="UI/Panel/VBox"]
+layout_mode = 2
+text = "Human Disagreement Prompts:"
+autowrap_mode = 2
