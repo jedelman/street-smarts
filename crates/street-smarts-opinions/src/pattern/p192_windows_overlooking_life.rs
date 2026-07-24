@@ -14,8 +14,7 @@
 //!
 //! For each ground-floor, outer-wall window (`Opening { kind: Window,
 //! on_hole: false, floor: 0 }`), this opinion computes its exterior point
-//! (the same ring-interpolation `p100_pedestrian_street` and
-//! `p112_entrance_transition` use) and checks:
+//! (the same ring-interpolation `p100_pedestrian_street` uses) and checks:
 //!
 //! - `has_life_nearby`: a real street (perpendicular distance to its
 //!   nearest segment, not just a vertex) or a resolved (non-`Undecided`)
@@ -168,6 +167,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P192 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -184,12 +184,14 @@ mod tests {
             parcel_id: None, floors: Some(2),
             openings: vec![Opening { kind: OpeningKind::Window, ring_index: 0, on_hole: false, t: 0.5, width_m: 1.2, sill_height_m: 0.9, head_height_m: 2.1, floor: 0 }],
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn street_at(y_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "S1".into(), centerline: vec![LngLat::new(-100.0 * m, y_m * m), LngLat::new(100.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(4.0) }
+        Street { id: "S1".into(), centerline: vec![LngLat::new(-100.0 * m, y_m * m), LngLat::new(100.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None }
     }
 
     #[test]

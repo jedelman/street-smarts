@@ -94,16 +94,19 @@ use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P133Params {
-    /// Stair-core strip width. A plausible minimum-stair placeholder
-    /// (same category as P221's door_width_m), not a real code-minimum
-    /// lookup. The strip runs the full length of the common cell's own
-    /// longest-edge axis -- see this module's own doc for why.
+    /// Stair-core strip width. Range tightened to Alexander's own literal
+    /// P195 Staircase Volume figure -- "2 feet wide (for a very steep
+    /// stair) or 5 feet wide for a generous shallow stair" (0.61-1.52m) --
+    /// so this generator's own output always clears p195_staircase_volume's
+    /// real check by construction, the same precedent p49_looped_local_roads
+    /// and p67_common_land already set for path_width_m/common_land_fraction.
+    /// Not a real code-minimum lookup either way.
     pub stair_width_m: f64,
 }
 
 impl Parameters for P133Params {
     fn schema() -> Vec<ParamSpec> {
-        vec![ParamSpec::float("stair_width_m", "Stair-core strip width.", 0.9, 2.0, 1.2).with_unit("m")]
+        vec![ParamSpec::float("stair_width_m", "Stair-core strip width.", 0.61, 1.52, 1.2).with_unit("m")]
     }
     fn defaults() -> Self {
         Self { stair_width_m: 1.2 }
@@ -310,11 +313,14 @@ impl PatternOperator for P133StaircaseAsAStage {
             new_open_space: vec![],
             new_buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -342,6 +348,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P133 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -380,7 +387,9 @@ mod tests {
             floors,
             openings: vec![],
             interior_cells: vec![cell],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

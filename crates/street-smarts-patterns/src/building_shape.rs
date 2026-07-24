@@ -201,7 +201,9 @@ impl PatternOperator for BuildingShape {
                 floors: None,
                 openings: vec![],
                 interior_cells: vec![],
-            });
+                wall_thickness_m: None,
+                roof: None,
+            canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
 
             // Update the parcel's use_category to indicate a building exists.
             // We replace the parcel (same id, same polygon) with the new tag.
@@ -254,11 +256,14 @@ impl PatternOperator for BuildingShape {
             new_open_space: vec![],
             new_buildings: buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }

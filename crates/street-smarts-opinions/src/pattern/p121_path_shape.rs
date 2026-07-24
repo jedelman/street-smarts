@@ -162,6 +162,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P121 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -180,7 +181,7 @@ mod tests {
         // Matches p61_small_public_squares's own connector links, which
         // are still bare 2-point straight lines -- see this module's own
         // doc comment.
-        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0) };
+        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None };
         let out = P121PathShape.evaluate(&nbhd(vec![s]));
         match out {
             OpinionOutput::Value { sub_scores, contributing_features, .. } => {
@@ -198,7 +199,7 @@ mod tests {
         // path_network.rs's own BULGE_MULTIPLIER constant.
         let row_width = 5.5;
         let bulge = row_width * 1.5;
-        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, bulge), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(row_width) };
+        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, bulge), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(row_width), surface: None };
         let out = P121PathShape.evaluate(&nbhd(vec![s]));
         match out {
             OpinionOutput::Value { sub_scores, contributing_features, .. } => {
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn a_dead_straight_three_point_street_has_no_bulge() {
-        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, 0.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0) };
+        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, 0.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None };
         let out = P121PathShape.evaluate(&nbhd(vec![s]));
         match out {
             OpinionOutput::Value { sub_scores, .. } => {
@@ -225,7 +226,7 @@ mod tests {
     fn a_real_wide_bulge_scores_full_credit() {
         // Midpoint offset 6m perpendicular on a 4m-wide path -- a real,
         // noticeable bulge exceeding the path's own width.
-        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, 6.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0) };
+        let s = Street { id: "S1".into(), centerline: vec![pt(0.0, 0.0), pt(50.0, 6.0), pt(100.0, 0.0)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None };
         let out = P121PathShape.evaluate(&nbhd(vec![s]));
         match out {
             OpinionOutput::Value { sub_scores, contributing_features, .. } => {

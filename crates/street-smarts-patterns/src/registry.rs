@@ -2,6 +2,7 @@
 
 use crate::block_grouping::BlockGrouping;
 use crate::building_shape::BuildingShape;
+use crate::p21_four_story_limit::P21FourStoryLimit;
 use crate::p29_density_rings::P29DensityRings;
 use crate::p37_house_cluster::P37HouseCluster;
 use crate::p95_building_complex::P95BuildingComplex;
@@ -12,7 +13,14 @@ use crate::p127_intimacy_gradient::P127IntimacyGradient;
 use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
 use crate::p130_entrance_room::P130EntranceRoom;
 use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
+use crate::p124_activity_pockets::P124ActivityPockets;
+use crate::p116_cascade_of_roofs::P116CascadeOfRoofs;
+use crate::p117_sheltering_roof::P117ShelteringRoof;
+use crate::p118_roof_garden::P118RoofGarden;
+use crate::p119_arcades::P119Arcades;
 use crate::p133_staircase_as_a_stage::P133StaircaseAsAStage;
+use crate::p160_building_edge::P160BuildingEdge;
+use crate::p197_thick_walls::P197ThickWalls;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
 use crate::path_network::PathNetwork;
@@ -54,7 +62,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// The full ordering rationale used to be duplicated here AND in
 /// `pipeline.rs`'s module doc -- two files' worth of prose describing the
-/// same 14-step sequence, exactly the "read instead of look up" cost
+/// same 21-step sequence, exactly the "read instead of look up" cost
 /// PATTERN_LANGUAGE_SIMULATION.md §3.4 named. It now lives in ONE place,
 /// queryable instead of read-and-infer: `language_graph::LANGUAGE`, whose
 /// `requires`/`why` fields are checked by `validate_order` against the
@@ -72,7 +80,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// for the real, tested sequence, and the web UI's "Run full pipeline"
 /// button for the same orchestration client-side.
 ///
-/// `crate::pipeline::run_corrected_pipeline` runs all fourteen steps end to end
+/// `crate::pipeline::run_corrected_pipeline` runs all twenty-one steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -86,6 +94,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// P37 already provides them up front.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
+        Box::new(P29DensityRings),
         Box::new(P37HouseCluster),
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
@@ -93,15 +102,22 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
         Box::new(P61SmallPublicSquares),
-        Box::new(P29DensityRings),
-        Box::new(P96NumberOfStories),
+        Box::new(P21FourStoryLimit),
         Box::new(P108ConnectedBuildings),
+        Box::new(P96NumberOfStories),
+        Box::new(P117ShelteringRoof),
+        Box::new(P118RoofGarden),
+        Box::new(P124ActivityPockets),
+        Box::new(P119Arcades),
         Box::new(P127IntimacyGradient),
-        Box::new(P130EntranceRoom),
+        Box::new(P197ThickWalls),
+        Box::new(P116CascadeOfRoofs),
         Box::new(P129CommonAreasAtTheHeart),
+        Box::new(P130EntranceRoom),
         Box::new(P131TheFlowThroughRooms),
-        Box::new(P221NaturalDoorsAndWindows),
         Box::new(P133StaircaseAsAStage),
+        Box::new(P221NaturalDoorsAndWindows),
+        Box::new(P160BuildingEdge),
     ]
 }
 

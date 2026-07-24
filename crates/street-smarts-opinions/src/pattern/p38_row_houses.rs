@@ -163,12 +163,13 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P38 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
     fn ped_street() -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: "PED1".into(), centerline: vec![LngLat::new(0.0, -5.0 * m), LngLat::new(200.0 * m, -5.0 * m)], classification: Some("pedestrian".into()), row_width_m: Some(4.0) }
+        Street { id: "PED1".into(), centerline: vec![LngLat::new(0.0, -5.0 * m), LngLat::new(200.0 * m, -5.0 * m)], classification: Some("pedestrian".into()), row_width_m: Some(4.0), surface: None }
     }
 
     fn rect_building(id: &str, x_m: f64, w_m: f64, h_m: f64) -> Building {
@@ -180,7 +181,9 @@ mod tests {
                 LngLat::new((x_m + w_m) * m, h_m * m), LngLat::new(x_m * m, h_m * m), LngLat::new(x_m * m, 0.0),
             ]),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

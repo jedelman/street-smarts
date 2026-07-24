@@ -1,0 +1,9 @@
+{
+  "source": "Poly Haven (polyhaven.com), HDRI \"Evening Road 01 (Pure Sky)\" -- original by Sergej Majboroda, sky edit by Jarod Guest",
+  "asset_url": "https://polyhaven.com/a/evening_road_01_puresky",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/evening_road_01_puresky_1k.hdr",
+  "license": "CC0 1.0 Universal (public domain) -- Poly Haven's site-wide asset license, no attribution required; credited here anyway as this project's own convention for any real external data (see data/military-circle-context-buildings.geojson's own _provenance).",
+  "resolution": "1k (2048x1024) -- the smallest Poly Haven offers, chosen deliberately: only used as real-time IBL lighting + a background skybox for a small procedural massing model, not a hero background image, so higher resolution would be wasted bytes.",
+  "fetched_at": "2026-07-22",
+  "purpose": "Real low-sun, early-evening sky lighting (Poly Haven's own description: \"evening sky with low golden sun, cool blue tones, scattered clouds and medium-contrast lighting\") for the public/index.html and public/walk.html <model-viewer>/three.js scenes -- replaces kloofendal_43d_clear_puresky_1k.hdr (a high-contrast MIDDAY sky, per that file's own removed provenance) specifically for the longer, more raking shadows a low sun angle casts across real building massing, which reads as more real contrast on the model itself even though Poly Haven's own per-asset tag calls this HDRI's overall luminance range \"medium contrast\" (a property of the sky dome's own histogram, not of the shadows it casts on geometry sitting under it)."
+}

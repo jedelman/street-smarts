@@ -225,6 +225,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P127 opinion fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -268,7 +269,9 @@ mod tests {
                 band(10.0, 20.0, 0.5, "c1"),
                 band(20.0, 30.0, 1.0, "c2"),
             ],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn door(ring_index: usize, t: f64) -> Opening {

@@ -173,6 +173,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P50 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -182,7 +183,7 @@ mod tests {
             id: id.into(),
             centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)],
             classification: Some("local".into()),
-            row_width_m: Some(5.5),
+            row_width_m: Some(5.5), surface: None,
         }
     }
 
@@ -237,7 +238,7 @@ mod tests {
         let shallow = Street {
             id: "STEM".into(),
             centerline: vec![LngLat::new(0.0, 0.0), LngLat::new(50.0 * m, 28.9 * m)], // ~30 deg from x-axis
-            classification: Some("local".into()), row_width_m: Some(5.5),
+            classification: Some("local".into()), row_width_m: Some(5.5), surface: None,
         };
         let n = nbhd(vec![
             street("THROUGH_A", (-100.0, 0.0), (0.0, 0.0)),

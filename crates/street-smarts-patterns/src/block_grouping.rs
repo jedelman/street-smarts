@@ -276,11 +276,14 @@ impl PatternOperator for BlockGrouping {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }

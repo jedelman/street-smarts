@@ -377,6 +377,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "history test fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -534,6 +535,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "block_membership fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 

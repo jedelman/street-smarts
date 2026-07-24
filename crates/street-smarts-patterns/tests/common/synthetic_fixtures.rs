@@ -114,7 +114,8 @@ pub fn generate(axes: &FixtureAxes, seed: u64) -> Neighborhood {
                 axes.aspect_ratio, axes.concavity, axes.area_m2, n
             ),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 /// Minimal physical-plausibility check -- closed, positive-area, enough

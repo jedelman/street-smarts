@@ -79,6 +79,12 @@ pub struct World {
     pub open_space: BTreeMap<String, OpenSpace>,
     pub boundaries: BTreeMap<String, Boundary>,
     pub activity_nodes: BTreeMap<String, ActivityNode>,
+    /// Not per-entity like every other field on `World` -- a `PatternField`
+    /// describes the whole site, not one parcel/building, so there's no id
+    /// to key a map by. Copied through verbatim in both directions, same
+    /// treatment as `metadata`/`bbox_wgs84`, not derived-and-reconstructed
+    /// the way `density_tiers` below is.
+    pub pattern_fields: Vec<crate::nir::PatternField>,
     pub metadata: NeighborhoodMeta,
     pub density_tiers: BTreeMap<String, DensityTier>,
     /// Derived from each parcel's `use_category` -- same read-only,
@@ -138,6 +144,7 @@ impl World {
             open_space: n.open_space.iter().map(|o| (o.id.clone(), o.clone())).collect(),
             boundaries: n.boundaries.iter().map(|b| (b.id.clone(), b.clone())).collect(),
             activity_nodes: n.activity_nodes.iter().map(|a| (a.id.clone(), a.clone())).collect(),
+            pattern_fields: n.pattern_fields.clone(),
             metadata: n.metadata.clone(),
             density_tiers,
             pad_roles,
@@ -156,6 +163,7 @@ impl World {
             open_space: self.open_space.values().cloned().collect(),
             boundaries: self.boundaries.values().cloned().collect(),
             activity_nodes: self.activity_nodes.values().cloned().collect(),
+            pattern_fields: self.pattern_fields.clone(),
             metadata: self.metadata.clone(),
         }
     }
@@ -214,6 +222,7 @@ mod tests {
             open_space: vec![],
             boundaries: vec![],
             activity_nodes: vec![],
+            pattern_fields: vec![],
             metadata: NeighborhoodMeta {
                 source: "synthetic".into(),
                 fetched_at: "test".into(),
@@ -260,12 +269,14 @@ mod tests {
             floors: None,
             openings: Vec::<Opening>::new(),
             interior_cells: Vec::new(),
-        });
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
         n.streets.push(Street {
             id: "S1".into(),
             centerline: vec![],
             classification: Some("pedestrian".into()),
-            row_width_m: None,
+            row_width_m: None, surface: None,
         });
 
         let world = World::from_neighborhood(&n);

@@ -139,6 +139,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P120 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -148,12 +149,14 @@ mod tests {
             id: id.into(),
             polygon: Polygon::from_ring(vec![LngLat::new(x_m * m, y_m * m), LngLat::new((x_m + 5.0) * m, y_m * m), LngLat::new((x_m + 5.0) * m, (y_m + 5.0) * m), LngLat::new(x_m * m, (y_m + 5.0) * m), LngLat::new(x_m * m, y_m * m)]),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn street(id: &str, a: (f64, f64), b: (f64, f64)) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: id.into(), centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)], classification: Some("local".into()), row_width_m: Some(4.0) }
+        Street { id: id.into(), centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)], classification: Some("local".into()), row_width_m: Some(4.0), surface: None }
     }
 
     #[test]

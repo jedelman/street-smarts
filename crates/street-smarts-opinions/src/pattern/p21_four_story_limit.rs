@@ -33,9 +33,11 @@
 //!
 //! Story count is derived from `Building.height_m` using a fixed
 //! `floor_to_floor_m` assumption (3.5m) -- the NIR schema has no explicit
-//! floor/story field. Same convention `p96_number_of_stories` (the
-//! `street-smarts-patterns` operator that actually assigns real per-pad
-//! story counts) uses when converting a story count back into height.
+//! floor/story field. Same convention `p107_wings_of_light` (the
+//! `street-smarts-patterns` operator that actually converts a story count
+//! into real height, via its own `floor_to_floor_m` param) uses in the
+//! other direction -- `p96_number_of_stories` only ASSIGNS the per-pad
+//! story count, it never touches height itself (see its own module doc).
 
 use std::collections::BTreeMap;
 use street_smarts_core::geometry::LngLat;
@@ -214,6 +216,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P21 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -233,7 +236,9 @@ mod tests {
             floors: None,
             openings: vec![],
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

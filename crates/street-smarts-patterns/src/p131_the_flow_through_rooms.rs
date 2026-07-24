@@ -237,11 +237,14 @@ impl PatternOperator for P131TheFlowThroughRooms {
             new_open_space: vec![],
             new_buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -369,6 +372,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P131 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -405,7 +409,9 @@ mod tests {
             floors: Some(1),
             openings: vec![],
             interior_cells: cells,
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]
@@ -470,7 +476,9 @@ mod tests {
             floors: Some(1),
             openings: vec![],
             interior_cells: vec![mk("bay_0"), mk("bay_1"), mk("bay_2"), mk("bay_3")],
-        };
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![b]);
         let sub = P131TheFlowThroughRooms.apply(&n, "*", &P131Params::defaults(), 1).expect("should run");
         let cells = &sub.new_buildings[0].interior_cells;

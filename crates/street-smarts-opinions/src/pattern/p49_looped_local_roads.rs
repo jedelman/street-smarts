@@ -207,6 +207,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P49 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -216,7 +217,7 @@ mod tests {
             id: id.into(),
             centerline: vec![LngLat::new(a.0 * m, a.1 * m), LngLat::new(b.0 * m, b.1 * m)],
             classification: Some("local".into()),
-            row_width_m: Some(width),
+            row_width_m: Some(width), surface: None,
         }
     }
 

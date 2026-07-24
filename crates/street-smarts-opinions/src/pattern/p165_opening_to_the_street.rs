@@ -162,6 +162,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P165 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -180,7 +181,9 @@ mod tests {
             height_m: Some(9.0), typology: Some("p107_solid_v01".into()),
             year_built: None, parcel_id: None, floors: Some(3), openings,
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn opening(kind: OpeningKind, ring_index: usize, width_m: f64, floor: u32) -> Opening {

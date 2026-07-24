@@ -66,6 +66,7 @@ fn prototype_p52_and_p61_before_p95_on_raw_parcel() {
             centerline: vec![local_to_lnglat(path_nodes[*i], &origin), local_to_lnglat(path_nodes[*j], &origin)],
             classification: Some("local".into()),
             row_width_m: Some(4.0),
+            surface: None,
         });
     }
 

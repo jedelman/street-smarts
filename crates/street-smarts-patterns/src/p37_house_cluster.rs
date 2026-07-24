@@ -85,8 +85,29 @@
 //! mode). Falls back to `Stratified` automatically when the parcel has no
 //! CIVIC-tagged neighbors and no streets to pull toward -- a raw
 //! greenfield site with literally nothing to converge on.
+//!
+//! # v0.4: sampling P29's real density field as each block is individuated
+//!
+//! `p29_density_rings` used to run AFTER this operator, tagging each
+//! `BLOCK_n` it had just produced. It now runs BEFORE (Alexander's own
+//! canonical order, 29 < 37 -- see that operator's own module doc and
+//! `PATTERN_ORDERING_AUDIT.md`), attaching a real `DensityField` to
+//! `Neighborhood.pattern_fields` instead of touching any parcel directly.
+//! This operator is where that field actually gets consumed: every new
+//! block, right as it's created, is sampled via `p29_density_rings::
+//! sample_density_field` at its own real centroid to set `density_tier`/
+//! `target_stories` directly -- the individuation moment itself, not a
+//! separate pass over already-individuated blocks afterward. If no
+//! `PatternField::Density` is present (P29 didn't run, or ran against a
+//! different parcel_id), both stay `None`, exactly as before this change.
+//! `run_native` below does the identical sampling for its own `DensityTier`
+//! component, from the same `(ring_idx, n_rings)` pair the string path
+//! uses -- the dual-write responsibility `p29_density_rings::run_native`
+//! used to have moved here along with the sampling itself, since this is
+//! now the operator that actually individuates a block.
 
 use crate::field::Field;
+use crate::p29_density_rings::{sample_density_field, sample_density_field_ring};
 use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::Parameters;
 use street_smarts_patterns_derive::Parameters;
@@ -97,9 +118,9 @@ use crate::planar::{
 use crate::prng::Prng;
 use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
-use street_smarts_core::components::PadRole;
+use street_smarts_core::components::{DensityTier, PadRole};
 use street_smarts_core::geometry::{LngLat, Polygon};
-use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel};
+use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel, PatternField};
 use street_smarts_core::opinion::SourceCitation;
 use street_smarts_core::world::World;
 
@@ -196,6 +217,15 @@ impl PatternOperator for P37HouseCluster {
             average_lat(&source.polygon.outer),
         );
 
+        // P29's own real density field, if it ran against this same
+        // parcel_id -- sampled below at each new block's own centroid as
+        // it's created. `None` reproduces this operator's own pre-field
+        // behavior exactly (density_tier/target_stories left unset).
+        let density_field = nbhd.pattern_fields.iter().find_map(|f| match f {
+            PatternField::Density(d) => Some(d),
+            _ => None,
+        });
+
         let mut all_new_parcels: Vec<Parcel> = Vec::new();
         let mut all_new_open: Vec<OpenSpace> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
@@ -203,6 +233,7 @@ impl PatternOperator for P37HouseCluster {
         let mut global_block_idx = 0;
         let mut n_common_land_emitted = 0;
         let mut n_common_land_skipped_small = 0;
+        let mut n_density_sampled = 0;
 
         for (part_idx, part) in parts.iter().enumerate() {
             let local_poly = ring_to_local(&part.outer, &origin);
@@ -294,6 +325,26 @@ impl PatternOperator for P37HouseCluster {
                     let block_area_m2 = area(&inset);
                     global_block_idx += 1;
                     let block_id = format!("{}_BLOCK_{}", parcel_id, global_block_idx);
+
+                    // Sample P29's real density field (if attached) at this
+                    // block's own real centroid -- the individuation moment
+                    // itself, not a later pass. Same vertex-averaging
+                    // convention `p29_density_rings` itself uses for a
+                    // polygon's own "origin". `None` when no field is
+                    // present, exactly this operator's pre-field behavior.
+                    let (density_tier, target_stories) = match density_field {
+                        Some(field) => {
+                            let centroid = LngLat::new(
+                                block_ring.iter().map(|p| p.lng).sum::<f64>() / block_ring.len() as f64,
+                                block_ring.iter().map(|p| p.lat).sum::<f64>() / block_ring.len() as f64,
+                            );
+                            let (label, stories) = sample_density_field(field, centroid);
+                            n_density_sampled += 1;
+                            (Some(label), Some(stories))
+                        }
+                        None => (None, None),
+                    };
+
                     all_new_parcels.push(Parcel {
                         id: block_id.clone(),
                         polygon: Polygon::from_ring(block_ring),
@@ -308,9 +359,8 @@ impl PatternOperator for P37HouseCluster {
                         ownership: None,
                         is_eda: true,
                         spec: Some(format!("BLOCK_{}", global_block_idx)),
-                        // Set later by P29 Density Rings, if it runs.
-                        density_tier: None,
-                        target_stories: None,
+                        density_tier,
+                        target_stories,
                     });
                     n_emitted += 1;
 
@@ -357,6 +407,11 @@ impl PatternOperator for P37HouseCluster {
             "common land: {} block(s) got a {:.0}%-of-area common-land patch, {} skipped (below {:.0} m²).",
             n_common_land_emitted, params.common_land_fraction * 100.0, n_common_land_skipped_small, params.min_common_land_area_m2
         ));
+        steps.push(if density_field.is_some() {
+            format!("density: {n_density_sampled} block(s) sampled a real P29 density field for density_tier/target_stories.")
+        } else {
+            "density: no P29 density field present -- density_tier/target_stories left unset on every block.".to_string()
+        });
 
         let trace = SubdivisionTrace {
             operator_name: "p37_house_cluster".into(),
@@ -383,6 +438,10 @@ impl PatternOperator for P37HouseCluster {
                  but the pressure-field math (sigma, weights, threshold) hasn't been tuned against \
                  real outcomes the way Stratified's parameters have -- treat its output as a \
                  hypothesis to compare against Stratified, not a default.".into(),
+                "density_tier/target_stories are sampled from P29's own real density field at each \
+                 block's centroid, if that field is present -- p29_density_rings must have already \
+                 run against this SAME parcel_id for that to be true. No field present means both \
+                 stay unset, same as a pipeline that never ran P29 at all.".into(),
             ],
             seed,
             params: params.as_map(),
@@ -393,11 +452,14 @@ impl PatternOperator for P37HouseCluster {
             new_open_space: all_new_open,
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: vec![parcel_id.to_string()],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }
@@ -407,17 +469,49 @@ impl P37HouseCluster {
     /// -- see `system.rs`'s own module doc for why). Every block this
     /// operator emits gets the SAME `PadRole::HouseClusterBlock` -- there's
     /// no branching to duplicate the way P29's ring assignment has, so
-    /// dual-write here is just: run `apply()` unchanged, then tag every
-    /// NEW parcel id `apply()` reported in the resulting `World`'s
-    /// `pad_roles` map with that one constant.
+    /// that half of dual-write is just: run `apply()` unchanged, then tag
+    /// every NEW parcel id `apply()` reported with that one constant.
+    ///
+    /// Also writes a `DensityTier` component per new block when a real
+    /// `PatternField::Density` is present -- the dual-write responsibility
+    /// `p29_density_rings::run_native` used to have, moved here since this
+    /// is now the operator that actually samples the field (see this
+    /// file's own "v0.4" module doc). Computed via `sample_density_field_
+    /// ring` from each new block's own centroid, independently of the
+    /// string `density_tier` `apply()` already wrote onto the same
+    /// parcel -- not parsed back out of it -- same "two independent
+    /// projections of one computation" discipline P29's own pre-field
+    /// version established.
     pub fn run_native(&self, world: &World, params: &P37Params, parcel_id: &str, seed: u64) -> Result<World, String> {
         let nbhd = world.to_neighborhood();
         let sub = self.apply(&nbhd, parcel_id, params, seed)?;
+        let density_field = nbhd.pattern_fields.iter().find_map(|f| match f {
+            PatternField::Density(d) => Some(d),
+            _ => None,
+        });
         let new_ids: Vec<String> = sub.new_parcels.iter().map(|p| p.id.clone()).collect();
+        let new_tiers: Vec<(String, DensityTier)> = density_field
+            .map(|field| {
+                sub.new_parcels
+                    .iter()
+                    .map(|p| {
+                        let centroid = LngLat::new(
+                            p.polygon.outer.iter().map(|q| q.lng).sum::<f64>() / p.polygon.outer.len() as f64,
+                            p.polygon.outer.iter().map(|q| q.lat).sum::<f64>() / p.polygon.outer.len() as f64,
+                        );
+                        let (ring_idx, n_rings, _) = sample_density_field_ring(field, centroid);
+                        (p.id.clone(), DensityTier::from_ring(ring_idx, n_rings))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let new_nbhd = apply_subdivision(&nbhd, &sub);
         let mut new_world = World::from_neighborhood(&new_nbhd);
         for id in new_ids {
             new_world.pad_roles.insert(id, PadRole::HouseClusterBlock);
+        }
+        for (id, tier) in new_tiers {
+            new_world.density_tiers.insert(id, tier);
         }
         Ok(new_world)
     }

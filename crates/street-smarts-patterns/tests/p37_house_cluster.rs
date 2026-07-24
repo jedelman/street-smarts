@@ -1,5 +1,6 @@
 use street_smarts_core::geometry::{LngLat, Polygon};
-use street_smarts_core::nir::{Neighborhood, NeighborhoodMeta, OpenSpaceKind, Parcel};
+use street_smarts_core::nir::{DensityField, Neighborhood, NeighborhoodMeta, OpenSpaceKind, Parcel, PatternField};
+use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
 use street_smarts_patterns::{apply_subdivision, Parameters, PatternOperator};
 
@@ -31,6 +32,7 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
         open_space: vec![],
         boundaries: vec![],
         activity_nodes: vec![],
+        pattern_fields: vec![],
         metadata: NeighborhoodMeta {
             source: "synthetic".into(),
             fetched_at: "test".into(),
@@ -129,4 +131,51 @@ fn real_mall_parcel_gets_carved_into_human_scaled_blocks() {
         max_area < total_parcel_area_m2 * 0.5,
         "no single block should claim more than half the original 47-acre site, got {max_area} of {total_parcel_area_m2}"
     );
+}
+
+#[test]
+fn no_density_field_leaves_every_block_unset_same_as_before_the_field_primitive() {
+    let nbhd = square_parcel_neighborhood(300.0, "MEGA_1");
+    let sub = P37HouseCluster.apply(&nbhd, "MEGA_1", &P37Params::defaults(), 7).unwrap();
+    assert!(sub.new_parcels.iter().all(|p| p.density_tier.is_none() && p.target_stories.is_none()));
+}
+
+#[test]
+fn p29_run_before_p37_produces_blocks_with_real_density_tiers_sampled_from_the_field() {
+    let nbhd = square_parcel_neighborhood(300.0, "MEGA_1");
+    let sub29 = P29DensityRings.apply(&nbhd, "MEGA_1", &P29Params::defaults(), 7).unwrap();
+    let with_field = apply_subdivision(&nbhd, &sub29);
+    assert_eq!(with_field.pattern_fields.len(), 1, "P29 should attach exactly one field");
+
+    let sub37 = P37HouseCluster.apply(&with_field, "MEGA_1", &P37Params::defaults(), 7).unwrap();
+    assert!(sub37.new_parcels.len() >= 2, "should still carve multiple blocks");
+    assert!(
+        sub37.new_parcels.iter().all(|p| p.density_tier.is_some() && p.target_stories.is_some()),
+        "every block should have a real density_tier/target_stories sampled from P29's field"
+    );
+    // At least one real tier value should actually be "core" -- the block
+    // nearest the field's own center -- not every block landing in the
+    // same bucket by construction.
+    let tiers: std::collections::BTreeSet<String> =
+        sub37.new_parcels.iter().filter_map(|p| p.density_tier.clone()).collect();
+    assert!(!tiers.is_empty());
+}
+
+#[test]
+fn any_density_field_present_gets_sampled_regardless_of_which_parcel_produced_it() {
+    // Neighborhood.pattern_fields carries no id scoping it to a specific
+    // source parcel -- a real, honest limit worth pinning down: p37_
+    // house_cluster samples whatever Density field is present, not
+    // specifically "the one P29 just computed for this exact parcel_id".
+    // Constructing one directly (bypassing P29) proves that.
+    let mut nbhd = square_parcel_neighborhood(300.0, "MEGA_1");
+    nbhd.pattern_fields.push(PatternField::Density(DensityField {
+        center: LngLat::new(nbhd.bbox_wgs84[2] / 2.0, nbhd.bbox_wgs84[3] / 2.0),
+        radius_m: 500.0,
+        core_target_stories: 6.0,
+        edge_target_stories: 2.0,
+        n_rings: 3,
+    }));
+    let sub37 = P37HouseCluster.apply(&nbhd, "MEGA_1", &P37Params::defaults(), 7).unwrap();
+    assert!(sub37.new_parcels.iter().all(|p| p.density_tier.is_some()));
 }

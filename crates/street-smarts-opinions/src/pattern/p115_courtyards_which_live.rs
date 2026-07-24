@@ -187,6 +187,7 @@ mod tests {
                 license: "test".into(),
                 layer_provenance: Default::default(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -215,7 +216,9 @@ mod tests {
             floors: Some(3),
             openings,
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn door(on_hole: bool) -> Opening {

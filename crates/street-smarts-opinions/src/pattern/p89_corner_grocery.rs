@@ -147,6 +147,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P89 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -164,17 +165,17 @@ mod tests {
     }
 
     fn building_on(id: &str, parcel_id: &str, x_m: f64, y_m: f64, floors: u32) -> Building {
-        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![] }
+        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None, canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn street_along_x(y_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: format!("SX{y_m}"), centerline: vec![LngLat::new(-50.0 * m, y_m * m), LngLat::new(50.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(6.0) }
+        Street { id: format!("SX{y_m}"), centerline: vec![LngLat::new(-50.0 * m, y_m * m), LngLat::new(50.0 * m, y_m * m)], classification: Some("local".into()), row_width_m: Some(6.0), surface: None }
     }
 
     fn street_along_y(x_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: format!("SY{x_m}"), centerline: vec![LngLat::new(x_m * m, -50.0 * m), LngLat::new(x_m * m, 50.0 * m)], classification: Some("local".into()), row_width_m: Some(6.0) }
+        Street { id: format!("SY{x_m}"), centerline: vec![LngLat::new(x_m * m, -50.0 * m), LngLat::new(x_m * m, 50.0 * m)], classification: Some("local".into()), row_width_m: Some(6.0), surface: None }
     }
 
     #[test]

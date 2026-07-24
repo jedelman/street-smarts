@@ -188,6 +188,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P110 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -202,7 +203,9 @@ mod tests {
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()),
             year_built: None, parcel_id: None, floors: Some(2), openings,
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn door() -> Opening {
@@ -247,7 +250,7 @@ mod tests {
     #[test]
     fn entrance_near_a_real_street_scores_high_proximity() {
         let m = 1.0 / 111_320.0;
-        let street = Street { id: "S1".into(), centerline: vec![LngLat::new(5.0 * m, -5.0 * m), LngLat::new(5.0 * m, -20.0 * m)], classification: Some("local".into()), row_width_m: Some(8.0) };
+        let street = Street { id: "S1".into(), centerline: vec![LngLat::new(5.0 * m, -5.0 * m), LngLat::new(5.0 * m, -20.0 * m)], classification: Some("local".into()), row_width_m: Some(8.0), surface: None };
         let n = nbhd(vec![rect_building("B1", vec![door()])], vec![street]);
         let out = P110MainEntrance.evaluate(&n);
         match out {

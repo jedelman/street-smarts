@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 14-stage pipeline and risking
+//! each independently computing the same 22-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 14
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 22
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -22,11 +22,19 @@ use crate::{Commit, HistoryStore, NeighborhoodId};
 use street_smarts_core::Scope;
 use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
+use street_smarts_patterns::p124_activity_pockets::{P124ActivityPockets, P124Params};
+use street_smarts_patterns::p21_four_story_limit::{P21FourStoryLimit, P21Params};
+use street_smarts_patterns::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
+use street_smarts_patterns::p118_roof_garden::{P118Params, P118RoofGarden};
+use street_smarts_patterns::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
+use street_smarts_patterns::p119_arcades::{P119Arcades, P119Params};
 use street_smarts_patterns::p127_intimacy_gradient::{P127IntimacyGradient, P127Params};
 use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
 use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
 use street_smarts_patterns::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
+use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
+use street_smarts_patterns::p197_thick_walls::{P197Params, P197ThickWalls};
 use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
@@ -60,7 +68,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 14-stage corrected pipeline against `root` via
+/// Runs the real 22-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -73,17 +81,22 @@ pub fn run_corrected_pipeline_via_ledger(
     let mut cur = root;
     let mut commits: Vec<Commit> = Vec::new();
 
+    // P29 now runs at its own true canonical position (29 < 37) -- see
+    // p29_density_rings's own module doc and PATTERN_ORDERING_AUDIT.md.
+    // Needs the same raw parcel_id P37 is about to carve, not "*"; only
+    // attaches a real DensityField, doesn't touch any parcel. P37 samples
+    // it (if present) as it individuates each new block.
+    try_run(store, &P29DensityRings, parcel_id, &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P37HouseCluster, parcel_id, &P37Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &PathNetwork, "*", &PathNetworkParams::defaults().as_map(), seed, &mut cur, &mut commits);
-    try_run(store, &P29DensityRings, "*", &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     // Site-scale square budget split across blocks by area -- same
     // computation `pipeline.rs` itself uses, via its own real `pub fn`
     // rather than a second, independently-maintained copy.
-    let after_p29 = store.materialize(&cur).unwrap_or_else(|e| panic!("commit {cur:?} must materialize: {e}"));
-    let block_ids: Vec<String> = after_p29.select_ids(&Scope::Block);
+    let after_blocks = store.materialize(&cur).unwrap_or_else(|e| panic!("commit {cur:?} must materialize: {e}"));
+    let block_ids: Vec<String> = after_blocks.select_ids(&Scope::Block);
     let block_areas: Vec<f64> = block_ids.iter()
-        .map(|id| after_p29.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
+        .map(|id| after_blocks.parcels.iter().find(|p| &p.id == id).map(|p| p.polygon.area_m2()).unwrap_or(0.0))
         .collect();
     let total_squares = P61Params::defaults().max_squares.round().max(1.0) as usize;
     let square_counts = allocate_squares_by_area(&block_areas, total_squares);
@@ -104,17 +117,52 @@ pub fn run_corrected_pipeline_via_ledger(
         try_run(store, &P95BuildingComplex, block_id, &P95Params::defaults().as_map(), block_seed, &mut cur, &mut commits);
     }
 
+    // P21's ordinary-cap half of what used to be a single P96 pass runs
+    // here -- a pure per-pad field read that needs nothing from P108's
+    // merge (PATTERN_ORDERING_AUDIT.md §4.2), so it runs at its own real
+    // earliest position, before P108.
+    try_run(store, &P21FourStoryLimit, "*", &P21Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // P96 now picks only the very few real exceptions to P21's cap, which
+    // genuinely needs P108's final merged footprint to rank and space them.
     try_run(store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // No real dependency on P124/P127/P197 either direction (PATTERN_
+    // ORDERING_AUDIT.md §4.3/§4.4: a free reorder) -- ordered here to
+    // match Alexander's own ascending numbering. See pipeline.rs's own
+    // step 9 doc.
+    try_run(store, &P117ShelteringRoof, "*", &P117Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Building.floors no longer waits for P221 (P107 derives it itself now
+    // -- PATTERN_ORDERING_AUDIT.md §4.7), so P118/P119/P133 all moved to
+    // their own real earliest valid positions. See pipeline.rs's own
+    // step 10 doc.
+    try_run(store, &P118RoofGarden, "*", &P118Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Right after P107/P117/P118, strictly before P127/P197/P119/P221 --
+    // all of which need the FINAL building footprint. See pipeline.rs's
+    // own step 11 doc.
+    try_run(store, &P124ActivityPockets, "*", &P124Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Needs P124's FINAL footprint (real, Class C) plus floors (no longer
+    // needs P221). See pipeline.rs's own step 12 doc.
+    try_run(store, &P119Arcades, "*", &P119Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P127IntimacyGradient, "*", &P127Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Right after P107/P124/P117 -- every downstream stage clones-and-
+    // mutates the buildings those produced, so wall_thickness_m survives
+    // untouched. See pipeline.rs's own step 14 doc.
+    try_run(store, &P197ThickWalls, "*", &P197Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P116CascadeOfRoofs, "*", &P116Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // No real dependency on P130 either direction (PATTERN_ORDERING_
+    // AUDIT.md §4.6) -- ordered here to match Alexander's own ascending
+    // numbering AND his own cited textual sequence. See pipeline.rs's own
+    // step 16 doc.
     try_run(store, &P129CommonAreasAtTheHeart, "*", &P129Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P130EntranceRoom, "*", &P130Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P131TheFlowThroughRooms, "*", &P131Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    try_run(store, &P221NaturalDoorsAndWindows, "*", &P221Params::defaults().as_map(), seed, &mut cur, &mut commits);
-    // AFTER P221, not right after P131 -- Building.floors isn't set until
-    // P221 derives it from real height. See pipeline.rs's own step 14 doc.
+    // Needs P131's connects_to, P129's is_common, and floors -- all real
+    // by now, restoring Alexander's own exact canonical position
+    // (131 < 133). See pipeline.rs's own step 19 doc.
     try_run(store, &P133StaircaseAsAStage, "*", &P133Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P221NaturalDoorsAndWindows, "*", &P221Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P160BuildingEdge, "*", &P160Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     (cur, commits)
 }

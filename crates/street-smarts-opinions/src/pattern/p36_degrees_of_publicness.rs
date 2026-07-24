@@ -8,17 +8,20 @@
 //! > that are more or less in between... Give every neighborhood about
 //! > equal numbers of these three kinds of homes.
 //!
-//! # Real classification, real (likely gapped) vocabulary
+//! # Real classification, real (partly gapped) vocabulary
 //!
 //! Every building is bucketed by its nearest real `Street`'s
 //! `StreetClassification` (`street-smarts-core::components`): `Arterial`
 //! maps to "busy," `Local` to "in-between," `Pedestrian`/`Alley` to
-//! "quiet." `path_network`/`p61_small_public_squares` -- the only two
-//! real origin operators for this field -- only ever produce `Local` and
-//! `Pedestrian` (confirmed by grep, not assumed; see
-//! `components.rs`'s own doc comment) -- no operator ever produces
-//! `Arterial` or `Alley`. A real site can therefore never show a "busy"
-//! bucket today; `value` will reflect that honestly, not a detector bug.
+//! "quiet." As of `path_network`'s "v0.6" module doc, `path_network` now
+//! reclassifies the `arterial_count` longest edges of its own MST backbone
+//! as real `Arterial` streets, so a "busy" bucket is no longer structurally
+//! impossible. `p61_small_public_squares` still only ever produces `Local`
+//! and `Pedestrian`, and no operator anywhere produces `Alley` yet
+//! (confirmed by grep). On the real eastside fixture, `n_busy` is still 0 --
+//! not because Arterial can't exist, but because no building's single
+//! NEAREST street happens to be the one reclassified edge; a fixture-scale
+//! or `arterial_count`-tuning gap, not a structural one.
 //!
 //! `value` = smallest bucket's building count, relative to a perfectly
 //! equal three-way split (`1.0` if every bucket has >= 1/3 of buildings,
@@ -115,9 +118,10 @@ impl Opinion for P36DegreesOfPublicness {
             sub_scores,
             details,
             caveats: vec![
-                "No current operator produces StreetClassification::Arterial or Alley -- see this \
-                 module's own doc comment. The 'busy' bucket is structurally empty on any real \
-                 pipeline output today, not merely underrepresented.".into(),
+                "path_network can now produce real Arterial streets (its own 'v0.6' module doc), so \
+                 the 'busy' bucket is no longer structurally impossible -- but no operator produces \
+                 Alley yet, and a real site can still show n_busy=0 if no building's single nearest \
+                 street happens to be an Arterial-classified one.".into(),
                 "Buckets by nearest-street classification only, not Alexander's richer 'twisting \
                  paths / physically secluded' vs 'exposed to passers-by' qualitative distinction.".into(),
             ],
@@ -143,6 +147,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P36 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -152,8 +157,10 @@ mod tests {
             id: id.into(),
             polygon: Polygon::from_ring(vec![LngLat::new(x_m * m, 0.0), LngLat::new((x_m + 5.0) * m, 0.0), LngLat::new((x_m + 5.0) * m, 5.0 * m), LngLat::new(x_m * m, 5.0 * m), LngLat::new(x_m * m, 0.0)]),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: vec![],
-        };
-        let s = Street { id: format!("S_{id}"), centerline: vec![LngLat::new(x_m * m, -5.0 * m), LngLat::new((x_m + 10.0) * m, -5.0 * m)], classification: None, row_width_m: Some(4.0) };
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        let s = Street { id: format!("S_{id}"), centerline: vec![LngLat::new(x_m * m, -5.0 * m), LngLat::new((x_m + 10.0) * m, -5.0 * m)], classification: None, row_width_m: Some(4.0), surface: None };
         (b, s)
     }
 

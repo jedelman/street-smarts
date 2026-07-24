@@ -369,6 +369,26 @@ This is where §1's "two systems with disjoint writes can run concurrently" clai
 
 **Ships when:** `PASSES` covers all 14 current operators, `validate_order` passes against the real `run_corrected_pipeline_with_p37` sequence, and deliberately reordering two passes that genuinely conflict (e.g. moving P108 back to Alexander's literal numbering, after P107) makes the test fail with a specific, actionable `PassOrderViolation` rather than requiring someone to notice the resulting geometry looks wrong in a render.
 
+### 5.6 A fifth relation this section doesn't have yet: fields vs. individuals
+
+`PATTERN_ORDERING_AUDIT.md` is a full audit of every place the real pipeline's
+execution order deviates from Alexander's own ascending numbering (ten cases,
+classified: real premature-individuation bugs, a hoisted-derived-attribute bug,
+genuine sequential dependencies, and free reorders). The premature-individuation
+cases (P29 density tiers waiting on P37's blocks purely because the schema has
+nowhere else to hang an undivided-land value; P116 Cascade of Roofs reusing
+P127's already-individuated cell polygons instead of sampling its own
+"significance" gradient) aren't `requires`/`writes`/`preserves`/`invalidates`
+problems — the dependency is real, `PassManager` would validate it correctly.
+The bug is that a pattern which only needs to *produce a sampleable potential*
+is instead forced to *produce and store a concrete, individuated value*, because
+`PassInfo` (like the current schema) only has one shape for "this pass's real
+output": something written and later read, not something written once and
+sampled many times by different individuating passes downstream. A `PassInfo`
+extension (a `field_writes` list, distinct from `writes`) is the natural fifth
+relation once `PATTERN_ORDERING_AUDIT.md`'s own first prototype (a real
+`DensityField` primitive for P29) proves the pattern in actual code.
+
 ---
 
 ## 7. Multi-objective steering loop: Pareto frontier + beam search

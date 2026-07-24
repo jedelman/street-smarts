@@ -46,6 +46,40 @@
 //! literal 17-20 foot (5.18-6.10m) range for local roads -- the other real
 //! gap `p49_looped_local_roads` found.
 //!
+//! # v0.4: degree-capped loop-edge selection, closing P50's real gap
+//!
+//! `p50_t_junctions` checks that real intersections (nodes where 3+ streets
+//! share a coordinate-snapped endpoint) meet as clean three-way T's, not
+//! four-way-or-more crossings ("avoid four-way intersections and crossing
+//! movements" -- Alexander's own text). The old `loop_budget`/
+//! `local_loop_budget` selection took the cheapest remaining edges with no
+//! regard for how many edges already met at each endpoint, so a loop edge
+//! could freely push an already three-way node (MST degree 2, or one prior
+//! loop edge) to a four-way crossing. `select_loop_edges` now tracks each
+//! block's running degree (starting from the MST backbone) and skips any
+//! candidate edge that would push either endpoint to degree 4+, before
+//! falling through to the next-cheapest candidate -- a real, enforced
+//! topology constraint on this generator's own existing output, not a
+//! guess. This directly targets P50's `three_way_fraction` sub-score. It
+//! does NOT touch `near_90_fraction` -- the angle at which edges meet is a
+//! function of block position (computed upstream by `block_grouping`), not
+//! something this edge-selection pass controls; a real fix for that would
+//! mean moving or re-routing block centroids, out of scope here.
+//! Skipped-for-degree candidates are counted and reported in the trace.
+//!
+//! # v0.5: real site-perimeter Boundary, closing P53's real gap
+//!
+//! `Neighborhood.boundaries` is a real, typed field -- before this, no
+//! operator anywhere in this pipeline ever populated it (the same class
+//! of real-field-no-producer gap `p61_small_public_squares` closed for
+//! `activity_nodes`). This operator already runs site-scale over every
+//! `BLOCK_n` parcel, so it now also computes the real convex hull of
+//! every block's own outer-ring vertices and emits it as one
+//! `Boundary { kind: Jurisdictional }` -- a real, computable site
+//! perimeter, not a fabricated one. Real, honest limitation: a convex
+//! hull is exact for a convex site and an over-approximation for a
+//! concave one (see this operator's own trace caveat).
+//!
 //! What it does NOT do yet:
 //! - Connect to the existing street grid (Princess Anne Rd, etc.) — needs
 //!   knowledge of which boundary parcels touch existing streets
@@ -54,16 +88,36 @@
 //!   is still a straight line, not an obstacle-aware route
 //! - Aggregate adjacent paths into named streets (each segment is its own
 //!   `Street` entity with an auto-id)
+//!
+//! # v0.6: Arterial classification, closing P36/P59/P68's real gap
+//!
+//! `StreetClassification::Arterial` existed in the enum from the start, but
+//! no operator anywhere ever produced it -- confirmed by grep, and
+//! documented as a load-bearing "honest gap" in P36 Degrees of Publicness,
+//! P59 Quiet Backs, and P68 Connected Play's own doc comments. Those three
+//! opinions all correctly check for an Arterial street at runtime; they
+//! just never saw one. This operator now reclassifies the `arterial_count`
+//! LONGEST edges of its own MST backbone (by real physical length, already
+//! computed by Kruskal's) as `Arterial`, at a wider `arterial_width_m`
+//! right-of-way and `"asphalt"` surface instead of `"grass_pavers"`. "The
+//! longest backbone edge" is a real, deterministic, measurable proxy for
+//! "the main through-route" -- not a fabricated classification -- but it is
+//! still a proxy: see this operator's own trace caveat for what it doesn't
+//! know (actual traffic volume, off-site arterial connections).
+//! `arterial_count` defaults to 1.0 (at least one real arterial per site);
+//! `arterial_width_m` defaults to 18.0m, a plausible arterial-scale
+//! placeholder (wider than any local/pedestrian width this operator
+//! produces), not a real code-minimum lookup.
 
 use crate::parameters::{ParamSpec, Parameters};
-use crate::planar::{average_centroid, kruskal_mst, lnglat_to_local, local_to_lnglat, Pt2};
+use crate::planar::{average_centroid, convex_hull, kruskal_mst, lnglat_to_local, local_to_lnglat, Pt2};
 use crate::prng::Prng;
 use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, Parcel, Street};
+use street_smarts_core::nir::{Boundary, BoundaryKind, Neighborhood, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
 use street_smarts_core::world::World;
 
@@ -91,6 +145,18 @@ pub struct PathNetworkParams {
     /// own text for local roads: "17 to 20 feet is quite enough"
     /// (5.18-6.10m) -- see P49's own opinion, which checks this.
     pub path_width_m: f64,
+    /// How many of the MST backbone's own LONGEST edges (by real physical
+    /// length, already computed by Kruskal's) get reclassified `Arterial`
+    /// instead of `Local` -- a real, deterministic proxy for "the main
+    /// through-route," not an arbitrary pick. 0 = no arterial streets (the
+    /// old behavior). See this file's own "v0.6" module doc for why this
+    /// exists at all.
+    pub arterial_count: f64,
+    /// Right-of-way width for an Arterial-classified edge. Wider than
+    /// `path_width_m`'s local-road figure -- a plausible arterial-scale
+    /// placeholder, not a real code-minimum lookup (same category as
+    /// `p95_building_complex`'s `pad_inset_m`).
+    pub arterial_width_m: f64,
 }
 
 impl Parameters for PathNetworkParams {
@@ -111,6 +177,16 @@ impl Parameters for PathNetworkParams {
                 "Right-of-way width per path segment.",
                 2.0, 12.0, 5.5,
             ).with_unit("m"),
+            ParamSpec::float(
+                "arterial_count",
+                "How many of the MST backbone's longest edges become Arterial instead of Local.",
+                0.0, 3.0, 1.0,
+            ),
+            ParamSpec::float(
+                "arterial_width_m",
+                "Right-of-way width for an Arterial-classified edge.",
+                12.0, 30.0, 18.0,
+            ).with_unit("m"),
         ]
     }
     fn defaults() -> Self {
@@ -118,10 +194,12 @@ impl Parameters for PathNetworkParams {
             loop_budget: 2.0,
             local_loop_budget: 1.0,
             path_width_m: 5.5,
+            arterial_count: 1.0,
+            arterial_width_m: 18.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.loop_budget, self.local_loop_budget, self.path_width_m]
+        vec![self.loop_budget, self.local_loop_budget, self.path_width_m, self.arterial_count, self.arterial_width_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -129,6 +207,8 @@ impl Parameters for PathNetworkParams {
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.local_loop_budget = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.path_width_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.arterial_count = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.arterial_width_m = s.clamp(*x); }
         p
     }
 }
@@ -240,6 +320,29 @@ impl PathNetwork {
         }
         let origin = LngLat::new(all_lng / n as f64, all_lat / n as f64);
 
+        // P53 Main Gateways: the real convex hull of every BLOCK_n parcel's
+        // own outer-ring vertices -- a real, computable site perimeter, not
+        // a fabricated one. See this file's own "v0.5" module doc.
+        let hull_points: Vec<Pt2> = blocks.values()
+            .flat_map(|parcels| parcels.iter())
+            .flat_map(|p| p.polygon.outer.iter())
+            .map(|q| lnglat_to_local(q, &origin))
+            .collect();
+        let hull_local = convex_hull(&hull_points);
+        let site_boundary = if hull_local.len() >= 3 {
+            let mut ring_wgs: Vec<LngLat> = hull_local.iter().map(|&p| local_to_lnglat(p, &origin)).collect();
+            if let Some(first) = ring_wgs.first().copied() {
+                ring_wgs.push(first); // close the ring, same convention Street/Polygon rings use
+            }
+            Some(Boundary {
+                id: "site_perimeter".into(),
+                centerline: ring_wgs,
+                kind: BoundaryKind::Jurisdictional,
+            })
+        } else {
+            None
+        };
+
         // Compute each block's centroid in local meters AND lng/lat.
         let mut block_ids: Vec<String> = blocks.keys().cloned().collect();
         block_ids.sort(); // deterministic order
@@ -279,32 +382,78 @@ impl PathNetwork {
         // `loop_budget`'s share goes first (Pedestrian shortcuts);
         // `local_loop_budget`'s share comes from whatever's left after
         // that (real loops in the Local/car network -- Alexander's P49).
+        // Degree-capped at 3 per node (Alexander's P50 T Junctions -- "avoid
+        // four-way intersections"), skipping over any candidate that would
+        // push a node past a three-way meeting -- see this file's own "v0.4"
+        // module doc.
         let loop_budget = params.loop_budget.round().max(0.0) as usize;
         let local_loop_budget = params.local_loop_budget.round().max(0.0) as usize;
-        let loop_edges: Vec<(usize, usize, f64)> =
-            remaining.iter().take(loop_budget).copied().collect();
-        let local_loop_edges: Vec<(usize, usize, f64)> =
-            remaining.iter().skip(loop_budget).take(local_loop_budget).copied().collect();
+        let mut degree = vec![0usize; nb];
+        for &(i, j, _) in mst_edges.iter() {
+            degree[i] += 1;
+            degree[j] += 1;
+        }
+        let mut loop_edges: Vec<(usize, usize, f64)> = Vec::new();
+        let mut local_loop_edges: Vec<(usize, usize, f64)> = Vec::new();
+        let mut skipped_for_four_way = 0usize;
+        for &(i, j, d) in remaining.iter() {
+            if loop_edges.len() >= loop_budget && local_loop_edges.len() >= local_loop_budget {
+                break;
+            }
+            if degree[i] >= 3 || degree[j] >= 3 {
+                skipped_for_four_way += 1;
+                continue;
+            }
+            if loop_edges.len() < loop_budget {
+                loop_edges.push((i, j, d));
+            } else {
+                local_loop_edges.push((i, j, d));
+            }
+            degree[i] += 1;
+            degree[j] += 1;
+        }
 
-        // Emit Street segments: MST = backbone ("local"), local_loop_edges
-        // = real loops in that same backbone (also "local"), loop_edges =
-        // supplementary shortcuts ("pedestrian"). Real topological
-        // distinction, not a parity hack. Each segment's centerline bulges
-        // at its midpoint (Alexander's P121 Path Shape) -- drawn from a
-        // seeded Prng, in this fixed edge order, so the same seed always
-        // reproduces the same shape.
+        // P36/P59/P68's real gap: which MST edges become Arterial. The
+        // arterial_count LONGEST MST edges (by real physical length,
+        // already computed by Kruskal's) -- a real, deterministic proxy
+        // for "the main through-route," not an arbitrary pick. See this
+        // file's own "v0.6" module doc.
+        let arterial_count = params.arterial_count.round().max(0.0) as usize;
+        let mut by_length: Vec<(usize, usize, f64)> = mst_edges.clone();
+        by_length.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        let arterial_edges: std::collections::HashSet<(usize, usize)> = by_length.iter()
+            .take(arterial_count)
+            .map(|&(i, j, _)| (i, j))
+            .collect();
+
+        // Emit Street segments: MST = backbone (`Local`, or `Arterial` for
+        // its own longest edges), local_loop_edges = real loops in that
+        // same backbone (also `Local`), loop_edges = supplementary
+        // shortcuts (`Pedestrian`). Real topological distinction, not a
+        // parity hack. Each segment's centerline bulges at its midpoint
+        // (Alexander's P121 Path Shape) -- drawn from a seeded Prng, in
+        // this fixed edge order, so the same seed always reproduces the
+        // same shape.
         let mut prng = Prng::new(seed);
         let mut streets: Vec<Street> = Vec::new();
         let mut classification_assignments: Vec<(String, StreetClassification)> = Vec::new();
+        let mut n_arterial = 0usize;
         for &(i, j, _d) in mst_edges.iter() {
             let id = format!("path_{}_to_{}", block_ids[i], block_ids[j]);
+            let is_arterial = arterial_edges.contains(&(i, j));
+            let classification = if is_arterial { StreetClassification::Arterial } else { StreetClassification::Local };
+            let width = if is_arterial { params.arterial_width_m } else { params.path_width_m };
+            if is_arterial {
+                n_arterial += 1;
+            }
             streets.push(Street {
                 id: id.clone(),
-                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
-                classification: Some(StreetClassification::Local.to_label().into()),
-                row_width_m: Some(params.path_width_m),
+                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, width, &mut prng),
+                classification: Some(classification.to_label().into()),
+                row_width_m: Some(width),
+                surface: Some(if is_arterial { "asphalt".into() } else { "grass_pavers".into() }),
             });
-            classification_assignments.push((id, StreetClassification::Local));
+            classification_assignments.push((id, classification));
         }
         for &(i, j, _d) in local_loop_edges.iter() {
             let id = format!("localloop_{}_to_{}", block_ids[i], block_ids[j]);
@@ -313,6 +462,7 @@ impl PathNetwork {
                 centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
                 classification: Some(StreetClassification::Local.to_label().into()),
                 row_width_m: Some(params.path_width_m),
+                surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Local));
         }
@@ -323,6 +473,7 @@ impl PathNetwork {
                 centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
                 classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.path_width_m),
+                surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Pedestrian));
         }
@@ -345,7 +496,21 @@ impl PathNetwork {
             "loop_budget={} -> {} extra edges added (classified 'pedestrian')",
             loop_budget, loop_edges.len()
         ));
+        steps.push(format!(
+            "{} candidate loop edge(s) skipped -- would have pushed a node past a three-way \
+             meeting (Alexander's P50 T Junctions: avoid four-way intersections)",
+            skipped_for_four_way
+        ));
         steps.push(format!("Emitted {} Street segments at {}m right-of-way", streets.len(), params.path_width_m as u32));
+        steps.push(format!(
+            "arterial_count={} -> {} of the MST backbone's own longest edges reclassified 'arterial' \
+             at {}m right-of-way (real length proxy for the main through-route)",
+            arterial_count, n_arterial, params.arterial_width_m as u32
+        ));
+        steps.push(match &site_boundary {
+            Some(b) => format!("Computed a real site-perimeter Boundary ({} vertices, convex hull of every block's own outer ring).", b.centerline.len()),
+            None => "Fewer than 3 hull points -- no real site perimeter computed.".into(),
+        });
 
         let trace = SubdivisionTrace {
             operator_name: "path_network".into(),
@@ -366,6 +531,22 @@ impl PathNetwork {
                  knowledge of which boundary parcels touch existing streets.".into(),
                 "Adjacent paths are not aggregated into named streets. Each segment is its own \
                  NIR Street entity.".into(),
+                "Loop-edge selection is capped at degree 3 per node (P50 T Junctions), but the MST \
+                 backbone itself is not -- a block whose only connection to the rest of the network \
+                 requires 4+ MST edges (a genuine hub in the block layout) can still end up a \
+                 four-way intersection; this pass only avoids making a discretionary loop edge WORSE, \
+                 it doesn't re-route the required backbone.".into(),
+                "Does not touch P50's near_90_fraction sub-score -- the angle at which edges meet a \
+                 node is a function of block position (set upstream by block_grouping), not \
+                 something this edge-selection pass controls.".into(),
+                "The site-perimeter Boundary is the convex hull of every block's own outer ring -- \
+                 real for a convex or roughly-convex site, but a real concave site's actual edge \
+                 would sit inside this hull in places, not exactly on it.".into(),
+                "Arterial classification is a proxy: the arterial_count longest MST backbone edges \
+                 by real physical length, not a real functional-classification study (traffic \
+                 volume, connection to an off-site arterial, etc.). A real site's longest internal \
+                 link is a reasonable stand-in for 'the main through-route' but this does not know \
+                 whether that edge actually carries through-traffic.".into(),
             ],
             seed: 0,
             params: params.as_map(),
@@ -376,11 +557,14 @@ impl PathNetwork {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: streets,
+            new_activity_nodes: vec![],
+            new_boundaries: site_boundary.into_iter().collect(),
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         };
         Ok((sub, classification_assignments))
     }

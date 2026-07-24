@@ -34,6 +34,18 @@ const NEW_DETECTORS: &[&str] = &[
     "p130_entrance_room",
     "p133_staircase_as_a_stage",
     "p221_natural_doors_and_windows",
+    "p115_courtyards_which_live",
+    "p112_entrance_transition",
+    "p30_activity_nodes",
+    "p128_indoor_sunlight",
+    "p114_hierarchy_of_open_space",
+    "p120_paths_and_goals",
+    "p38_row_houses",
+    "p100_pedestrian_street",
+    "p105_south_facing_outdoors",
+    "p161_sunny_place",
+    "p163_outdoor_room",
+    "p31_promenade",
 ];
 
 fn main() {

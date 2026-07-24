@@ -1,5 +1,5 @@
 //! Real integration tests for P96 Number of Stories, built on the real
-//! P37 -> P29 -> [P61+P95] chain against the baseline mall parcel, so pads
+//! P29 -> P37 -> [P61+P95] chain against the baseline mall parcel, so pads
 //! carry real, varied density tiers (not synthetic ones).
 
 use street_smarts_core::nir::Neighborhood;
@@ -15,11 +15,11 @@ fn pads_from_real_mall_parcel() -> Neighborhood {
     let raw = std::fs::read_to_string("../../data/eastside-baseline.json").expect("fixture present");
     let baseline: Neighborhood = serde_json::from_str(&raw).expect("parseable");
 
-    let sub37 = P37HouseCluster.apply(&baseline, "00001129", &P37Params::defaults(), 42).unwrap();
-    let mut nbhd = apply_subdivision(&baseline, &sub37);
+    let sub29 = P29DensityRings.apply(&baseline, "00001129", &P29Params::defaults(), 42).unwrap();
+    let with_field = apply_subdivision(&baseline, &sub29);
 
-    let sub29 = P29DensityRings.apply(&nbhd, "*", &P29Params::defaults(), 42).unwrap();
-    nbhd = apply_subdivision(&nbhd, &sub29);
+    let sub37 = P37HouseCluster.apply(&with_field, "00001129", &P37Params::defaults(), 42).unwrap();
+    let mut nbhd = apply_subdivision(&with_field, &sub37);
 
     let block_ids: Vec<String> = nbhd.parcels.iter()
         .filter(|p| p.spec.as_deref().unwrap_or("").starts_with("BLOCK_"))
@@ -62,7 +62,10 @@ fn every_pad_gets_a_real_target_stories() {
 #[test]
 fn honors_the_ordinary_cap_with_only_a_few_widely_spaced_exceptions() {
     let nbhd = pads_from_real_mall_parcel();
-    let params = P96Params::defaults();
+    // Main-building boost (P99) is a distinct, position-only mechanism with
+    // its own dedicated test below -- disabled here so this test isolates
+    // the tall-exception spacing invariant it's actually checking.
+    let params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
     let sub = P96NumberOfStories.apply(&nbhd, "*", &params, 11).unwrap();
 
     let n_pads = sub.new_parcels.len();
@@ -109,7 +112,10 @@ fn no_density_tier_falls_back_to_default_target_stories_uniformly() {
 
     assert!(nbhd.parcels.iter().filter(|p| p.use_category.as_deref() == Some("p95_building_pad")).all(|p| p.density_tier.is_none()));
 
-    let params = P96Params::defaults();
+    // Main-building boost (P99) is a distinct mechanism with its own
+    // dedicated test below -- disabled here so this test isolates the
+    // flat-default-fallback invariant it's actually checking.
+    let params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
     let sub96 = P96NumberOfStories.apply(&nbhd, "*", &params, 1).unwrap();
     for p in &sub96.new_parcels {
         assert_eq!(p.target_stories, Some(params.default_target_stories), "{}: no tier should fall back to the flat default", p.id);
@@ -124,4 +130,33 @@ fn no_building_pads_errors() {
     empty.parcels.retain(|p| p.use_category.as_deref() != Some("p95_building_pad"));
     let result = P96NumberOfStories.apply(&empty, "*", &P96Params::defaults(), 1);
     assert!(result.is_err());
+}
+
+/// P99 Main Building: exactly one pad -- the one nearest every pad's own
+/// area-weighted centroid -- gets a real, measurable boost on top of its
+/// tier assignment; every other pad's assignment is unchanged.
+#[test]
+fn main_building_boost_lands_on_exactly_one_pad_and_nowhere_else() {
+    let nbhd = pads_from_real_mall_parcel();
+    let boosted_params = P96Params::defaults();
+    let unboosted_params = P96Params { main_building_boost_stories: 0.0, ..P96Params::defaults() };
+
+    let sub_boosted = P96NumberOfStories.apply(&nbhd, "*", &boosted_params, 11).unwrap();
+    let sub_unboosted = P96NumberOfStories.apply(&nbhd, "*", &unboosted_params, 11).unwrap();
+
+    let mut changed: Vec<(String, f64, f64)> = Vec::new();
+    for pb in &sub_boosted.new_parcels {
+        let pu = sub_unboosted.new_parcels.iter().find(|p| p.id == pb.id).expect("same pad set");
+        let (sb, su) = (pb.target_stories.unwrap(), pu.target_stories.unwrap());
+        if (sb - su).abs() > 1e-6 {
+            changed.push((pb.id.clone(), su, sb));
+        }
+    }
+
+    assert_eq!(changed.len(), 1, "exactly one pad should change with the boost enabled, got {changed:?}");
+    let (_, unboosted_stories, boosted_stories) = &changed[0];
+    assert!(
+        (boosted_stories - unboosted_stories - boosted_params.main_building_boost_stories).abs() < 1e-6,
+        "the boosted pad's story count should be exactly its unboosted assignment plus main_building_boost_stories"
+    );
 }

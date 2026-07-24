@@ -98,6 +98,74 @@
 //!   sketches for this pattern are organic, hand-drawn subdivisions; a grid
 //!   is an honest first approximation, not a claim to match his intent
 //!   exactly.
+//!
+//! # v0.7: a real ActivityNode per square, closing P126's real gap
+//!
+//! `Neighborhood.activity_nodes` is a real, typed field -- before this,
+//! no operator anywhere in this pipeline ever populated it (the same
+//! class of real-field-no-producer gap `p33_night_life`'s own module doc
+//! documents for `use_category: "commercial"`). Every square this
+//! operator places now gets one real `ActivityNode` (`ActivityKind::Civic`)
+//! seeded from a real, deterministic `Prng` jitter off the square's own
+//! centroid -- "roughly, not exactly, in the middle," Alexander's own
+//! P126 Something Roughly in the Middle instruction, not dead-center by
+//! construction.
+//!
+//! # v0.8: real street-convergence placement, closing P30's real gap
+//!
+//! Alexander's own text for this pattern's larger context (Activity Nodes,
+//! 30): "First identify those existing spots in the community where action
+//! seems to concentrate itself." Before this, `place_new_squares_n` (the
+//! raw-land path the real corrected pipeline actually calls, see v0.5/v0.6
+//! above) picked square positions with plain `stratified_seeds` -- an
+//! unbiased grid+jitter, no relationship to the real street network at all.
+//! It now prefers real street-endpoint convergence points inside a block's
+//! own free land first (`convergence_points_in_zone`, below -- 2+ distinct
+//! real streets with endpoints within 30m of each other, the same
+//! threshold `p30_activity_nodes`'s own `path_convergence` sub-score
+//! checks), falling back to stratified-random only for whatever slots
+//! convergence points don't fill. Every convergence candidate is pre-
+//! checked against the same clip-and-min-area test the main placement
+//! loop applies to every node before it's allowed to consume a slot of
+//! `n_target` -- an earlier version of this fix let a convergence point
+//! deep in a reserved street corridor (real ROW, subtracted from
+//! `placement_zone` before any square gets clipped to it) silently eat
+//! the whole budget and leave zero real squares, catching real fixture
+//! regressions in `language_graph.rs`'s own real-pipeline-trace tests.
+//! Verified at the unit level too
+//! (`p61_raw_land_placement.rs`'s own `a_real_street_convergence_point_
+//! anchors_a_square_there` test): a real intersection inside a block's
+//! free land does get picked over a stratified-random position.
+//!
+//! **Real, but a small piece of the whole picture -- measured honestly.**
+//! On the real eastside-baseline fixture, this barely moves
+//! `p30_activity_nodes`'s own aggregate `path_convergence` sub-score
+//! (9-16% both before and after this fix, across three seeds -- no
+//! measurable aggregate change). Root cause, also measured:
+//! `p61_small_public_squares`-placed squares (this function's own output)
+//! are only 5-7% of ALL real `Plaza`-kind open space this pipeline
+//! produces (4 out of 57-81 real plazas per seed, one per seed's full
+//! `max_squares` budget) -- the site-scale `max_squares` budget (default
+//! 4, allocated by area across every block via `allocate_squares_by_area`
+//! in `pipeline.rs`) means this generator places only a handful of
+//! squares total, while `p95_building_complex`/`p107_wings_of_light`'s
+//! own courtyard-plaza output (unrelated to this function, not touched by
+//! this fix) makes up nearly all the rest. The fix is real and correctly
+//! targeted at what this function itself controls -- every square it
+//! places now anchors to a real intersection when one exists nearby, and
+//! the pre-check above means it also now reliably places its FULL budget
+//! (4/4 every seed, where an earlier version of this fix silently placed
+//! 0-1/4 on some real blocks) -- it just isn't where most of this
+//! pipeline's real Plaza area actually comes from. Extending real
+//! convergence-awareness to P95/P107's own courtyard placement would be a
+//! separate, larger change.
+//!
+//! **Scope, stated honestly.** This only changes `place_new_squares_n`
+//! (new squares on raw block land). The OTHER placement path in this file
+//! -- partitioning an already-oversized existing `Plaza` (`apply()`,
+//! `partition_plaza`, above) -- still picks which candidate sub-squares
+//! survive the `max_squares` cap by area alone, not position; that
+//! caveat (in `apply()`'s own trace) is still accurate for that path.
 
 use crate::p95_building_complex::stratified_seeds;
 use crate::parameters::{ParamSpec, Parameters};
@@ -111,7 +179,7 @@ use crate::subdivision::{apply_subdivision, PatternOperator, Subdivision, Subdiv
 use serde::{Deserialize, Serialize};
 use street_smarts_core::components::StreetClassification;
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
+use street_smarts_core::nir::{ActivityKind, ActivityNode, Neighborhood, OpenSpace, OpenSpaceKind, Parcel, Street};
 use street_smarts_core::opinion::SourceCitation;
 use street_smarts_core::world::World;
 
@@ -181,6 +249,40 @@ impl Parameters for P61Params {
 }
 
 pub struct P61SmallPublicSquares;
+
+/// How far, as a fraction of the square's own local bounding-box short
+/// side, a real ActivityNode jitters off the square's centroid -- "roughly,
+/// not exactly, in the middle" (P126 Something Roughly in the Middle).
+const ACTIVITY_NODE_JITTER_FRAC: f64 = 0.2;
+
+/// One real, jittered-off-center ActivityNode for a newly placed square --
+/// see this file's own "v0.7" module doc. `sq_local` is the square's own
+/// ring in the same local-meter frame `centroid`/`bbox` already use;
+/// `origin` converts back to real lng/lat. `activity_fit` and
+/// `publicness` are left at their honest empty/`None` defaults -- this
+/// function only knows it placed a generic plaza marker, not what real
+/// activity belongs there or how public the setting reads; inventing
+/// plausible-looking values for either would be exactly the kind of
+/// fabrication this pipeline's opinions consistently refuse to do
+/// elsewhere (see `p33_night_life.rs`'s own module doc on the same
+/// principle for `use_category`).
+fn activity_node_for_square(id: String, sq_local: &[Pt2], origin: &LngLat, prng: &mut Prng) -> ActivityNode {
+    let c = centroid(sq_local);
+    let (min_pt, max_pt) = bbox(sq_local);
+    let short_side = (max_pt.x - min_pt.x).min(max_pt.y - min_pt.y);
+    let jitter_m = short_side * ACTIVITY_NODE_JITTER_FRAC;
+    let angle = prng.range(0.0, std::f64::consts::TAU);
+    let jittered = Pt2::new(c.x + angle.cos() * jitter_m, c.y + angle.sin() * jitter_m);
+    ActivityNode {
+        id,
+        location: local_to_lnglat(jittered, origin),
+        kind: ActivityKind::Civic,
+        intensity: None,
+        label: None,
+        activity_fit: Default::default(),
+        publicness: None,
+    }
+}
 
 /// Break an oversized plaza into a grid of Voronoi-seeded sub-squares, each
 /// clipped to the plaza's real (possibly non-convex) boundary, sized so the
@@ -287,8 +389,10 @@ impl PatternOperator for P61SmallPublicSquares {
             return Err("p61_small_public_squares: no Plaza-kind open space found. Run P95/P107 first, or pass a specific raw parcel_id to place new squares directly.".into());
         }
 
+        let mut prng = Prng::new(seed);
         let mut new_open: Vec<OpenSpace> = Vec::new();
         let mut new_streets: Vec<Street> = Vec::new();
+        let mut new_activity_nodes: Vec<ActivityNode> = Vec::new();
         let mut replaced_ids: Vec<String> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut n_partitioned = 0;
@@ -410,6 +514,9 @@ impl PatternOperator for P61SmallPublicSquares {
                     polygon: street_smarts_core::geometry::Polygon::from_ring(ring),
                     kind: OpenSpaceKind::Plaza,
                 });
+                new_activity_nodes.push(activity_node_for_square(
+                    format!("{plaza_id}_p61_sq{idx}_activity"), sq_local, &origin, &mut prng,
+                ));
             }
             n_squares_total += squares.len();
             n_undecided_total += undecided_pieces.len();
@@ -429,6 +536,7 @@ impl PatternOperator for P61SmallPublicSquares {
                         centerline: vec![centers_wgs[*i], centers_wgs[*j]],
                         classification: Some(StreetClassification::Pedestrian.to_label().into()),
                         row_width_m: Some(params.connector_width_m),
+                        surface: Some("grass_pavers".into()),
                     });
                 }
                 n_connectors = mst_edges.len();
@@ -478,6 +586,9 @@ impl PatternOperator for P61SmallPublicSquares {
             "Partitioning uses a regular grid of Voronoi-seeded cells, clipped to the plaza's \
              real boundary. That's an honest first approximation, not a claim to match \
              Alexander's own organic, hand-drawn subdivisions.".into(),
+            "Each square's ActivityNode is a real Prng jitter off its own centroid, not a real \
+             'where paths cross' computation (P126's own literal instruction) -- no path-crossing- \
+             a-square concept is checked here, only that it isn't placed dead-center.".into(),
         ];
         if any_dropped_slivers {
             caveats.push(
@@ -520,13 +631,85 @@ impl PatternOperator for P61SmallPublicSquares {
             new_open_space: new_open,
             new_buildings: vec![],
             new_streets,
+            new_activity_nodes,
+            new_boundaries: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: replaced_ids,
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
+}
+
+/// P30 Activity Nodes: real street-ENDPOINT convergence threshold. Matches
+/// `p30_activity_nodes`'s own `CONVERGENCE_THRESHOLD_M` in the opinions
+/// crate (a private const there, so duplicated here rather than shared --
+/// same category of intentional duplication as other cross-crate constant
+/// matches in this codebase) so a square anchored to a point this function
+/// finds reads as convergent to that opinion too, not just by construction
+/// here.
+const CONVERGENCE_THRESHOLD_M: f64 = 30.0;
+
+/// P30 Activity Nodes: "First identify those existing spots in the
+/// community where action seems to concentrate itself" -- real street
+/// intersections, not an abstract grid. By the time this function runs,
+/// `nbhd.streets` already holds the real PathNetwork/P52 output (see
+/// `pipeline.rs`'s own stage order: PathNetwork runs once, site-scale,
+/// before the per-block P61/P95 pass), so real convergence points are
+/// available to place squares at instead of only stratified-random ones.
+///
+/// A convergence point is a real street endpoint with at least one OTHER
+/// street's endpoint within `threshold_m` of it (2+ distinct streets
+/// meeting) -- the same test `p30_activity_nodes`'s own `path_convergence`
+/// sub-score applies to a plaza's centroid, applied here to candidate
+/// PLACEMENT points instead. Nearby duplicate candidates (several streets
+/// converging at what's really one real-world intersection) are greedily
+/// merged into a single cluster point. Only clusters that land inside
+/// `placement_zone` are returned -- a real intersection just outside this
+/// block's own free land isn't a valid square anchor here.
+fn convergence_points_in_zone(placement_zone: &[Pt2], streets_local: &[Vec<Pt2>], threshold_m: f64) -> Vec<Pt2> {
+    let endpoints: Vec<(usize, Pt2)> = streets_local
+        .iter()
+        .enumerate()
+        .flat_map(|(idx, pts)| {
+            let mut v = Vec::new();
+            if let Some(&first) = pts.first() {
+                v.push((idx, first));
+            }
+            if pts.len() > 1 {
+                if let Some(&last) = pts.last() {
+                    v.push((idx, last));
+                }
+            }
+            v
+        })
+        .collect();
+
+    let mut candidates: Vec<Pt2> = Vec::new();
+    for &(_, p) in &endpoints {
+        // distinct_streets always includes p's own street (distance 0 from
+        // itself) -- >= 2 means at least one OTHER real street's endpoint
+        // is also within threshold_m, i.e. a real convergence.
+        let distinct_streets: std::collections::BTreeSet<usize> = endpoints
+            .iter()
+            .filter(|&&(_, q)| p.dist(q) <= threshold_m)
+            .map(|&(idx, _)| idx)
+            .collect();
+        if distinct_streets.len() >= 2 {
+            candidates.push(p);
+        }
+    }
+
+    let mut clusters: Vec<Pt2> = Vec::new();
+    for c in candidates {
+        if !clusters.iter().any(|&k| c.dist(k) <= threshold_m) {
+            clusters.push(c);
+        }
+    }
+
+    clusters.into_iter().filter(|&c| point_in_polygon(c, placement_zone)).collect()
 }
 
 fn parcel_origin(p: &Parcel) -> LngLat {
@@ -610,10 +793,66 @@ pub fn place_new_squares_n(
     }
 
     let mut prng = Prng::new(seed);
-    // Jitter isn't exposed as its own P61 param (would be a knob nobody has
-    // asked to tune yet) -- 0.5 matches the default other operators
-    // (P37, P95) use for their own stratified seeding.
-    let nodes = stratified_seeds(&placement_zone, n_target, 0.5, &mut prng);
+
+    // P30 Activity Nodes: prefer real street-convergence points within this
+    // block's own free land over blind stratified-random placement -- see
+    // `convergence_points_in_zone`'s own doc comment. Falls back to (and
+    // tops up with) stratified-random for any square this block still
+    // needs once real convergence points run out, same as before this fix
+    // when none exist at all.
+    let streets_local: Vec<Vec<Pt2>> =
+        nbhd.streets.iter().map(|s| ring_to_local(&s.centerline, &origin)).collect();
+    // Filtered against local_parcel (the whole block), NOT placement_zone
+    // (the block minus reserved holes -- which already includes a corridor
+    // subtracted around every real street, including the very one(s) that
+    // make this a convergence point in the first place). A convergence
+    // point sits ON a real street's own right-of-way by construction, so
+    // requiring it to also land in the ALREADY-street-excluded free land
+    // would reject every real intersection. `clip_to_polygon_largest`
+    // (below, same as every other candidate node already gets) is what
+    // actually keeps the final square off the corridor -- the square ends
+    // up adjacent to the real intersection, not literally straddling the
+    // pavement.
+    let half_side = params.max_dimension_m / 2.0;
+    let convergence_pts = convergence_points_in_zone(&local_parcel, &streets_local, CONVERGENCE_THRESHOLD_M);
+    // Pre-check each convergence candidate against the SAME clip-and-
+    // min-area test the main placement loop (below) applies to every
+    // node -- a real intersection can sit deep enough inside a reserved
+    // street corridor that its square clips to nothing usable. Only
+    // candidates that survive count against `n_target`; a convergence
+    // point that fails this check is discarded outright (not counted,
+    // not retried), same as the main loop already does for any node.
+    // Without this pre-check, a bad convergence candidate could silently
+    // consume the whole `n_target` budget and leave zero real squares --
+    // a real regression an earlier version of this fix had, caught by
+    // `language_graph.rs`'s own real-pipeline-trace tests.
+    let mut nodes: Vec<Pt2> = Vec::new();
+    for c in convergence_pts {
+        if nodes.len() >= n_target {
+            break;
+        }
+        let square_local = vec![
+            Pt2::new(c.x - half_side, c.y - half_side),
+            Pt2::new(c.x + half_side, c.y - half_side),
+            Pt2::new(c.x + half_side, c.y + half_side),
+            Pt2::new(c.x - half_side, c.y + half_side),
+        ];
+        let clipped = clip_to_polygon_largest(&square_local, &placement_zone);
+        if clipped.len() >= 3 && area(&clipped) >= params.min_meaningful_area_m2 {
+            nodes.push(c);
+        }
+    }
+    let n_from_convergence = nodes.len();
+    if nodes.len() < n_target {
+        let extra = stratified_seeds(&placement_zone, n_target - nodes.len(), 0.5, &mut prng);
+        for pt in extra {
+            // Don't stack a stratified seed on top of a convergence-anchored
+            // one closely enough that the two squares would overlap.
+            if nodes.iter().all(|&q| q.dist(pt) > params.max_dimension_m) {
+                nodes.push(pt);
+            }
+        }
+    }
     if nodes.is_empty() {
         return Err(format!(
             "p61_small_public_squares: parcel {} too small or too concave to place any squares on.",
@@ -621,8 +860,8 @@ pub fn place_new_squares_n(
         ));
     }
 
-    let half_side = params.max_dimension_m / 2.0;
     let mut new_open: Vec<OpenSpace> = Vec::new();
+    let mut new_activity_nodes: Vec<ActivityNode> = Vec::new();
     let mut square_centers: Vec<Pt2> = Vec::new();
     let mut n_skipped_tiny = 0;
     for (idx, &node) in nodes.iter().enumerate() {
@@ -643,6 +882,9 @@ pub fn place_new_squares_n(
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(&clipped, &origin)),
             kind: OpenSpaceKind::Plaza,
         });
+        new_activity_nodes.push(activity_node_for_square(
+            format!("{}_p61_new_sq{idx}_activity", target_parcel.id), &clipped, &origin, &mut prng,
+        ));
     }
 
     if new_open.is_empty() {
@@ -662,13 +904,19 @@ pub fn place_new_squares_n(
                 centerline: vec![centers_wgs[*i], centers_wgs[*j]],
                 classification: Some(StreetClassification::Pedestrian.to_label().into()),
                 row_width_m: Some(params.connector_width_m),
+                surface: Some("grass_pavers".into()),
             });
         }
     }
 
+    let n_nodes_total = nodes.len();
+    let n_from_stratified = n_nodes_total - n_from_convergence;
     let steps = vec![format!(
-        "{}: raw land, no existing plaza -- placed {} new compliant square(s) directly ({} candidate(s) too small after clipping to the real boundary), linked by {} connector(s).",
-        target_parcel.id, new_open.len(), n_skipped_tiny, new_streets.len()
+        "{}: raw land, no existing plaza -- placed {} new compliant square(s) directly (of {} candidate \
+         position(s): {} anchored to real street-convergence points, {} stratified-random; {} \
+         candidate(s) too small after clipping to the real boundary), linked by {} connector(s).",
+        target_parcel.id, new_open.len(), n_nodes_total, n_from_convergence, n_from_stratified,
+        n_skipped_tiny, new_streets.len()
     )];
 
     let trace = SubdivisionTrace {
@@ -680,10 +928,17 @@ pub fn place_new_squares_n(
         ),
         steps,
         caveats: vec![
-            "Squares are placed at stratified-random node positions, not at real convergence \
-             points (transit, entrances, street corners) -- this operator has no model of where \
-             people would actually gather, same limitation the resize path's caveats already \
-             state.".into(),
+            format!(
+                "Squares are anchored to real street-CONVERGENCE points where available (2+ real \
+                 streets with endpoints within {:.0}m of each other, inside this block's own free \
+                 land -- see p30_activity_nodes' own path_convergence check, which uses the same \
+                 threshold) -- {} of {} placed square(s) this call. Any remaining slots fall back \
+                 to stratified-random, same as before this fix. Still no model of transit, \
+                 entrances, or other real activity draws beyond street topology itself -- \
+                 'convergence' here means real streets meeting, nothing about what's AT that \
+                 intersection.",
+                CONVERGENCE_THRESHOLD_M, n_from_convergence.min(new_open.len()), new_open.len()
+            ),
             "Does not modify the target parcel's own polygon. Downstream operators (P95) need to \
              read these squares back via reserved-land subtraction to actually build around them \
              -- this function only places geometry, it doesn't claim the land for real.".into(),
@@ -695,6 +950,9 @@ pub fn place_new_squares_n(
              assumes reserved holes are convex (same assumption reserved_holes_for_part already \
              makes for P95), and doesn't spread squares across every leftover fragment if the \
              subtraction splits the parcel into several.".into(),
+            "Each square's ActivityNode is a real Prng jitter off its own centroid, not a real \
+             'where paths cross' computation (P126's own literal instruction) -- no path-crossing- \
+             a-square concept is checked here, only that it isn't placed dead-center.".into(),
         ],
         seed,
         params: params.as_map(),
@@ -705,12 +963,15 @@ pub fn place_new_squares_n(
         new_open_space: new_open,
         new_buildings: vec![],
         new_streets,
+        new_activity_nodes,
+        new_boundaries: vec![],
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],
         entity_provenance: std::collections::BTreeMap::new(),
         trace,
-    })
+            new_fields: vec![],
+        })
 }
 
 /// Native `System` port of `place_new_squares_n` -- the real corrected

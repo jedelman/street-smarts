@@ -1,0 +1,6567 @@
+{
+  "_meta": {
+    "description": "Complete structural graph of Christopher Alexander's A Pattern Language (Oxford University Press, 1977) -- all 253 patterns, real cross-references only (pattern numbers and names). No copyrighted Problem/Solution prose is reproduced here.",
+    "source": "https://patternlanguage.cc/static/contentIndex.json -- Quartz 4's own precomputed content-link index for the deployed site (a mirror of https://github.com/zenodotus280/apl-md). Downloaded directly via curl and parsed programmatically -- not read or summarized by a model -- so there is no hallucination or per-page-summary-variance risk anywhere in this file.",
+    "fields": "'cites' = the real, complete set of other patterns this pattern's own page content links to (drawn from its 'Related Patterns' prose, where Alexander names both broader patterns this one helps complete and narrower patterns it calls for, mixed in running text with no clean structural marker between the two). 'cited_by' = the exact inverse: every pattern whose own page links here. Together these form a complete, symmetric, real citation graph.",
+    "not_the_same_as": "This deliberately does NOT attempt to split 'cites' into Alexander's own 'larger patterns' (broader context) vs 'smaller patterns' (detail patterns called for) -- his prose mixes both in one paragraph with no reliable structural cue to separate them by parsing alone; that split requires reading each pattern's own prose, which street-smarts-patterns::cascade_contracts.rs's existing 15-pattern-generator citations (and a small number of others) do individually where the distinction matters for a specific contract's 'why'. This file's job is completeness and connectivity, not that finer semantic split.",
+    "coverage": "All 253 patterns, gap-free.",
+    "fetched": "2026-07-20",
+    "history": "This file started as a 15-pattern subgraph (this project's own implemented generators), built by fetching individual rendered patternlanguage.cc pages one at a time and having each summarized. Four of those fifteen (29, 95, 96, 108) were briefly written in from unverified recall rather than a real fetch after their pages failed to load -- a real citation-discipline lapse, caught and fixed the same day (see git history: 'Fix apl-pattern-graph.json: 4 patterns were recalled, not fetched'). This version replaces that whole approach: instead of per-page model summaries, it's built by downloading patternlanguage.cc's own precomputed Quartz content-link index (static/contentIndex.json) as raw JSON and parsing it programmatically, covering all 253 patterns with no model interpretation and no hallucination surface at all.",
+    "cascade_contracts_note": "street-smarts-patterns::cascade_contracts.rs's own 'why' citations were written against the original 15-pattern subgraph's real larger/smaller reads and remain accurate -- every specific fact they cite (e.g. '95's smaller-patterns list includes 99') still holds in this file's 'cites'/'cited_by' fields, just under renamed, honestly-scoped field names (see 'not_the_same_as' above)."
+  },
+  "patterns": [
+    {
+      "number": 1,
+      "name": "Independent Regions",
+      "cites": [
+        2
+      ],
+      "cited_by": [
+        2,
+        4
+      ]
+    },
+    {
+      "number": 2,
+      "name": "The Distribution of Towns",
+      "cites": [
+        1,
+        3,
+        4,
+        6
+      ],
+      "cited_by": [
+        1,
+        3,
+        6,
+        7
+      ]
+    },
+    {
+      "number": 3,
+      "name": "City Country Fingers",
+      "cites": [
+        2,
+        4,
+        8,
+        16,
+        17
+      ],
+      "cited_by": [
+        2,
+        4,
+        5,
+        7,
+        8,
+        10,
+        11,
+        16,
+        21
+      ]
+    },
+    {
+      "number": 4,
+      "name": "Agricultural Valleys",
+      "cites": [
+        1,
+        3,
+        7
+      ],
+      "cited_by": [
+        2,
+        3,
+        7
+      ]
+    },
+    {
+      "number": 5,
+      "name": "Lace of Country Streets",
+      "cites": [
+        3,
+        7,
+        14,
+        37
+      ],
+      "cited_by": [
+        7,
+        21
+      ]
+    },
+    {
+      "number": 6,
+      "name": "Country Towns",
+      "cites": [
+        2,
+        7,
+        12,
+        26
+      ],
+      "cited_by": [
+        2,
+        7
+      ]
+    },
+    {
+      "number": 7,
+      "name": "The Countryside",
+      "cites": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        37,
+        51
+      ],
+      "cited_by": [
+        4,
+        5,
+        6,
+        13,
+        25,
+        114
+      ]
+    },
+    {
+      "number": 8,
+      "name": "Mosaic of Subcultures",
+      "cites": [
+        3,
+        12,
+        13,
+        14,
+        37
+      ],
+      "cited_by": [
+        3,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        19,
+        29,
+        31
+      ]
+    },
+    {
+      "number": 9,
+      "name": "Scattered Work",
+      "cites": [
+        8,
+        13,
+        15,
+        41,
+        42,
+        80,
+        157
+      ],
+      "cited_by": [
+        19,
+        27,
+        34,
+        41,
+        42,
+        59,
+        80,
+        157
+      ]
+    },
+    {
+      "number": 10,
+      "name": "Magic of the City",
+      "cites": [
+        3,
+        8,
+        11,
+        16,
+        31,
+        33,
+        58,
+        63
+      ],
+      "cited_by": [
+        11,
+        19,
+        21,
+        28,
+        32,
+        33,
+        63,
+        91
+      ]
+    },
+    {
+      "number": 11,
+      "name": "Local Transport Areas",
+      "cites": [
+        3,
+        8,
+        10,
+        17,
+        22,
+        23,
+        34,
+        51,
+        52,
+        56,
+        97
+      ],
+      "cited_by": [
+        10,
+        16,
+        17,
+        19,
+        20,
+        22,
+        23,
+        34,
+        49,
+        56,
+        97
+      ]
+    },
+    {
+      "number": 12,
+      "name": "Community of 7000",
+      "cites": [
+        8,
+        13,
+        14,
+        28,
+        31,
+        44
+      ],
+      "cited_by": [
+        6,
+        8,
+        13,
+        14,
+        15,
+        22,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        33,
+        44,
+        62,
+        65
+      ]
+    },
+    {
+      "number": 13,
+      "name": "Subculture Boundary",
+      "cites": [
+        7,
+        8,
+        12,
+        14,
+        17,
+        23,
+        24,
+        25,
+        28,
+        30,
+        41,
+        42,
+        64,
+        71,
+        84,
+        97
+      ],
+      "cited_by": [
+        8,
+        9,
+        12,
+        15,
+        17,
+        19,
+        23,
+        28,
+        29,
+        30,
+        41,
+        42,
+        48,
+        60
+      ]
+    },
+    {
+      "number": 14,
+      "name": "Identifiable Neighborhood",
+      "cites": [
+        8,
+        12,
+        15,
+        37,
+        41,
+        53,
+        60,
+        61
+      ],
+      "cited_by": [
+        5,
+        8,
+        12,
+        13,
+        15,
+        22,
+        26,
+        27,
+        30,
+        35,
+        36,
+        37,
+        40,
+        48,
+        49,
+        53,
+        60,
+        61,
+        65,
+        70,
+        88,
+        89
+      ]
+    },
+    {
+      "number": 15,
+      "name": "Neighborhood Boundary",
+      "cites": [
+        12,
+        13,
+        14,
+        23,
+        32,
+        41,
+        53,
+        59,
+        60,
+        64,
+        69,
+        70,
+        72,
+        73,
+        97,
+        103
+      ],
+      "cited_by": [
+        9,
+        14,
+        23,
+        30,
+        41,
+        48,
+        60,
+        64,
+        90
+      ]
+    },
+    {
+      "number": 16,
+      "name": "Web of Public Transport",
+      "cites": [
+        3,
+        11,
+        20,
+        34
+      ],
+      "cited_by": [
+        3,
+        10,
+        17,
+        20,
+        34
+      ]
+    },
+    {
+      "number": 17,
+      "name": "Ring Roads",
+      "cites": [
+        11,
+        13,
+        16,
+        25,
+        34,
+        42,
+        97
+      ],
+      "cited_by": [
+        3,
+        11,
+        13,
+        23,
+        42
+      ]
+    },
+    {
+      "number": 18,
+      "name": "Network of Learning",
+      "cites": [
+        43,
+        57,
+        83,
+        84,
+        85,
+        86,
+        157
+      ],
+      "cited_by": [
+        40,
+        43,
+        57,
+        83,
+        84,
+        85,
+        86,
+        157
+      ]
+    },
+    {
+      "number": 19,
+      "name": "Web of Shopping",
+      "cites": [
+        8,
+        9,
+        10,
+        11,
+        13,
+        31,
+        32,
+        46,
+        89
+      ],
+      "cited_by": [
+        32,
+        46,
+        89
+      ]
+    },
+    {
+      "number": 20,
+      "name": "Mini-Buses",
+      "cites": [
+        11,
+        16,
+        23,
+        34,
+        92
+      ],
+      "cited_by": [
+        16,
+        34,
+        92
+      ]
+    },
+    {
+      "number": 21,
+      "name": "Four-Story Limit",
+      "cites": [
+        3,
+        5,
+        10,
+        29,
+        39,
+        62,
+        82,
+        95,
+        96
+      ],
+      "cited_by": [
+        28,
+        39,
+        62,
+        96
+      ]
+    },
+    {
+      "number": 22,
+      "name": "Nine Per Cent Parking",
+      "cites": [
+        11,
+        12,
+        14,
+        97,
+        103
+      ],
+      "cited_by": [
+        11,
+        97,
+        103
+      ]
+    },
+    {
+      "number": 23,
+      "name": "Parallel Roads",
+      "cites": [
+        11,
+        13,
+        15,
+        17,
+        49,
+        50,
+        51,
+        52,
+        54,
+        55
+      ],
+      "cited_by": [
+        11,
+        13,
+        15,
+        20,
+        25,
+        32,
+        38,
+        49,
+        50,
+        52,
+        54,
+        55,
+        57
+      ]
+    },
+    {
+      "number": 24,
+      "name": "Sacred Sites",
+      "cites": [
+        59,
+        66,
+        134,
+        171,
+        176
+      ],
+      "cited_by": [
+        13,
+        25,
+        28,
+        64,
+        66
+      ]
+    },
+    {
+      "number": 25,
+      "name": "Access to Water",
+      "cites": [
+        7,
+        23,
+        24,
+        31,
+        103
+      ],
+      "cited_by": [
+        13,
+        17,
+        64,
+        71
+      ]
+    },
+    {
+      "number": 26,
+      "name": "Life Cycle",
+      "cites": [
+        12,
+        14,
+        35,
+        40,
+        41,
+        44,
+        57,
+        65,
+        66,
+        70,
+        75,
+        79,
+        83,
+        84,
+        85,
+        86,
+        153,
+        154,
+        155,
+        156,
+        187
+      ],
+      "cited_by": [
+        6,
+        27,
+        35,
+        40,
+        47,
+        65,
+        66,
+        70,
+        75,
+        84
+      ]
+    },
+    {
+      "number": 27,
+      "name": "Men and Women",
+      "cites": [
+        9,
+        12,
+        14,
+        26,
+        141
+      ],
+      "cited_by": [
+        157
+      ]
+    },
+    {
+      "number": 28,
+      "name": "Eccentric Nucleus",
+      "cites": [
+        10,
+        12,
+        13,
+        21,
+        24,
+        29,
+        30,
+        31,
+        32,
+        59,
+        71
+      ],
+      "cited_by": [
+        12,
+        13,
+        29,
+        30
+      ]
+    },
+    {
+      "number": 29,
+      "name": "Density Rings",
+      "cites": [
+        8,
+        12,
+        13,
+        28,
+        31,
+        37,
+        38,
+        39,
+        61,
+        123
+      ],
+      "cited_by": [
+        21,
+        28,
+        30,
+        36,
+        37,
+        38,
+        39
+      ]
+    },
+    {
+      "number": 30,
+      "name": "Activity Nodes",
+      "cites": [
+        12,
+        13,
+        14,
+        15,
+        28,
+        29,
+        31,
+        33,
+        36,
+        41,
+        43,
+        44,
+        47,
+        52,
+        61,
+        65,
+        84,
+        85,
+        87,
+        88,
+        90,
+        93,
+        100,
+        120
+      ],
+      "cited_by": [
+        13,
+        28,
+        31,
+        33,
+        34,
+        36,
+        41,
+        44,
+        52,
+        61,
+        88,
+        91,
+        93
+      ]
+    },
+    {
+      "number": 31,
+      "name": "Promenade",
+      "cites": [
+        8,
+        12,
+        30,
+        32,
+        33,
+        58,
+        63,
+        100,
+        121,
+        123
+      ],
+      "cited_by": [
+        10,
+        12,
+        19,
+        25,
+        28,
+        29,
+        30,
+        32,
+        33,
+        43,
+        52,
+        57,
+        58,
+        61,
+        63,
+        64,
+        90,
+        91,
+        100,
+        121,
+        123,
+        124
+      ]
+    },
+    {
+      "number": 32,
+      "name": "Shopping Street",
+      "cites": [
+        10,
+        19,
+        23,
+        31,
+        46,
+        48,
+        52,
+        54,
+        87,
+        97,
+        100,
+        244
+      ],
+      "cited_by": [
+        15,
+        19,
+        28,
+        31,
+        46,
+        87,
+        100,
+        103,
+        121
+      ]
+    },
+    {
+      "number": 33,
+      "name": "Night Life",
+      "cites": [
+        10,
+        12,
+        30,
+        31,
+        44,
+        58,
+        63,
+        88,
+        90,
+        91
+      ],
+      "cited_by": [
+        10,
+        30,
+        31,
+        58,
+        63,
+        90,
+        91
+      ]
+    },
+    {
+      "number": 34,
+      "name": "Interchange",
+      "cites": [
+        9,
+        11,
+        16,
+        20,
+        30,
+        39,
+        40,
+        41,
+        92,
+        119
+      ],
+      "cited_by": [
+        11,
+        16,
+        17,
+        20,
+        94,
+        150
+      ]
+    },
+    {
+      "number": 35,
+      "name": "Household Mix",
+      "cites": [
+        14,
+        26,
+        37,
+        40,
+        41,
+        68,
+        75,
+        76,
+        77,
+        78
+      ],
+      "cited_by": [
+        26,
+        37,
+        40,
+        75
+      ]
+    },
+    {
+      "number": 36,
+      "name": "Degrees of Publicness",
+      "cites": [
+        14,
+        29,
+        30,
+        37,
+        38,
+        39,
+        51,
+        55,
+        100,
+        121,
+        123
+      ],
+      "cited_by": [
+        30,
+        37,
+        38,
+        120
+      ]
+    },
+    {
+      "number": 37,
+      "name": "House Cluster",
+      "cites": [
+        14,
+        29,
+        35,
+        36,
+        38,
+        39,
+        67,
+        75,
+        76,
+        77,
+        78,
+        79,
+        98,
+        103,
+        157
+      ],
+      "cited_by": [
+        5,
+        7,
+        8,
+        14,
+        29,
+        35,
+        36,
+        38,
+        47,
+        48,
+        49,
+        53,
+        67,
+        68,
+        71,
+        75,
+        76,
+        77,
+        103,
+        111,
+        157,
+        175,
+        178
+      ]
+    },
+    {
+      "number": 38,
+      "name": "Row Houses",
+      "cites": [
+        23,
+        29,
+        36,
+        37,
+        52,
+        75,
+        76,
+        77,
+        78,
+        95,
+        103,
+        109
+      ],
+      "cited_by": [
+        29,
+        36,
+        37,
+        47,
+        48,
+        67,
+        75,
+        79,
+        100,
+        111
+      ]
+    },
+    {
+      "number": 39,
+      "name": "Housing Hill",
+      "cites": [
+        21,
+        29,
+        67,
+        68,
+        79,
+        118,
+        158,
+        177
+      ],
+      "cited_by": [
+        21,
+        29,
+        34,
+        36,
+        37,
+        67,
+        75,
+        79,
+        97,
+        100
+      ]
+    },
+    {
+      "number": 40,
+      "name": "Old People Everywhere",
+      "cites": [
+        14,
+        18,
+        26,
+        35,
+        75,
+        86,
+        155,
+        156,
+        177
+      ],
+      "cited_by": [
+        26,
+        34,
+        35,
+        57,
+        155
+      ]
+    },
+    {
+      "number": 41,
+      "name": "Work Community",
+      "cites": [
+        9,
+        13,
+        15,
+        30,
+        60,
+        61,
+        72,
+        80,
+        88,
+        93,
+        115,
+        147
+      ],
+      "cited_by": [
+        9,
+        13,
+        14,
+        15,
+        26,
+        30,
+        34,
+        35,
+        42,
+        48,
+        49,
+        53,
+        57,
+        59,
+        60,
+        61,
+        67,
+        71,
+        72,
+        80,
+        81,
+        82,
+        91,
+        103,
+        111,
+        175
+      ]
+    },
+    {
+      "number": 42,
+      "name": "Industrial Ribbon",
+      "cites": [
+        9,
+        13,
+        17,
+        41,
+        106,
+        122
+      ],
+      "cited_by": [
+        9,
+        13,
+        17,
+        80
+      ]
+    },
+    {
+      "number": 43,
+      "name": "University as a Marketplace",
+      "cites": [
+        18,
+        31,
+        48,
+        59,
+        83,
+        95,
+        100
+      ],
+      "cited_by": [
+        18,
+        30,
+        45,
+        57,
+        81,
+        100,
+        151,
+        165
+      ]
+    },
+    {
+      "number": 44,
+      "name": "Local Town Hall",
+      "cites": [
+        12,
+        30,
+        45,
+        61,
+        81,
+        123
+      ],
+      "cited_by": [
+        12,
+        26,
+        30,
+        33,
+        45,
+        81,
+        151,
+        165
+      ]
+    },
+    {
+      "number": 45,
+      "name": "Necklace of Community Projects",
+      "cites": [
+        43,
+        44,
+        47,
+        69,
+        87,
+        122,
+        160,
+        165
+      ],
+      "cited_by": [
+        44,
+        81,
+        153,
+        165
+      ]
+    },
+    {
+      "number": 46,
+      "name": "Market of Many Shops",
+      "cites": [
+        19,
+        32,
+        87,
+        100,
+        101,
+        212,
+        244
+      ],
+      "cited_by": [
+        19,
+        32,
+        87,
+        89,
+        100,
+        165
+      ]
+    },
+    {
+      "number": 47,
+      "name": "Health Center",
+      "cites": [
+        26,
+        37,
+        38,
+        79
+      ],
+      "cited_by": [
+        30,
+        45,
+        71,
+        72,
+        81,
+        150,
+        165
+      ]
+    },
+    {
+      "number": 48,
+      "name": "Housing In Between",
+      "cites": [
+        13,
+        14,
+        15,
+        37,
+        38,
+        41,
+        79
+      ],
+      "cited_by": [
+        32,
+        43,
+        75,
+        97
+      ]
+    },
+    {
+      "number": 49,
+      "name": "Looped Local Roads",
+      "cites": [
+        11,
+        14,
+        23,
+        37,
+        41,
+        50,
+        51,
+        52,
+        103,
+        113
+      ],
+      "cited_by": [
+        23,
+        50,
+        51,
+        52,
+        56,
+        57,
+        114
+      ]
+    },
+    {
+      "number": 50,
+      "name": "T Junctions",
+      "cites": [
+        23,
+        49,
+        54
+      ],
+      "cited_by": [
+        23,
+        49,
+        51
+      ]
+    },
+    {
+      "number": 51,
+      "name": "Green Streets",
+      "cites": [
+        49,
+        50,
+        52,
+        67,
+        103,
+        170,
+        245,
+        247
+      ],
+      "cited_by": [
+        7,
+        11,
+        23,
+        36,
+        49,
+        52,
+        57,
+        67,
+        68,
+        74,
+        103,
+        114,
+        140,
+        164,
+        243,
+        247
+      ]
+    },
+    {
+      "number": 52,
+      "name": "Network of Paths and Cars",
+      "cites": [
+        23,
+        30,
+        31,
+        49,
+        51,
+        54,
+        55,
+        120,
+        121
+      ],
+      "cited_by": [
+        11,
+        23,
+        30,
+        32,
+        38,
+        49,
+        51,
+        54,
+        55,
+        56,
+        57,
+        100,
+        120,
+        121
+      ]
+    },
+    {
+      "number": 53,
+      "name": "Main Gateways",
+      "cites": [
+        14,
+        37,
+        41,
+        95,
+        98,
+        110,
+        112
+      ],
+      "cited_by": [
+        14,
+        15,
+        66,
+        69,
+        92,
+        98,
+        103,
+        112
+      ]
+    },
+    {
+      "number": 54,
+      "name": "Road Crossing",
+      "cites": [
+        23,
+        52,
+        55,
+        61,
+        92,
+        93,
+        103,
+        174,
+        244
+      ],
+      "cited_by": [
+        23,
+        32,
+        50,
+        52,
+        55,
+        93
+      ]
+    },
+    {
+      "number": 55,
+      "name": "Raised Walk",
+      "cites": [
+        23,
+        52,
+        54,
+        125,
+        243
+      ],
+      "cited_by": [
+        23,
+        36,
+        52,
+        54,
+        93,
+        100,
+        121
+      ]
+    },
+    {
+      "number": 56,
+      "name": "Bike Paths and Racks",
+      "cites": [
+        11,
+        49,
+        52,
+        59,
+        110,
+        119,
+        173
+      ],
+      "cited_by": [
+        11,
+        57,
+        73
+      ]
+    },
+    {
+      "number": 57,
+      "name": "Children in the City",
+      "cites": [
+        18,
+        23,
+        31,
+        40,
+        41,
+        43,
+        49,
+        51,
+        52,
+        56,
+        68,
+        70,
+        72,
+        73,
+        74,
+        84,
+        85,
+        86,
+        164
+      ],
+      "cited_by": [
+        18,
+        26,
+        86
+      ]
+    },
+    {
+      "number": 58,
+      "name": "Carnival",
+      "cites": [
+        31,
+        33,
+        61,
+        63,
+        69,
+        93,
+        100,
+        244
+      ],
+      "cited_by": [
+        10,
+        31,
+        33,
+        63
+      ]
+    },
+    {
+      "number": 59,
+      "name": "Quiet Backs",
+      "cites": [
+        9,
+        41,
+        60,
+        64,
+        71,
+        171,
+        173
+      ],
+      "cited_by": [
+        15,
+        24,
+        28,
+        43,
+        56,
+        60,
+        64,
+        70,
+        173
+      ]
+    },
+    {
+      "number": 60,
+      "name": "Accessible Green",
+      "cites": [
+        13,
+        14,
+        15,
+        41,
+        59,
+        66,
+        70,
+        72,
+        74,
+        94,
+        106,
+        171,
+        173
+      ],
+      "cited_by": [
+        14,
+        15,
+        41,
+        59,
+        67,
+        69,
+        74,
+        85,
+        114,
+        173
+      ]
+    },
+    {
+      "number": 61,
+      "name": "Small Public Squares",
+      "cites": [
+        14,
+        30,
+        31,
+        41,
+        106,
+        114,
+        122,
+        123,
+        124,
+        125,
+        126
+      ],
+      "cited_by": [
+        14,
+        29,
+        30,
+        41,
+        44,
+        54,
+        58,
+        62,
+        63,
+        69,
+        88,
+        93,
+        94,
+        114,
+        123,
+        124,
+        125,
+        126,
+        164
+      ]
+    },
+    {
+      "number": 62,
+      "name": "High Places",
+      "cites": [
+        12,
+        21,
+        61,
+        66,
+        125,
+        134,
+        158
+      ],
+      "cited_by": [
+        21,
+        126
+      ]
+    },
+    {
+      "number": 63,
+      "name": "Dancing in the Street",
+      "cites": [
+        10,
+        31,
+        33,
+        58,
+        61,
+        69,
+        93,
+        124,
+        244
+      ],
+      "cited_by": [
+        10,
+        31,
+        33,
+        58,
+        91,
+        126
+      ]
+    },
+    {
+      "number": 64,
+      "name": "Pools and Streams",
+      "cites": [
+        15,
+        24,
+        25,
+        31,
+        59,
+        66,
+        71,
+        100,
+        119
+      ],
+      "cited_by": [
+        13,
+        15,
+        59,
+        66,
+        71,
+        126
+      ]
+    },
+    {
+      "number": 65,
+      "name": "Birth Places",
+      "cites": [
+        12,
+        14,
+        26,
+        95,
+        111,
+        129,
+        136,
+        139,
+        173
+      ],
+      "cited_by": [
+        26,
+        30
+      ]
+    },
+    {
+      "number": 66,
+      "name": "Holy Ground",
+      "cites": [
+        24,
+        26,
+        53,
+        64,
+        134,
+        171
+      ],
+      "cited_by": [
+        24,
+        26,
+        60,
+        62,
+        64,
+        70
+      ]
+    },
+    {
+      "number": 67,
+      "name": "Common Land",
+      "cites": [
+        37,
+        38,
+        39,
+        41,
+        51,
+        60,
+        68,
+        69,
+        72,
+        105,
+        106,
+        114,
+        177
+      ],
+      "cited_by": [
+        37,
+        39,
+        51,
+        68,
+        69,
+        70,
+        71,
+        73,
+        74,
+        98,
+        114,
+        126,
+        170,
+        175,
+        177
+      ]
+    },
+    {
+      "number": 68,
+      "name": "Connected Play",
+      "cites": [
+        37,
+        51,
+        67,
+        71,
+        73,
+        74,
+        86
+      ],
+      "cited_by": [
+        35,
+        39,
+        57,
+        67,
+        73,
+        86,
+        137
+      ]
+    },
+    {
+      "number": 69,
+      "name": "Public Outdoor Room",
+      "cites": [
+        53,
+        60,
+        61,
+        67,
+        100,
+        115,
+        119,
+        120,
+        121,
+        124,
+        125,
+        129,
+        160,
+        163,
+        241,
+        244
+      ],
+      "cited_by": [
+        15,
+        45,
+        58,
+        63,
+        67,
+        71,
+        92,
+        94,
+        121,
+        124,
+        126,
+        163,
+        226
+      ]
+    },
+    {
+      "number": 70,
+      "name": "Grave Sites",
+      "cites": [
+        14,
+        26,
+        59,
+        66,
+        67,
+        171,
+        241
+      ],
+      "cited_by": [
+        15,
+        26,
+        57,
+        60
+      ]
+    },
+    {
+      "number": 71,
+      "name": "Still Water",
+      "cites": [
+        25,
+        37,
+        41,
+        47,
+        64,
+        67,
+        69,
+        72,
+        105,
+        174,
+        243
+      ],
+      "cited_by": [
+        13,
+        28,
+        59,
+        64,
+        68,
+        72,
+        126,
+        144,
+        150,
+        172
+      ]
+    },
+    {
+      "number": 72,
+      "name": "Local Sports",
+      "cites": [
+        41,
+        47,
+        71,
+        95,
+        101,
+        144,
+        165,
+        241,
+        243
+      ],
+      "cited_by": [
+        15,
+        41,
+        57,
+        60,
+        67,
+        71,
+        84
+      ]
+    },
+    {
+      "number": 73,
+      "name": "Adventure Playground",
+      "cites": [
+        56,
+        67,
+        68,
+        161,
+        172,
+        173,
+        203,
+        243
+      ],
+      "cited_by": [
+        15,
+        57,
+        68,
+        86,
+        203
+      ]
+    },
+    {
+      "number": 74,
+      "name": "Animals",
+      "cites": [
+        51,
+        60,
+        67,
+        79,
+        86,
+        178
+      ],
+      "cited_by": [
+        57,
+        60,
+        68,
+        178
+      ]
+    },
+    {
+      "number": 75,
+      "name": "The Family",
+      "cites": [
+        26,
+        35,
+        37,
+        38,
+        39,
+        48,
+        76,
+        77,
+        78,
+        79,
+        95,
+        129,
+        147
+      ],
+      "cited_by": [
+        26,
+        35,
+        37,
+        38,
+        40,
+        76,
+        77,
+        78,
+        79,
+        86,
+        107,
+        136,
+        141,
+        147,
+        153,
+        154,
+        155,
+        156
+      ]
+    },
+    {
+      "number": 76,
+      "name": "House for a Small Family",
+      "cites": [
+        37,
+        75,
+        79,
+        129,
+        136,
+        137,
+        143
+      ],
+      "cited_by": [
+        35,
+        37,
+        38,
+        75,
+        78,
+        79,
+        107,
+        136,
+        137,
+        141,
+        145,
+        154,
+        158
+      ]
+    },
+    {
+      "number": 77,
+      "name": "House for a Couple",
+      "cites": [
+        37,
+        75,
+        79,
+        136,
+        141
+      ],
+      "cited_by": [
+        35,
+        37,
+        38,
+        75,
+        78,
+        79,
+        107,
+        136,
+        141,
+        158
+      ]
+    },
+    {
+      "number": 78,
+      "name": "House for One Person",
+      "cites": [
+        75,
+        76,
+        77,
+        79,
+        139,
+        144,
+        154,
+        155,
+        180,
+        183,
+        188,
+        189
+      ],
+      "cited_by": [
+        35,
+        37,
+        38,
+        75,
+        79,
+        107,
+        155,
+        158
+      ]
+    },
+    {
+      "number": 79,
+      "name": "Your Own Home",
+      "cites": [
+        38,
+        39,
+        75,
+        76,
+        77,
+        78,
+        95,
+        111
+      ],
+      "cited_by": [
+        26,
+        37,
+        39,
+        47,
+        48,
+        74,
+        75,
+        76,
+        77,
+        78,
+        86,
+        111,
+        157
+      ]
+    },
+    {
+      "number": 80,
+      "name": "Self-Governing Workshops and Offices",
+      "cites": [
+        9,
+        41,
+        42,
+        81,
+        82,
+        83,
+        95,
+        148
+      ],
+      "cited_by": [
+        9,
+        41,
+        82,
+        83,
+        85,
+        107,
+        145,
+        146,
+        147,
+        148,
+        149,
+        153,
+        158
+      ]
+    },
+    {
+      "number": 81,
+      "name": "Small Services Without Red Tape",
+      "cites": [
+        41,
+        43,
+        44,
+        45,
+        47,
+        82,
+        84,
+        95,
+        101,
+        102,
+        146,
+        148
+      ],
+      "cited_by": [
+        44,
+        80,
+        82,
+        107,
+        149,
+        150,
+        153,
+        158
+      ]
+    },
+    {
+      "number": 82,
+      "name": "Office Connections",
+      "cites": [
+        41,
+        80,
+        81
+      ],
+      "cited_by": [
+        21,
+        80,
+        81,
+        107,
+        146,
+        148,
+        150
+      ]
+    },
+    {
+      "number": 83,
+      "name": "Master and Apprentices",
+      "cites": [
+        18,
+        80,
+        129,
+        147,
+        148,
+        151,
+        152,
+        183
+      ],
+      "cited_by": [
+        18,
+        26,
+        43,
+        80,
+        84,
+        107,
+        148,
+        151
+      ]
+    },
+    {
+      "number": 84,
+      "name": "Teenage Society",
+      "cites": [
+        18,
+        26,
+        72,
+        83,
+        95,
+        147,
+        157
+      ],
+      "cited_by": [
+        13,
+        18,
+        26,
+        30,
+        57,
+        81
+      ]
+    },
+    {
+      "number": 85,
+      "name": "Shopfront Schools",
+      "cites": [
+        18,
+        60,
+        80,
+        86,
+        95,
+        100,
+        165
+      ],
+      "cited_by": [
+        18,
+        26,
+        30,
+        57
+      ]
+    },
+    {
+      "number": 86,
+      "name": "Children's Home",
+      "cites": [
+        18,
+        57,
+        68,
+        73,
+        75,
+        79,
+        95,
+        101,
+        129
+      ],
+      "cited_by": [
+        18,
+        26,
+        40,
+        57,
+        68,
+        74,
+        85,
+        203
+      ]
+    },
+    {
+      "number": 87,
+      "name": "Individually Owned Shops",
+      "cites": [
+        32,
+        46,
+        88,
+        89,
+        95,
+        165,
+        191,
+        197,
+        200
+      ],
+      "cited_by": [
+        30,
+        32,
+        45,
+        46,
+        89,
+        93,
+        97,
+        107,
+        145
+      ]
+    },
+    {
+      "number": 88,
+      "name": "Street Cafe",
+      "cites": [
+        14,
+        30,
+        61,
+        95,
+        125,
+        150,
+        165,
+        243,
+        244,
+        251
+      ],
+      "cited_by": [
+        30,
+        33,
+        41,
+        87,
+        94,
+        123,
+        124,
+        150,
+        165
+      ]
+    },
+    {
+      "number": 89,
+      "name": "Corner Grocery",
+      "cites": [
+        14,
+        19,
+        46,
+        87,
+        95,
+        110,
+        165,
+        191,
+        197,
+        200
+      ],
+      "cited_by": [
+        19,
+        87
+      ]
+    },
+    {
+      "number": 90,
+      "name": "Beer Hall",
+      "cites": [
+        15,
+        31,
+        33,
+        95,
+        179,
+        181,
+        190
+      ],
+      "cited_by": [
+        30,
+        33,
+        91
+      ]
+    },
+    {
+      "number": 91,
+      "name": "Traveler's Inn",
+      "cites": [
+        10,
+        30,
+        31,
+        33,
+        41,
+        63,
+        90,
+        94,
+        95,
+        129,
+        147,
+        186
+      ],
+      "cited_by": [
+        33,
+        149
+      ]
+    },
+    {
+      "number": 92,
+      "name": "Bus Stop",
+      "cites": [
+        20,
+        53,
+        69,
+        93,
+        121,
+        150,
+        241
+      ],
+      "cited_by": [
+        20,
+        34,
+        54,
+        93,
+        124
+      ]
+    },
+    {
+      "number": 93,
+      "name": "Food Stands",
+      "cites": [
+        30,
+        54,
+        55,
+        61,
+        87,
+        92,
+        124,
+        244
+      ],
+      "cited_by": [
+        30,
+        41,
+        54,
+        58,
+        63,
+        92,
+        124
+      ]
+    },
+    {
+      "number": 94,
+      "name": "Sleeping in Public",
+      "cites": [
+        34,
+        61,
+        69,
+        88,
+        100,
+        101,
+        150,
+        160,
+        188,
+        241
+      ],
+      "cited_by": [
+        60,
+        91,
+        150
+      ]
+    },
+    {
+      "number": 95,
+      "name": "Building Complex",
+      "cites": [
+        98,
+        99,
+        104,
+        105,
+        107,
+        109,
+        110,
+        119,
+        122,
+        205
+      ],
+      "cited_by": [
+        21,
+        38,
+        43,
+        53,
+        65,
+        72,
+        75,
+        79,
+        80,
+        81,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        104,
+        108,
+        111,
+        116,
+        120,
+        122,
+        145
+      ]
+    },
+    {
+      "number": 96,
+      "name": "Number of Stories",
+      "cites": [
+        21,
+        95,
+        99,
+        104,
+        105,
+        116,
+        117,
+        118,
+        171,
+        205,
+        213
+      ],
+      "cited_by": [
+        21,
+        98,
+        99,
+        104,
+        116,
+        127
+      ]
+    },
+    {
+      "number": 97,
+      "name": "Shielded Parking",
+      "cites": [
+        11,
+        22,
+        39,
+        48,
+        87,
+        95,
+        98,
+        102,
+        110,
+        135,
+        158,
+        166,
+        205,
+        244
+      ],
+      "cited_by": [
+        11,
+        13,
+        15,
+        17,
+        22,
+        32,
+        103,
+        110
+      ]
+    },
+    {
+      "number": 98,
+      "name": "Circulation Realms",
+      "cites": [
+        53,
+        67,
+        95,
+        96,
+        99,
+        100,
+        101,
+        102,
+        110,
+        114,
+        115,
+        120
+      ],
+      "cited_by": [
+        37,
+        53,
+        95,
+        97,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        110,
+        119,
+        120,
+        132
+      ]
+    },
+    {
+      "number": 99,
+      "name": "Main Building",
+      "cites": [
+        95,
+        96,
+        98,
+        116,
+        129,
+        205
+      ],
+      "cited_by": [
+        95,
+        96,
+        98,
+        116
+      ]
+    },
+    {
+      "number": 100,
+      "name": "Pedestrian Street",
+      "cites": [
+        31,
+        32,
+        38,
+        39,
+        43,
+        46,
+        52,
+        55,
+        95,
+        98,
+        102,
+        119,
+        121,
+        123,
+        140,
+        158,
+        164,
+        165,
+        166,
+        167
+      ],
+      "cited_by": [
+        30,
+        31,
+        32,
+        36,
+        43,
+        46,
+        58,
+        64,
+        69,
+        85,
+        94,
+        98,
+        101,
+        119,
+        121,
+        123,
+        124,
+        140,
+        158,
+        164,
+        166,
+        243
+      ]
+    },
+    {
+      "number": 101,
+      "name": "Building Thoroughfare",
+      "cites": [
+        95,
+        98,
+        100,
+        102,
+        123,
+        124,
+        135,
+        149,
+        158,
+        180,
+        190,
+        194,
+        237
+      ],
+      "cited_by": [
+        46,
+        72,
+        81,
+        86,
+        94,
+        98,
+        123,
+        124,
+        132,
+        164,
+        165,
+        193,
+        194
+      ]
+    },
+    {
+      "number": 102,
+      "name": "Family of Entrances",
+      "cites": [
+        98,
+        110,
+        112,
+        130,
+        149
+      ],
+      "cited_by": [
+        81,
+        97,
+        98,
+        100,
+        101,
+        110,
+        112,
+        120,
+        125,
+        130,
+        158,
+        224
+      ]
+    },
+    {
+      "number": 103,
+      "name": "Small Parking Lots",
+      "cites": [
+        22,
+        32,
+        37,
+        41,
+        51,
+        53,
+        97,
+        98,
+        106,
+        171,
+        173
+      ],
+      "cited_by": [
+        15,
+        22,
+        25,
+        37,
+        38,
+        49,
+        51,
+        54,
+        244
+      ]
+    },
+    {
+      "number": 104,
+      "name": "Site Repair",
+      "cites": [
+        95,
+        96,
+        98,
+        105,
+        106,
+        107,
+        109,
+        169,
+        171,
+        172
+      ],
+      "cited_by": [
+        95,
+        96,
+        105,
+        110,
+        111,
+        114,
+        169,
+        171,
+        214
+      ]
+    },
+    {
+      "number": 105,
+      "name": "South Facing Outdoors",
+      "cites": [
+        104,
+        106,
+        107,
+        111,
+        128,
+        161,
+        162
+      ],
+      "cited_by": [
+        67,
+        71,
+        95,
+        96,
+        104,
+        106,
+        107,
+        110,
+        111,
+        114,
+        128,
+        161,
+        162
+      ]
+    },
+    {
+      "number": 106,
+      "name": "Positive Outdoor Space",
+      "cites": [
+        105,
+        107,
+        114,
+        115,
+        118,
+        121,
+        122,
+        160,
+        163,
+        171,
+        172,
+        173,
+        174
+      ],
+      "cited_by": [
+        42,
+        60,
+        61,
+        67,
+        103,
+        104,
+        105,
+        107,
+        108,
+        109,
+        114,
+        115,
+        120,
+        122,
+        125,
+        159,
+        160,
+        173,
+        174,
+        191,
+        243
+      ]
+    },
+    {
+      "number": 107,
+      "name": "Wings of Light",
+      "cites": [
+        75,
+        76,
+        77,
+        78,
+        80,
+        81,
+        82,
+        83,
+        87,
+        105,
+        106,
+        108,
+        116,
+        119,
+        132,
+        159,
+        205
+      ],
+      "cited_by": [
+        95,
+        104,
+        105,
+        106,
+        108,
+        109,
+        110,
+        116,
+        117,
+        118,
+        120,
+        122,
+        127,
+        159,
+        160
+      ]
+    },
+    {
+      "number": 108,
+      "name": "Connected Buildings",
+      "cites": [
+        95,
+        106,
+        107,
+        115,
+        119,
+        163
+      ],
+      "cited_by": [
+        107,
+        119
+      ]
+    },
+    {
+      "number": 109,
+      "name": "Long Thin House",
+      "cites": [
+        106,
+        107,
+        116,
+        127,
+        129
+      ],
+      "cited_by": [
+        38,
+        95,
+        104,
+        159
+      ]
+    },
+    {
+      "number": 110,
+      "name": "Main Entrance",
+      "cites": [
+        97,
+        98,
+        102,
+        104,
+        105,
+        107,
+        112,
+        113,
+        130
+      ],
+      "cited_by": [
+        53,
+        56,
+        89,
+        95,
+        97,
+        98,
+        102,
+        111,
+        112,
+        113,
+        120,
+        125,
+        127,
+        130,
+        133,
+        224,
+        242,
+        249
+      ]
+    },
+    {
+      "number": 111,
+      "name": "Half-Hidden Garden",
+      "cites": [
+        37,
+        38,
+        41,
+        79,
+        95,
+        104,
+        105,
+        110,
+        112,
+        115,
+        118,
+        140,
+        172,
+        173
+      ],
+      "cited_by": [
+        65,
+        79,
+        105,
+        112,
+        114,
+        140,
+        163,
+        170,
+        173,
+        177,
+        243
+      ]
+    },
+    {
+      "number": 112,
+      "name": "Entrance Transition",
+      "cites": [
+        53,
+        102,
+        110,
+        111,
+        127,
+        130,
+        134,
+        135,
+        173,
+        174
+      ],
+      "cited_by": [
+        53,
+        102,
+        110,
+        111,
+        113,
+        130,
+        134,
+        153,
+        174
+      ]
+    },
+    {
+      "number": 113,
+      "name": "Car Connection",
+      "cites": [
+        110,
+        112,
+        119,
+        120,
+        127,
+        129,
+        162,
+        163,
+        205,
+        245
+      ],
+      "cited_by": [
+        49,
+        110,
+        130,
+        162
+      ]
+    },
+    {
+      "number": 114,
+      "name": "Hierarchy of Open Space",
+      "cites": [
+        7,
+        49,
+        51,
+        60,
+        61,
+        67,
+        104,
+        105,
+        106,
+        111,
+        124,
+        140,
+        176
+      ],
+      "cited_by": [
+        61,
+        67,
+        98,
+        106,
+        115,
+        173,
+        243
+      ]
+    },
+    {
+      "number": 115,
+      "name": "Courtyards Which Live",
+      "cites": [
+        106,
+        114,
+        119,
+        126,
+        134,
+        161,
+        163,
+        166,
+        167,
+        173,
+        209
+      ],
+      "cited_by": [
+        41,
+        69,
+        98,
+        106,
+        108,
+        111,
+        126,
+        209
+      ]
+    },
+    {
+      "number": 116,
+      "name": "Cascade of Roofs",
+      "cites": [
+        95,
+        96,
+        99,
+        107,
+        117,
+        118,
+        190,
+        205,
+        209
+      ],
+      "cited_by": [
+        96,
+        99,
+        107,
+        109,
+        117,
+        118,
+        119,
+        129,
+        159,
+        209,
+        211
+      ]
+    },
+    {
+      "number": 117,
+      "name": "Sheltering Roof",
+      "cites": [
+        107,
+        116,
+        118,
+        119,
+        145,
+        166,
+        209,
+        220,
+        231
+      ],
+      "cited_by": [
+        96,
+        116,
+        118,
+        119,
+        145,
+        209,
+        220,
+        231
+      ]
+    },
+    {
+      "number": 118,
+      "name": "Roof Garden",
+      "cites": [
+        107,
+        116,
+        117,
+        140,
+        161,
+        163,
+        166,
+        167,
+        177,
+        244,
+        245,
+        246
+      ],
+      "cited_by": [
+        39,
+        96,
+        106,
+        111,
+        116,
+        117,
+        158,
+        166,
+        209,
+        220,
+        232,
+        244
+      ]
+    },
+    {
+      "number": 119,
+      "name": "Arcades",
+      "cites": [
+        98,
+        100,
+        108,
+        116,
+        117,
+        160,
+        190,
+        193,
+        205,
+        211,
+        224,
+        226,
+        227
+      ],
+      "cited_by": [
+        34,
+        56,
+        64,
+        69,
+        95,
+        100,
+        107,
+        108,
+        113,
+        115,
+        117,
+        120,
+        121,
+        122,
+        124,
+        129,
+        160,
+        166,
+        167,
+        168,
+        193,
+        226,
+        227,
+        242,
+        244
+      ]
+    },
+    {
+      "number": 120,
+      "name": "Paths and Goals",
+      "cites": [
+        36,
+        52,
+        95,
+        98,
+        102,
+        106,
+        107,
+        110,
+        119,
+        121,
+        126,
+        171,
+        241,
+        245,
+        247
+      ],
+      "cited_by": [
+        30,
+        52,
+        69,
+        98,
+        113,
+        121,
+        124,
+        126,
+        134,
+        170,
+        174,
+        245
+      ]
+    },
+    {
+      "number": 121,
+      "name": "Path Shape",
+      "cites": [
+        31,
+        32,
+        52,
+        55,
+        69,
+        100,
+        119,
+        120,
+        122,
+        123,
+        124,
+        125,
+        164
+      ],
+      "cited_by": [
+        31,
+        36,
+        52,
+        69,
+        92,
+        100,
+        106,
+        120,
+        122,
+        123,
+        124,
+        125,
+        126,
+        165,
+        241,
+        243,
+        247
+      ]
+    },
+    {
+      "number": 122,
+      "name": "Building Fronts",
+      "cites": [
+        95,
+        106,
+        107,
+        119,
+        121,
+        124,
+        125,
+        140,
+        158,
+        160,
+        164,
+        165,
+        166,
+        242
+      ],
+      "cited_by": [
+        42,
+        45,
+        61,
+        95,
+        106,
+        121,
+        124
+      ]
+    },
+    {
+      "number": 123,
+      "name": "Pedestrian Density",
+      "cites": [
+        31,
+        61,
+        88,
+        100,
+        101,
+        121,
+        124,
+        125,
+        140,
+        160,
+        164,
+        165,
+        166
+      ],
+      "cited_by": [
+        29,
+        31,
+        36,
+        44,
+        61,
+        100,
+        101,
+        121
+      ]
+    },
+    {
+      "number": 124,
+      "name": "Activity Pockets",
+      "cites": [
+        31,
+        61,
+        69,
+        88,
+        92,
+        93,
+        100,
+        101,
+        119,
+        120,
+        121,
+        122,
+        150,
+        163,
+        174,
+        241,
+        243
+      ],
+      "cited_by": [
+        61,
+        63,
+        69,
+        93,
+        101,
+        114,
+        121,
+        122,
+        123,
+        126,
+        241,
+        243
+      ]
+    },
+    {
+      "number": 125,
+      "name": "Stair Seats",
+      "cites": [
+        61,
+        102,
+        106,
+        110,
+        121,
+        158,
+        168,
+        241,
+        248
+      ],
+      "cited_by": [
+        55,
+        61,
+        62,
+        69,
+        88,
+        121,
+        122,
+        123,
+        126,
+        133,
+        158,
+        160,
+        195,
+        241,
+        245
+      ]
+    },
+    {
+      "number": 126,
+      "name": "Something Roughly in the Middle",
+      "cites": [
+        61,
+        62,
+        63,
+        64,
+        67,
+        69,
+        71,
+        115,
+        120,
+        121,
+        124,
+        125,
+        171,
+        243
+      ],
+      "cited_by": [
+        61,
+        115,
+        120
+      ]
+    },
+    {
+      "number": 127,
+      "name": "Intimacy Gradient",
+      "cites": [
+        96,
+        107,
+        110,
+        129,
+        130,
+        141,
+        142,
+        144,
+        149,
+        152
+      ],
+      "cited_by": [
+        109,
+        112,
+        113,
+        128,
+        129,
+        131,
+        136,
+        138,
+        141,
+        142,
+        144,
+        146,
+        152,
+        185,
+        233
+      ]
+    },
+    {
+      "number": 128,
+      "name": "Indoor Sunlight",
+      "cites": [
+        105,
+        127,
+        138,
+        157,
+        161,
+        162,
+        163,
+        183,
+        199,
+        236
+      ],
+      "cited_by": [
+        105,
+        129,
+        138,
+        162,
+        199
+      ]
+    },
+    {
+      "number": 129,
+      "name": "Common Areas at the Heart",
+      "cites": [
+        116,
+        119,
+        127,
+        128,
+        131,
+        132,
+        139,
+        142,
+        147,
+        159,
+        163,
+        181,
+        191
+      ],
+      "cited_by": [
+        65,
+        69,
+        75,
+        76,
+        83,
+        86,
+        91,
+        99,
+        109,
+        113,
+        127,
+        131,
+        137,
+        139,
+        140,
+        141,
+        142,
+        144,
+        146,
+        147,
+        148,
+        163,
+        179,
+        181,
+        185,
+        252
+      ]
+    },
+    {
+      "number": 130,
+      "name": "Entrance Room",
+      "cites": [
+        102,
+        110,
+        112,
+        113,
+        135,
+        140,
+        142,
+        159,
+        166,
+        191,
+        201,
+        202,
+        237,
+        242
+      ],
+      "cited_by": [
+        102,
+        110,
+        112,
+        127,
+        131,
+        134,
+        142,
+        149,
+        168,
+        180,
+        194,
+        202,
+        242,
+        252
+      ]
+    },
+    {
+      "number": 131,
+      "name": "The Flow Through Rooms",
+      "cites": [
+        127,
+        129,
+        130,
+        132,
+        133,
+        134,
+        135,
+        159,
+        196
+      ],
+      "cited_by": [
+        129,
+        132,
+        133,
+        135,
+        193,
+        194,
+        196,
+        224
+      ]
+    },
+    {
+      "number": 132,
+      "name": "Short Passages",
+      "cites": [
+        98,
+        101,
+        131,
+        159,
+        163,
+        166,
+        179,
+        180,
+        191,
+        194,
+        197,
+        198,
+        222,
+        237
+      ],
+      "cited_by": [
+        107,
+        129,
+        131,
+        133,
+        134,
+        135,
+        137,
+        194
+      ]
+    },
+    {
+      "number": 133,
+      "name": "Staircase as a Stage",
+      "cites": [
+        110,
+        125,
+        131,
+        132,
+        134,
+        135,
+        191,
+        195
+      ],
+      "cited_by": [
+        131,
+        134,
+        135,
+        195,
+        228
+      ]
+    },
+    {
+      "number": 134,
+      "name": "Zen View",
+      "cites": [
+        112,
+        120,
+        130,
+        132,
+        133,
+        135,
+        180,
+        221
+      ],
+      "cited_by": [
+        24,
+        62,
+        66,
+        112,
+        115,
+        131,
+        133,
+        135,
+        142,
+        173,
+        180,
+        221,
+        222
+      ]
+    },
+    {
+      "number": 135,
+      "name": "Tapestry of Light and Dark",
+      "cites": [
+        131,
+        132,
+        133,
+        134,
+        180,
+        250,
+        252
+      ],
+      "cited_by": [
+        97,
+        101,
+        112,
+        130,
+        131,
+        133,
+        134,
+        149,
+        194,
+        196,
+        237
+      ]
+    },
+    {
+      "number": 136,
+      "name": "Couple's Realm",
+      "cites": [
+        75,
+        76,
+        77,
+        127,
+        138,
+        144,
+        159,
+        185,
+        187,
+        189,
+        191,
+        198,
+        224
+      ],
+      "cited_by": [
+        65,
+        76,
+        77,
+        137,
+        138,
+        142,
+        143,
+        144,
+        186,
+        187
+      ]
+    },
+    {
+      "number": 137,
+      "name": "Children's Realm",
+      "cites": [
+        68,
+        76,
+        129,
+        132,
+        136,
+        139,
+        143,
+        144,
+        157,
+        163
+      ],
+      "cited_by": [
+        76,
+        138,
+        143,
+        144,
+        186,
+        203
+      ]
+    },
+    {
+      "number": 138,
+      "name": "Sleeping to the East",
+      "cites": [
+        127,
+        128,
+        136,
+        137,
+        143,
+        180,
+        187,
+        188,
+        221,
+        238
+      ],
+      "cited_by": [
+        128,
+        136,
+        143,
+        144,
+        186
+      ]
+    },
+    {
+      "number": 139,
+      "name": "Farmhouse Kitchen",
+      "cites": [
+        129,
+        142,
+        147,
+        159,
+        179,
+        182,
+        184,
+        191,
+        199,
+        200,
+        201
+      ],
+      "cited_by": [
+        65,
+        78,
+        129,
+        137,
+        142,
+        147,
+        163,
+        179,
+        182,
+        184,
+        199,
+        200
+      ]
+    },
+    {
+      "number": 140,
+      "name": "Private Terrace on the Street",
+      "cites": [
+        51,
+        100,
+        111,
+        129,
+        142,
+        163,
+        169,
+        173,
+        193,
+        243
+      ],
+      "cited_by": [
+        100,
+        111,
+        114,
+        118,
+        122,
+        123,
+        130,
+        142,
+        155,
+        156,
+        161,
+        163,
+        166,
+        168,
+        173,
+        241,
+        243,
+        244,
+        247
+      ]
+    },
+    {
+      "number": 141,
+      "name": "A Room of One's Own",
+      "cites": [
+        75,
+        76,
+        77,
+        127,
+        129,
+        154,
+        155,
+        157,
+        159,
+        179,
+        183,
+        188,
+        189,
+        191,
+        253
+      ],
+      "cited_by": [
+        27,
+        77,
+        127,
+        142,
+        154,
+        156,
+        188
+      ]
+    },
+    {
+      "number": 142,
+      "name": "Sequence of Sitting Spaces",
+      "cites": [
+        127,
+        129,
+        130,
+        134,
+        136,
+        139,
+        140,
+        141,
+        146,
+        150,
+        152,
+        180,
+        181,
+        185,
+        191,
+        241
+      ],
+      "cited_by": [
+        127,
+        129,
+        130,
+        139,
+        140,
+        163,
+        179,
+        185,
+        194,
+        196,
+        202,
+        251
+      ]
+    },
+    {
+      "number": 143,
+      "name": "Bed Cluster",
+      "cites": [
+        136,
+        137,
+        138,
+        159,
+        186,
+        188,
+        189,
+        191,
+        198,
+        203
+      ],
+      "cited_by": [
+        76,
+        137,
+        138,
+        144,
+        186,
+        188
+      ]
+    },
+    {
+      "number": 144,
+      "name": "Bathing Room",
+      "cites": [
+        71,
+        127,
+        129,
+        136,
+        137,
+        138,
+        143,
+        159,
+        173,
+        178,
+        191,
+        238
+      ],
+      "cited_by": [
+        72,
+        78,
+        127,
+        136,
+        137,
+        177,
+        178,
+        189
+      ]
+    },
+    {
+      "number": 145,
+      "name": "Bulk Storage",
+      "cites": [
+        76,
+        80,
+        87,
+        95,
+        117,
+        153,
+        162,
+        169,
+        215
+      ],
+      "cited_by": [
+        117,
+        162,
+        175,
+        190
+      ]
+    },
+    {
+      "number": 146,
+      "name": "Flexible Office Space",
+      "cites": [
+        80,
+        82,
+        127,
+        129,
+        147,
+        148,
+        149,
+        152,
+        159,
+        190,
+        226
+      ],
+      "cited_by": [
+        81,
+        142,
+        148,
+        149,
+        151,
+        152,
+        153,
+        179,
+        183,
+        252
+      ]
+    },
+    {
+      "number": 147,
+      "name": "Communal Eating",
+      "cites": [
+        75,
+        80,
+        129,
+        139,
+        148,
+        151,
+        182
+      ],
+      "cited_by": [
+        41,
+        75,
+        83,
+        84,
+        91,
+        129,
+        139,
+        146,
+        182
+      ]
+    },
+    {
+      "number": 148,
+      "name": "Small Work Groups",
+      "cites": [
+        80,
+        82,
+        83,
+        129,
+        146,
+        152,
+        158,
+        183
+      ],
+      "cited_by": [
+        80,
+        81,
+        83,
+        146,
+        147,
+        151,
+        152,
+        158
+      ]
+    },
+    {
+      "number": 149,
+      "name": "Reception Welcomes You",
+      "cites": [
+        80,
+        81,
+        91,
+        130,
+        135,
+        146,
+        150,
+        159,
+        179,
+        180,
+        181,
+        183,
+        191
+      ],
+      "cited_by": [
+        101,
+        102,
+        127,
+        146
+      ]
+    },
+    {
+      "number": 150,
+      "name": "A Place to Wait",
+      "cites": [
+        34,
+        47,
+        71,
+        81,
+        82,
+        88,
+        94,
+        159,
+        164,
+        165,
+        176,
+        180,
+        191
+      ],
+      "cited_by": [
+        88,
+        92,
+        94,
+        124,
+        142,
+        149,
+        179
+      ]
+    },
+    {
+      "number": 151,
+      "name": "Small Meeting Rooms",
+      "cites": [
+        43,
+        44,
+        83,
+        146,
+        148,
+        159,
+        185,
+        191,
+        251,
+        252
+      ],
+      "cited_by": [
+        83,
+        147,
+        179
+      ]
+    },
+    {
+      "number": 152,
+      "name": "Half-Private Office",
+      "cites": [
+        127,
+        146,
+        148,
+        159,
+        183,
+        185,
+        191,
+        192
+      ],
+      "cited_by": [
+        83,
+        127,
+        142,
+        146,
+        148,
+        183,
+        193
+      ]
+    },
+    {
+      "number": 153,
+      "name": "Rooms to Rent",
+      "cites": [
+        45,
+        75,
+        80,
+        81,
+        112,
+        146,
+        154,
+        155,
+        157,
+        158,
+        159,
+        191
+      ],
+      "cited_by": [
+        26,
+        145,
+        154,
+        155,
+        158
+      ]
+    },
+    {
+      "number": 154,
+      "name": "Teenager's Cottage",
+      "cites": [
+        75,
+        76,
+        141,
+        153,
+        157,
+        158,
+        185,
+        188,
+        191,
+        205
+      ],
+      "cited_by": [
+        26,
+        78,
+        141,
+        153,
+        155,
+        158
+      ]
+    },
+    {
+      "number": 155,
+      "name": "Old Age Cottage",
+      "cites": [
+        40,
+        75,
+        78,
+        140,
+        153,
+        154,
+        156,
+        164,
+        191,
+        205,
+        242
+      ],
+      "cited_by": [
+        26,
+        40,
+        78,
+        141,
+        153,
+        156,
+        242
+      ]
+    },
+    {
+      "number": 156,
+      "name": "Settled Work",
+      "cites": [
+        75,
+        140,
+        141,
+        155,
+        157,
+        165
+      ],
+      "cited_by": [
+        26,
+        40,
+        155,
+        158
+      ]
+    },
+    {
+      "number": 157,
+      "name": "Home Workshop",
+      "cites": [
+        9,
+        18,
+        27,
+        37,
+        79,
+        159,
+        161,
+        165,
+        183,
+        191,
+        192
+      ],
+      "cited_by": [
+        9,
+        18,
+        37,
+        84,
+        128,
+        137,
+        141,
+        153,
+        154,
+        156,
+        158,
+        183
+      ]
+    },
+    {
+      "number": 158,
+      "name": "Open Stairs",
+      "cites": [
+        76,
+        77,
+        78,
+        80,
+        81,
+        100,
+        102,
+        118,
+        125,
+        148,
+        153,
+        154,
+        156,
+        157,
+        161,
+        195
+      ],
+      "cited_by": [
+        39,
+        62,
+        97,
+        100,
+        101,
+        122,
+        125,
+        148,
+        153,
+        154,
+        195
+      ]
+    },
+    {
+      "number": 159,
+      "name": "Light on Two Sides of Every Room",
+      "cites": [
+        106,
+        107,
+        109,
+        116,
+        180,
+        192,
+        209,
+        221,
+        223,
+        238
+      ],
+      "cited_by": [
+        107,
+        129,
+        130,
+        131,
+        132,
+        136,
+        139,
+        141,
+        143,
+        144,
+        146,
+        149,
+        150,
+        151,
+        152,
+        153,
+        157,
+        160,
+        162,
+        180,
+        189,
+        192,
+        223
+      ]
+    },
+    {
+      "number": 160,
+      "name": "Building Edge",
+      "cites": [
+        106,
+        107,
+        119,
+        125,
+        159,
+        161,
+        162,
+        163,
+        164,
+        166,
+        167,
+        168,
+        241,
+        242
+      ],
+      "cited_by": [
+        45,
+        69,
+        94,
+        106,
+        119,
+        122,
+        123,
+        161,
+        166,
+        168,
+        169,
+        197,
+        241,
+        242,
+        245,
+        249
+      ]
+    },
+    {
+      "number": 161,
+      "name": "Sunny Place",
+      "cites": [
+        105,
+        140,
+        160,
+        163,
+        167,
+        174,
+        238,
+        241,
+        244
+      ],
+      "cited_by": [
+        73,
+        105,
+        115,
+        118,
+        128,
+        157,
+        158,
+        160,
+        162,
+        163,
+        167,
+        176,
+        241,
+        242
+      ]
+    },
+    {
+      "number": 162,
+      "name": "North Face",
+      "cites": [
+        105,
+        113,
+        128,
+        145,
+        159,
+        161,
+        173,
+        178,
+        198
+      ],
+      "cited_by": [
+        105,
+        113,
+        128,
+        145,
+        160
+      ]
+    },
+    {
+      "number": 163,
+      "name": "Outdoor Room",
+      "cites": [
+        69,
+        111,
+        129,
+        139,
+        140,
+        142,
+        161,
+        168,
+        173,
+        174,
+        191,
+        205,
+        226,
+        243,
+        244
+      ],
+      "cited_by": [
+        69,
+        106,
+        108,
+        113,
+        115,
+        118,
+        124,
+        128,
+        129,
+        132,
+        137,
+        140,
+        160,
+        161,
+        165,
+        166,
+        167,
+        168,
+        171,
+        174,
+        226,
+        241,
+        243,
+        244,
+        247
+      ]
+    },
+    {
+      "number": 164,
+      "name": "Street Windows",
+      "cites": [
+        51,
+        61,
+        100,
+        101,
+        180,
+        236,
+        238,
+        246
+      ],
+      "cited_by": [
+        57,
+        100,
+        121,
+        122,
+        123,
+        150,
+        155,
+        160,
+        165,
+        180,
+        221
+      ]
+    },
+    {
+      "number": 165,
+      "name": "Opening to the Street",
+      "cites": [
+        43,
+        44,
+        45,
+        46,
+        47,
+        88,
+        101,
+        121,
+        163,
+        164,
+        243
+      ],
+      "cited_by": [
+        45,
+        72,
+        85,
+        87,
+        88,
+        89,
+        100,
+        122,
+        123,
+        150,
+        156,
+        157,
+        243
+      ]
+    },
+    {
+      "number": 166,
+      "name": "Gallery Surround",
+      "cites": [
+        100,
+        118,
+        119,
+        140,
+        160,
+        163,
+        167,
+        193,
+        226
+      ],
+      "cited_by": [
+        97,
+        100,
+        115,
+        117,
+        118,
+        122,
+        123,
+        130,
+        132,
+        160,
+        167,
+        168,
+        226,
+        227,
+        243,
+        244
+      ]
+    },
+    {
+      "number": 167,
+      "name": "Six-Foot Balcony",
+      "cites": [
+        119,
+        161,
+        163,
+        166,
+        191,
+        193,
+        226,
+        243
+      ],
+      "cited_by": [
+        100,
+        115,
+        118,
+        160,
+        161,
+        166,
+        168,
+        193,
+        226,
+        227
+      ]
+    },
+    {
+      "number": 168,
+      "name": "Connection to the Earth",
+      "cites": [
+        119,
+        130,
+        140,
+        160,
+        163,
+        166,
+        167,
+        169,
+        215,
+        247,
+        248
+      ],
+      "cited_by": [
+        125,
+        160,
+        163,
+        169,
+        214,
+        215,
+        241,
+        242,
+        247,
+        248,
+        249
+      ]
+    },
+    {
+      "number": 169,
+      "name": "Terraced Slope",
+      "cites": [
+        104,
+        160,
+        168,
+        170,
+        177,
+        243,
+        245
+      ],
+      "cited_by": [
+        104,
+        140,
+        145,
+        168,
+        172,
+        245,
+        247
+      ]
+    },
+    {
+      "number": 170,
+      "name": "Fruit Trees",
+      "cites": [
+        67,
+        111,
+        120,
+        171,
+        176
+      ],
+      "cited_by": [
+        51,
+        169,
+        171,
+        172,
+        174,
+        177,
+        178
+      ]
+    },
+    {
+      "number": 171,
+      "name": "Tree Places",
+      "cites": [
+        104,
+        163,
+        170,
+        174,
+        176,
+        241,
+        243
+      ],
+      "cited_by": [
+        24,
+        59,
+        60,
+        66,
+        70,
+        96,
+        103,
+        104,
+        106,
+        120,
+        126,
+        170,
+        174
+      ]
+    },
+    {
+      "number": 172,
+      "name": "Garden Growing Wild",
+      "cites": [
+        71,
+        169,
+        170,
+        175,
+        176,
+        245
+      ],
+      "cited_by": [
+        73,
+        104,
+        106,
+        111,
+        176,
+        243
+      ]
+    },
+    {
+      "number": 173,
+      "name": "Garden Wall",
+      "cites": [
+        59,
+        60,
+        106,
+        111,
+        114,
+        134,
+        140,
+        174,
+        193
+      ],
+      "cited_by": [
+        56,
+        59,
+        60,
+        65,
+        73,
+        103,
+        106,
+        111,
+        112,
+        115,
+        140,
+        144,
+        162,
+        163,
+        245,
+        249
+      ]
+    },
+    {
+      "number": 174,
+      "name": "Trellised Walk",
+      "cites": [
+        106,
+        112,
+        120,
+        163,
+        170,
+        171,
+        175,
+        226,
+        238,
+        246,
+        247
+      ],
+      "cited_by": [
+        54,
+        71,
+        106,
+        112,
+        124,
+        161,
+        163,
+        171,
+        173,
+        226,
+        241,
+        244,
+        246
+      ]
+    },
+    {
+      "number": 175,
+      "name": "Greenhouse",
+      "cites": [
+        37,
+        41,
+        67,
+        145,
+        176,
+        177,
+        178,
+        180,
+        201
+      ],
+      "cited_by": [
+        172,
+        174
+      ]
+    },
+    {
+      "number": 176,
+      "name": "Garden Seat",
+      "cites": [
+        161,
+        172,
+        238,
+        241
+      ],
+      "cited_by": [
+        24,
+        114,
+        150,
+        170,
+        171,
+        172,
+        175,
+        241
+      ]
+    },
+    {
+      "number": 177,
+      "name": "Vegetable Garden",
+      "cites": [
+        67,
+        111,
+        144,
+        170,
+        178
+      ],
+      "cited_by": [
+        39,
+        40,
+        67,
+        118,
+        169,
+        175,
+        178
+      ]
+    },
+    {
+      "number": 178,
+      "name": "Compost",
+      "cites": [
+        37,
+        74,
+        144,
+        170,
+        177
+      ],
+      "cited_by": [
+        74,
+        144,
+        162,
+        175,
+        177,
+        181
+      ]
+    },
+    {
+      "number": 179,
+      "name": "Alcoves",
+      "cites": [
+        129,
+        139,
+        142,
+        146,
+        150,
+        151,
+        180,
+        190,
+        191,
+        193,
+        202,
+        211,
+        226
+      ],
+      "cited_by": [
+        90,
+        132,
+        139,
+        141,
+        149,
+        180,
+        183,
+        186,
+        193,
+        197,
+        202,
+        211,
+        228,
+        231,
+        252
+      ]
+    },
+    {
+      "number": 180,
+      "name": "Window Place",
+      "cites": [
+        130,
+        134,
+        159,
+        164,
+        179,
+        202,
+        221,
+        222,
+        223,
+        231
+      ],
+      "cited_by": [
+        78,
+        101,
+        132,
+        134,
+        135,
+        138,
+        142,
+        149,
+        150,
+        159,
+        164,
+        175,
+        179,
+        181,
+        185,
+        197,
+        202,
+        211,
+        221,
+        222,
+        231,
+        236,
+        244,
+        249
+      ]
+    },
+    {
+      "number": 181,
+      "name": "The Fire",
+      "cites": [
+        129,
+        178,
+        180,
+        185
+      ],
+      "cited_by": [
+        90,
+        129,
+        142,
+        149,
+        185
+      ]
+    },
+    {
+      "number": 182,
+      "name": "Eating Atmosphere",
+      "cites": [
+        139,
+        147,
+        200,
+        201,
+        202,
+        250,
+        251,
+        252
+      ],
+      "cited_by": [
+        139,
+        147,
+        252
+      ]
+    },
+    {
+      "number": 183,
+      "name": "Workspace Enclosure",
+      "cites": [
+        146,
+        152,
+        157,
+        179,
+        185,
+        191,
+        192,
+        193,
+        197,
+        200,
+        201,
+        252
+      ],
+      "cited_by": [
+        78,
+        83,
+        128,
+        141,
+        148,
+        149,
+        152,
+        157,
+        193,
+        198,
+        200,
+        252
+      ]
+    },
+    {
+      "number": 184,
+      "name": "Cooking Layout",
+      "cites": [
+        139,
+        197,
+        199,
+        200
+      ],
+      "cited_by": [
+        139,
+        199
+      ]
+    },
+    {
+      "number": 185,
+      "name": "Sitting Circle",
+      "cites": [
+        127,
+        129,
+        142,
+        180,
+        181,
+        191,
+        193,
+        251,
+        252
+      ],
+      "cited_by": [
+        136,
+        142,
+        151,
+        152,
+        154,
+        181,
+        183,
+        193,
+        251,
+        252
+      ]
+    },
+    {
+      "number": 186,
+      "name": "Communal Sleeping",
+      "cites": [
+        136,
+        137,
+        138,
+        143,
+        179,
+        187,
+        188,
+        189
+      ],
+      "cited_by": [
+        91,
+        143,
+        188
+      ]
+    },
+    {
+      "number": 187,
+      "name": "Marriage Bed",
+      "cites": [
+        136,
+        188,
+        189,
+        190,
+        191,
+        249
+      ],
+      "cited_by": [
+        26,
+        136,
+        138,
+        186,
+        188,
+        189
+      ]
+    },
+    {
+      "number": 188,
+      "name": "Bed Alcove",
+      "cites": [
+        141,
+        143,
+        186,
+        187,
+        189,
+        190,
+        191,
+        193,
+        197,
+        200,
+        221
+      ],
+      "cited_by": [
+        78,
+        94,
+        138,
+        141,
+        143,
+        154,
+        186,
+        187,
+        189,
+        193
+      ]
+    },
+    {
+      "number": 189,
+      "name": "Dressing Rooms",
+      "cites": [
+        144,
+        159,
+        187,
+        188,
+        191,
+        197,
+        198,
+        200,
+        201
+      ],
+      "cited_by": [
+        78,
+        136,
+        141,
+        143,
+        186,
+        187,
+        188,
+        198
+      ]
+    },
+    {
+      "number": 190,
+      "name": "Ceiling Height Variety",
+      "cites": [
+        145,
+        191,
+        205,
+        213,
+        219
+      ],
+      "cited_by": [
+        90,
+        101,
+        116,
+        119,
+        146,
+        179,
+        187,
+        188,
+        191,
+        192,
+        197,
+        204,
+        210,
+        213,
+        219
+      ]
+    },
+    {
+      "number": 191,
+      "name": "The Shape of Indoor Space",
+      "cites": [
+        106,
+        190,
+        193,
+        197,
+        198,
+        205,
+        210,
+        212,
+        218,
+        219
+      ],
+      "cited_by": [
+        87,
+        89,
+        129,
+        130,
+        132,
+        133,
+        136,
+        139,
+        141,
+        142,
+        143,
+        144,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        157,
+        163,
+        167,
+        179,
+        183,
+        185,
+        187,
+        188,
+        189,
+        190,
+        192,
+        193,
+        197
+      ]
+    },
+    {
+      "number": 192,
+      "name": "Windows Overlooking Life",
+      "cites": [
+        159,
+        190,
+        191,
+        221,
+        222,
+        223,
+        239
+      ],
+      "cited_by": [
+        152,
+        157,
+        159,
+        183,
+        199,
+        221,
+        222,
+        236
+      ]
+    },
+    {
+      "number": 193,
+      "name": "Half-Open Wall",
+      "cites": [
+        101,
+        119,
+        131,
+        152,
+        167,
+        179,
+        183,
+        185,
+        188,
+        191,
+        194,
+        212,
+        226,
+        227,
+        239,
+        249
+      ],
+      "cited_by": [
+        119,
+        140,
+        166,
+        167,
+        173,
+        179,
+        183,
+        185,
+        188,
+        191,
+        194
+      ]
+    },
+    {
+      "number": 194,
+      "name": "Interior Windows",
+      "cites": [
+        101,
+        130,
+        131,
+        132,
+        135,
+        142,
+        193,
+        237,
+        239
+      ],
+      "cited_by": [
+        101,
+        132,
+        193,
+        237,
+        239
+      ]
+    },
+    {
+      "number": 195,
+      "name": "Staircase Volume",
+      "cites": [
+        125,
+        133,
+        158,
+        203,
+        212,
+        228
+      ],
+      "cited_by": [
+        133,
+        158,
+        228
+      ]
+    },
+    {
+      "number": 196,
+      "name": "Corner Doors",
+      "cites": [
+        131,
+        135,
+        142,
+        198,
+        224,
+        225,
+        237,
+        249
+      ],
+      "cited_by": [
+        131,
+        198,
+        221,
+        224,
+        237,
+        249
+      ]
+    },
+    {
+      "number": 197,
+      "name": "Thick Walls",
+      "cites": [
+        160,
+        179,
+        180,
+        190,
+        191,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        211,
+        212
+      ],
+      "cited_by": [
+        87,
+        89,
+        132,
+        183,
+        184,
+        188,
+        189,
+        191,
+        198,
+        200,
+        201,
+        202,
+        203,
+        204,
+        211,
+        223
+      ]
+    },
+    {
+      "number": 198,
+      "name": "Closets Between Rooms",
+      "cites": [
+        183,
+        189,
+        196,
+        197
+      ],
+      "cited_by": [
+        132,
+        136,
+        143,
+        162,
+        189,
+        191,
+        196,
+        197,
+        204,
+        228
+      ]
+    },
+    {
+      "number": 199,
+      "name": "Sunny Counter",
+      "cites": [
+        128,
+        139,
+        184,
+        192,
+        200,
+        211,
+        250
+      ],
+      "cited_by": [
+        128,
+        139,
+        184,
+        197,
+        211
+      ]
+    },
+    {
+      "number": 200,
+      "name": "Open Shelves",
+      "cites": [
+        139,
+        183,
+        197,
+        201,
+        211
+      ],
+      "cited_by": [
+        87,
+        89,
+        139,
+        182,
+        183,
+        184,
+        188,
+        189,
+        197,
+        199,
+        201
+      ]
+    },
+    {
+      "number": 201,
+      "name": "Waist-High Shelf",
+      "cites": [
+        197,
+        200,
+        211,
+        253
+      ],
+      "cited_by": [
+        130,
+        139,
+        175,
+        182,
+        183,
+        189,
+        197,
+        200,
+        211,
+        222
+      ]
+    },
+    {
+      "number": 202,
+      "name": "Built-in Seats",
+      "cites": [
+        130,
+        142,
+        179,
+        180,
+        197,
+        211
+      ],
+      "cited_by": [
+        130,
+        179,
+        180,
+        182,
+        197,
+        211,
+        230,
+        251
+      ]
+    },
+    {
+      "number": 203,
+      "name": "Child Caves",
+      "cites": [
+        73,
+        86,
+        137,
+        197,
+        211,
+        224
+      ],
+      "cited_by": [
+        73,
+        143,
+        195,
+        197,
+        211,
+        228
+      ]
+    },
+    {
+      "number": 204,
+      "name": "Secret Place",
+      "cites": [
+        190,
+        197,
+        198,
+        211,
+        219
+      ],
+      "cited_by": [
+        197,
+        211
+      ]
+    },
+    {
+      "number": 205,
+      "name": "Structure Follows Social Spaces",
+      "cites": [
+        206,
+        207,
+        208,
+        212,
+        219
+      ],
+      "cited_by": [
+        95,
+        96,
+        97,
+        99,
+        107,
+        113,
+        116,
+        119,
+        154,
+        155,
+        163,
+        190,
+        191,
+        206,
+        207,
+        208,
+        212
+      ]
+    },
+    {
+      "number": 206,
+      "name": "Efficient Structure",
+      "cites": [
+        205,
+        209,
+        210,
+        212,
+        213,
+        216,
+        217,
+        218,
+        219,
+        220,
+        225,
+        227
+      ],
+      "cited_by": [
+        205,
+        207,
+        208,
+        210,
+        213,
+        215,
+        218,
+        219,
+        225,
+        227,
+        228,
+        229
+      ]
+    },
+    {
+      "number": 207,
+      "name": "Good Materials",
+      "cites": [
+        205,
+        206,
+        208,
+        234,
+        235
+      ],
+      "cited_by": [
+        205,
+        208,
+        219,
+        228,
+        248,
+        250
+      ]
+    },
+    {
+      "number": 208,
+      "name": "Gradual Stiffening",
+      "cites": [
+        205,
+        206,
+        207,
+        216,
+        217,
+        218,
+        219,
+        220
+      ],
+      "cited_by": [
+        205,
+        207,
+        212,
+        225,
+        231
+      ]
+    },
+    {
+      "number": 209,
+      "name": "Roof Layout",
+      "cites": [
+        115,
+        116,
+        117,
+        118,
+        211,
+        220
+      ],
+      "cited_by": [
+        115,
+        116,
+        117,
+        159,
+        206,
+        210,
+        211,
+        212
+      ]
+    },
+    {
+      "number": 210,
+      "name": "Floor and Ceiling Layout",
+      "cites": [
+        190,
+        206,
+        209,
+        211,
+        212,
+        213,
+        217,
+        219,
+        233
+      ],
+      "cited_by": [
+        191,
+        206,
+        211,
+        212,
+        217,
+        219
+      ]
+    },
+    {
+      "number": 211,
+      "name": "Thickening the Outer Walls",
+      "cites": [
+        116,
+        179,
+        180,
+        197,
+        199,
+        201,
+        202,
+        203,
+        204,
+        209,
+        210,
+        212,
+        219,
+        220
+      ],
+      "cited_by": [
+        119,
+        179,
+        197,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        209,
+        210
+      ]
+    },
+    {
+      "number": 212,
+      "name": "Columns at the Corners",
+      "cites": [
+        205,
+        208,
+        209,
+        210,
+        213,
+        214,
+        216,
+        217,
+        219,
+        220,
+        226
+      ],
+      "cited_by": [
+        46,
+        191,
+        193,
+        195,
+        197,
+        205,
+        206,
+        210,
+        211,
+        213,
+        214,
+        215,
+        226,
+        231
+      ]
+    },
+    {
+      "number": 213,
+      "name": "Final Column Distribution",
+      "cites": [
+        190,
+        206,
+        212,
+        216,
+        218
+      ],
+      "cited_by": [
+        96,
+        190,
+        206,
+        210,
+        212,
+        214,
+        216,
+        218,
+        219
+      ]
+    },
+    {
+      "number": 214,
+      "name": "Root Foundations",
+      "cites": [
+        104,
+        168,
+        212,
+        213,
+        215,
+        216
+      ],
+      "cited_by": [
+        212,
+        215,
+        216,
+        219
+      ]
+    },
+    {
+      "number": 215,
+      "name": "Ground Floor Slab",
+      "cites": [
+        168,
+        206,
+        212,
+        214,
+        219,
+        233,
+        248
+      ],
+      "cited_by": [
+        145,
+        168,
+        214,
+        233
+      ]
+    },
+    {
+      "number": 216,
+      "name": "Box Columns",
+      "cites": [
+        213,
+        214,
+        217,
+        219,
+        226,
+        227
+      ],
+      "cited_by": [
+        206,
+        208,
+        212,
+        213,
+        214,
+        217,
+        218,
+        221,
+        226,
+        227,
+        231,
+        240
+      ]
+    },
+    {
+      "number": 217,
+      "name": "Perimeter Beams",
+      "cites": [
+        210,
+        216,
+        219,
+        227
+      ],
+      "cited_by": [
+        206,
+        208,
+        210,
+        212,
+        216,
+        219,
+        221,
+        227,
+        231,
+        240
+      ]
+    },
+    {
+      "number": 218,
+      "name": "Wall Membranes",
+      "cites": [
+        206,
+        213,
+        216,
+        234,
+        235,
+        248
+      ],
+      "cited_by": [
+        191,
+        206,
+        208,
+        213,
+        230,
+        231,
+        234,
+        235,
+        237,
+        249
+      ]
+    },
+    {
+      "number": 219,
+      "name": "Floor-Ceiling Vaults",
+      "cites": [
+        190,
+        206,
+        207,
+        210,
+        213,
+        214,
+        217,
+        233,
+        235
+      ],
+      "cited_by": [
+        190,
+        191,
+        204,
+        205,
+        206,
+        208,
+        210,
+        211,
+        212,
+        215,
+        216,
+        217,
+        220,
+        228,
+        229,
+        230,
+        231,
+        233,
+        235,
+        240
+      ]
+    },
+    {
+      "number": 220,
+      "name": "Roof Vaults",
+      "cites": [
+        117,
+        118,
+        219,
+        231,
+        232,
+        234
+      ],
+      "cited_by": [
+        117,
+        206,
+        208,
+        209,
+        211,
+        212,
+        231,
+        232,
+        234
+      ]
+    },
+    {
+      "number": 221,
+      "name": "Natural Doors and Windows",
+      "cites": [
+        134,
+        164,
+        180,
+        192,
+        196,
+        216,
+        217,
+        222,
+        223,
+        239
+      ],
+      "cited_by": [
+        134,
+        138,
+        159,
+        180,
+        188,
+        192,
+        222,
+        224,
+        225,
+        236,
+        238,
+        239
+      ]
+    },
+    {
+      "number": 222,
+      "name": "Low Sill",
+      "cites": [
+        134,
+        180,
+        192,
+        201,
+        221,
+        225,
+        236,
+        245
+      ],
+      "cited_by": [
+        132,
+        180,
+        192,
+        221
+      ]
+    },
+    {
+      "number": 223,
+      "name": "Deep Reveals",
+      "cites": [
+        159,
+        197,
+        225,
+        238,
+        240,
+        246
+      ],
+      "cited_by": [
+        159,
+        180,
+        192,
+        221,
+        225,
+        238
+      ]
+    },
+    {
+      "number": 224,
+      "name": "Low Doorway",
+      "cites": [
+        102,
+        110,
+        131,
+        196,
+        221,
+        225,
+        237,
+        249
+      ],
+      "cited_by": [
+        119,
+        136,
+        196,
+        203,
+        237
+      ]
+    },
+    {
+      "number": 225,
+      "name": "Frames as Thickened Edges",
+      "cites": [
+        206,
+        208,
+        221,
+        223,
+        236,
+        237,
+        239
+      ],
+      "cited_by": [
+        196,
+        206,
+        222,
+        223,
+        224,
+        227,
+        231,
+        239,
+        240,
+        249
+      ]
+    },
+    {
+      "number": 226,
+      "name": "Column Place",
+      "cites": [
+        69,
+        119,
+        163,
+        166,
+        167,
+        174,
+        212,
+        216,
+        227,
+        243,
+        245,
+        251
+      ],
+      "cited_by": [
+        119,
+        146,
+        163,
+        166,
+        167,
+        174,
+        179,
+        193,
+        212,
+        216,
+        227,
+        249
+      ]
+    },
+    {
+      "number": 227,
+      "name": "Column Connections",
+      "cites": [
+        119,
+        166,
+        167,
+        206,
+        216,
+        217,
+        225,
+        226,
+        249
+      ],
+      "cited_by": [
+        119,
+        193,
+        206,
+        216,
+        217,
+        226,
+        249
+      ]
+    },
+    {
+      "number": 228,
+      "name": "Stair Vault",
+      "cites": [
+        133,
+        179,
+        195,
+        198,
+        203,
+        206,
+        207,
+        219,
+        233,
+        248
+      ],
+      "cited_by": [
+        195
+      ]
+    },
+    {
+      "number": 229,
+      "name": "Duct Space",
+      "cites": [
+        206,
+        219,
+        230,
+        252
+      ],
+      "cited_by": [
+        230
+      ]
+    },
+    {
+      "number": 230,
+      "name": "Radiant Heat",
+      "cites": [
+        202,
+        218,
+        219,
+        229
+      ],
+      "cited_by": [
+        229
+      ]
+    },
+    {
+      "number": 231,
+      "name": "Dormer Windows",
+      "cites": [
+        117,
+        179,
+        180,
+        208,
+        212,
+        216,
+        217,
+        218,
+        219,
+        220,
+        225,
+        236,
+        239
+      ],
+      "cited_by": [
+        117,
+        180,
+        220
+      ]
+    },
+    {
+      "number": 232,
+      "name": "Roof Caps",
+      "cites": [
+        118,
+        220,
+        249
+      ],
+      "cited_by": [
+        220,
+        249
+      ]
+    },
+    {
+      "number": 233,
+      "name": "Floor Surface",
+      "cites": [
+        127,
+        215,
+        219,
+        248,
+        249,
+        250
+      ],
+      "cited_by": [
+        210,
+        215,
+        219,
+        228,
+        248,
+        250
+      ]
+    },
+    {
+      "number": 234,
+      "name": "Lapped Outside Walls",
+      "cites": [
+        218,
+        220
+      ],
+      "cited_by": [
+        207,
+        218,
+        220,
+        240,
+        249
+      ]
+    },
+    {
+      "number": 235,
+      "name": "Soft Inside Walls",
+      "cites": [
+        218,
+        219,
+        240
+      ],
+      "cited_by": [
+        207,
+        218,
+        219,
+        240,
+        249,
+        250
+      ]
+    },
+    {
+      "number": 236,
+      "name": "Windows Which Open Wide",
+      "cites": [
+        180,
+        192,
+        221,
+        239
+      ],
+      "cited_by": [
+        128,
+        164,
+        222,
+        225,
+        231,
+        239
+      ]
+    },
+    {
+      "number": 237,
+      "name": "Solid Doors with Glass",
+      "cites": [
+        135,
+        194,
+        196,
+        218,
+        224,
+        239
+      ],
+      "cited_by": [
+        101,
+        130,
+        132,
+        194,
+        196,
+        224,
+        225,
+        239
+      ]
+    },
+    {
+      "number": 238,
+      "name": "Filtered Light",
+      "cites": [
+        221,
+        223,
+        239,
+        244,
+        246,
+        250
+      ],
+      "cited_by": [
+        138,
+        144,
+        159,
+        161,
+        164,
+        174,
+        176,
+        223,
+        239,
+        244,
+        246
+      ]
+    },
+    {
+      "number": 239,
+      "name": "Small Panes",
+      "cites": [
+        194,
+        221,
+        225,
+        236,
+        237,
+        238,
+        240
+      ],
+      "cited_by": [
+        192,
+        193,
+        194,
+        221,
+        225,
+        231,
+        236,
+        237,
+        238
+      ]
+    },
+    {
+      "number": 240,
+      "name": "Half-Inch Trim",
+      "cites": [
+        216,
+        217,
+        219,
+        225,
+        234,
+        235,
+        249,
+        250
+      ],
+      "cited_by": [
+        223,
+        235,
+        239,
+        249,
+        250
+      ]
+    },
+    {
+      "number": 241,
+      "name": "Seat Spots",
+      "cites": [
+        121,
+        124,
+        125,
+        140,
+        160,
+        161,
+        163,
+        168,
+        174,
+        176,
+        242,
+        243
+      ],
+      "cited_by": [
+        69,
+        70,
+        72,
+        92,
+        94,
+        120,
+        124,
+        125,
+        142,
+        160,
+        161,
+        171,
+        176,
+        242,
+        243
+      ]
+    },
+    {
+      "number": 242,
+      "name": "Front Door Bench",
+      "cites": [
+        110,
+        119,
+        130,
+        155,
+        160,
+        161,
+        168,
+        241,
+        243,
+        245
+      ],
+      "cited_by": [
+        122,
+        130,
+        155,
+        160,
+        241,
+        243
+      ]
+    },
+    {
+      "number": 243,
+      "name": "Sitting Wall",
+      "cites": [
+        51,
+        100,
+        106,
+        111,
+        114,
+        121,
+        124,
+        140,
+        163,
+        165,
+        166,
+        172,
+        241,
+        242,
+        245,
+        248,
+        249
+      ],
+      "cited_by": [
+        55,
+        71,
+        72,
+        73,
+        88,
+        124,
+        126,
+        140,
+        163,
+        165,
+        167,
+        169,
+        171,
+        226,
+        241,
+        242,
+        245,
+        248,
+        249
+      ]
+    },
+    {
+      "number": 244,
+      "name": "Canvas Roofs",
+      "cites": [
+        103,
+        118,
+        119,
+        140,
+        163,
+        166,
+        174,
+        180,
+        238,
+        249,
+        250
+      ],
+      "cited_by": [
+        32,
+        46,
+        54,
+        58,
+        63,
+        69,
+        88,
+        93,
+        97,
+        118,
+        161,
+        163,
+        238,
+        250
+      ]
+    },
+    {
+      "number": 245,
+      "name": "Raised Flowers",
+      "cites": [
+        120,
+        125,
+        160,
+        169,
+        173,
+        243
+      ],
+      "cited_by": [
+        51,
+        113,
+        118,
+        120,
+        169,
+        172,
+        222,
+        226,
+        242,
+        243
+      ]
+    },
+    {
+      "number": 246,
+      "name": "Climbing Plants",
+      "cites": [
+        174,
+        238
+      ],
+      "cited_by": [
+        118,
+        164,
+        174,
+        223,
+        238
+      ]
+    },
+    {
+      "number": 247,
+      "name": "Paving With Cracks Between the Stones",
+      "cites": [
+        51,
+        121,
+        140,
+        163,
+        168,
+        169,
+        248
+      ],
+      "cited_by": [
+        51,
+        120,
+        168,
+        174,
+        248
+      ]
+    },
+    {
+      "number": 248,
+      "name": "Soft Tile and Brick",
+      "cites": [
+        168,
+        207,
+        233,
+        243,
+        247,
+        249,
+        250
+      ],
+      "cited_by": [
+        125,
+        168,
+        215,
+        218,
+        228,
+        233,
+        243,
+        247,
+        249,
+        250
+      ]
+    },
+    {
+      "number": 249,
+      "name": "Ornament",
+      "cites": [
+        110,
+        160,
+        168,
+        173,
+        180,
+        196,
+        218,
+        225,
+        226,
+        227,
+        232,
+        234,
+        235,
+        240,
+        243,
+        248,
+        250,
+        253
+      ],
+      "cited_by": [
+        187,
+        193,
+        196,
+        224,
+        227,
+        232,
+        233,
+        240,
+        243,
+        244,
+        248,
+        250
+      ]
+    },
+    {
+      "number": 250,
+      "name": "Warm Colors",
+      "cites": [
+        207,
+        233,
+        235,
+        240,
+        244,
+        248,
+        249,
+        252
+      ],
+      "cited_by": [
+        135,
+        182,
+        199,
+        233,
+        238,
+        240,
+        244,
+        248,
+        249,
+        252
+      ]
+    },
+    {
+      "number": 251,
+      "name": "Different Chairs",
+      "cites": [
+        142,
+        185,
+        202,
+        252
+      ],
+      "cited_by": [
+        88,
+        151,
+        182,
+        185,
+        226,
+        252
+      ]
+    },
+    {
+      "number": 252,
+      "name": "Pools of Light",
+      "cites": [
+        129,
+        130,
+        146,
+        179,
+        182,
+        183,
+        185,
+        250,
+        251
+      ],
+      "cited_by": [
+        135,
+        151,
+        182,
+        183,
+        185,
+        229,
+        250,
+        251
+      ]
+    },
+    {
+      "number": 253,
+      "name": "Things From Your Life",
+      "cites": [],
+      "cited_by": [
+        141,
+        201,
+        249
+      ]
+    }
+  ]
+}

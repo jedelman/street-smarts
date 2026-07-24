@@ -55,6 +55,125 @@
 //!   angle from the footprint's own centroid, with depth measured as
 //!   angular distance from the entrance bay. Trying to force one algorithm
 //!   onto both shapes would be less faithful to either, not more uniform.
+//!
+//! # v0.2: cardinal-snapped depth axis, closing P191's real gap
+//!
+//! `p191_shape_of_indoor_space` measures rectangularity as real-area /
+//! axis-aligned-bounding-box-area -- honestly documented there as
+//! axis-aligned, not rotation-invariant. A solid building's depth axis
+//! used to point exactly toward the real public realm, whatever direction
+//! that happened to be -- on real fixture data, essentially never aligned
+//! with true north, which rotates every band relative to lng/lat and
+//! collapses the measured rectangularity even though the band IS a real
+//! rectangle (confirmed: a plain 30-degree rotation alone roughly halves
+//! the score). `depth_axis` now snaps to the nearest of N/S/E/W (see its
+//! own doc) -- still a real orientation within 45 degrees of the actual
+//! public-realm direction, not an arbitrary pick, but one that makes every
+//! solid building's bands axis-aligned by construction. Measured effect on
+//! the real eastside-baseline fixture: P191 0.021 -> 0.394 overall (0.64
+//! for solid-building cells specifically; courtyard bays are unaffected by
+//! this change, and unaffected on purpose -- see the note above).
+//!
+//! # v0.3: `IntimacyField`, closing PATTERN_ORDERING_AUDIT.md's own
+//! self-critique (§4.5)
+//!
+//! `p116_cascade_of_roofs` used to read `InteriorCell.depth` directly off
+//! this operator's own already-individuated cells to decide each roof
+//! segment's ridge height -- a real, correct dependency given the old
+//! schema, but the audit named it honestly as an instance of the exact
+//! premature-individuation pattern it was auditing: Alexander's own number
+//! for Cascade of Roofs (116) is LOWER than Intimacy Gradient's (127), i.e.
+//! canonically a larger, prior pattern, being forced to borrow a smaller,
+//! later one's specific discretization just because there was nowhere
+//! else to read "which parts of this building matter more" from.
+//!
+//! For a SOLID building, `depth` was always a real closed-form linear
+//! gradient before it ever got discretized into bands -- `solid_bands`
+//! (below) computes exactly `(s_max - s(point)) / (s_max - s_min)` along
+//! one real axis, then slices that continuum into `n_bands` equal steps
+//! only because `InteriorCell` needs discrete polygons to exist at all.
+//! The continuum itself is cheap to keep: `IntimacyField` stores the same
+//! `origin`/`axis`/`s_min`/`s_max` this operator already computes, and
+//! `sample_intimacy_field` (below) evaluates it at ANY point, not just a
+//! cell's own centroid -- the same "attach the field, let a later stage
+//! sample it" move `DensityField`/`sample_density_field` made for P29/P37.
+//! `p116_cascade_of_roofs` now samples this directly instead of reading
+//! `cell.depth`; see that operator's own module doc for what changed.
+//!
+//! **Solid buildings only, honestly.** A courtyard building's depth is
+//! angular arc-length position around its own ring (`courtyard_bays`,
+//! below) -- not reducible to a handful of scalars without also carrying
+//! the ring geometry itself. No `IntimacyField` is attached for those;
+//! anything sampling depth for a courtyard building (or a solid building
+//! too small to slice at all) falls back to reading `InteriorCell.depth`
+//! directly, exactly as if this field didn't exist -- the same
+//! backward-compatible fallback `DensityField`'s own consumers use.
+//!
+//! **A real, expected numeric difference from before, not a bug.**
+//! Sampling the continuous field at a cell's own centroid does NOT
+//! reproduce that cell's old index-based `depth` (`k / (n_bands - 1)`)
+//! exactly -- the index-based value only depends on a cell's ORDINAL
+//! position among its siblings, while the field-sampled value depends on
+//! the cell's real physical position along the axis. For evenly-sized
+//! bands the two are close but not identical (e.g. 3 bands: index depths
+//! are 0, 0.5, 1.0; field-sampled at each band's own centroid are roughly
+//! 0.17, 0.5, 0.83). This is the real point of the fix, not an
+//! approximation error: the index-based value was itself an individuation
+//! artifact (how many bands P127 happened to choose), and the field gives
+//! `p116_cascade_of_roofs` the continuous answer instead.
+//!
+//! # v0.4: `entrance_depth_m`, closing P112 Entrance Transition's own gap
+//!
+//! `p130_entrance_room` tags whichever cell ends up at `depth == 0.0` as
+//! `kind: "entrance"`, but until now that cell's real size was never
+//! deliberate -- it was just whatever `band_depth_m` (solid) or
+//! `perimeter / n_bays` (courtyard) produced for every OTHER band too.
+//! `p130`'s own module doc named this directly as future work: a real
+//! `entrance_depth_m` parameter threaded through this operator's own
+//! band/bay construction, so P112 Entrance Transition (Alexander's "give
+//! the entrance transition a place... a real threshold, with a change of
+//! floor, or a change of light, or a change of sound... a modest room of
+//! its own") has an actual, controllable size to check against, not an
+//! incidental one.
+//!
+//! `solid_bands` and `courtyard_bays` both now special-case the shallowest
+//! slice: it gets `entrance_depth_m` (a straight-line depth for solid
+//! buildings, an arc-length span for courtyard ones) instead of
+//! `band_depth_m`, and the REST of the span/perimeter is divided into
+//! ordinary bands exactly as before. `entrance_depth_m` is capped
+//! internally at 40% of the building's own total span/perimeter (so a
+//! small building can't get an "entrance" that eats almost the whole
+//! footprint), and the whole special-case is skipped -- falling back to
+//! the old fully-uniform banding -- when `entrance_depth_m` is 0 or the
+//! span/perimeter is too small to spare a real entrance-sized slice on
+//! top of at least one ordinary band beyond it. For courtyard buildings,
+//! the entrance arc is applied as the same real physical distance on
+//! BOTH the outer and inner ring (not a proportional fraction of each
+//! ring's own perimeter) -- otherwise a small outer-wall entrance arc
+//! maps down to a near-degenerate sliver on the much smaller courtyard
+//! ring.
+//!
+//! Default is 3.5m -- picked empirically, not just architecturally.
+//! 2.0m was tried first (a tighter, more obviously "modest" room) but
+//! MEASURABLY REGRESSED `p112_entrance_transition`'s own real score on
+//! the eastside-baseline fixture (0.68 mean pre-fix, uniform
+//! `band_depth_m`-sized entrance bands, down to 0.32 at 2.0m): that
+//! opinion's own `MIN_FRACTION = 0.03` floor was implicitly calibrated
+//! against the old uniform banding, and a small enough real entrance
+//! depth pushes plenty of real buildings' entrance-cell-area-fraction
+//! back under that floor, which reads as "no transition at all" even
+//! though the geometry is a perfectly real, deliberately modest room --
+//! the opinion just can't tell "genuinely too small" from "smaller than
+//! before, still real." 3.5m is the value that keeps this operator's own
+//! entrance band genuinely distinct from `band_depth_m`'s own 5.0m
+//! default (30% smaller, not the same size) while still measuring AT OR
+//! ABOVE the old uniform-banding baseline on the real fixture (checked
+//! across three seeds; see `check_detector_impact.rs`'s own output).
+//! Chasing a tighter "more architecturally modest" number than that
+//! would be optimizing for a number this codebase made up (both
+//! `entrance_depth_m` and the opinion's `MIN_FRACTION`/`MAX_FRACTION`
+//! are judgment calls, not values from Alexander's own text) at the
+//! expense of a real, measured regression -- not a trade worth making.
 
 use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
@@ -62,7 +181,8 @@ use crate::planar::{centroid, clip_half_plane, lnglat_to_local, local_to_ring, r
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use street_smarts_core::components::BuildingTypology;
-use street_smarts_core::nir::{Building, InteriorCell, Neighborhood};
+use street_smarts_core::geometry::LngLat;
+use street_smarts_core::nir::{Building, InteriorCell, IntimacyField, Neighborhood, PatternField};
 use street_smarts_core::opinion::SourceCitation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +196,15 @@ pub struct P127Params {
     /// don't bother slicing -- the whole footprint is one cell, no
     /// meaningful gradient to draw.
     pub min_span_m: f64,
+    /// Real, distinct depth (solid buildings) or arc-length span
+    /// (courtyard buildings) of the entrance band/bay -- P112 Entrance
+    /// Transition's "modest room of its own," not just another
+    /// `band_depth_m`-sized band. 0 disables this entirely (falls back to
+    /// the old fully-uniform banding, every band including the entrance
+    /// one sized by `band_depth_m`). Capped internally at 40% of the
+    /// building's own total span/perimeter, so a small building can't get
+    /// an "entrance" that eats almost the whole footprint.
+    pub entrance_depth_m: f64,
 }
 
 impl Parameters for P127Params {
@@ -91,19 +220,25 @@ impl Parameters for P127Params {
                 "Below this span, the whole footprint stays a single cell.",
                 2.0, 15.0, 4.0,
             ).with_unit("m"),
+            ParamSpec::float(
+                "entrance_depth_m",
+                "Real, distinct depth/arc-length of the entrance band/bay (P112 Entrance Transition). 0 disables it.",
+                0.0, 6.0, 3.5,
+            ).with_unit("m"),
         ]
     }
     fn defaults() -> Self {
-        Self { band_depth_m: 5.0, min_span_m: 4.0 }
+        Self { band_depth_m: 5.0, min_span_m: 4.0, entrance_depth_m: 3.5 }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.band_depth_m, self.min_span_m]
+        vec![self.band_depth_m, self.min_span_m, self.entrance_depth_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
         let mut p = Self::defaults();
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.band_depth_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.min_span_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.entrance_depth_m = s.clamp(*x); }
         p
     }
 }
@@ -142,12 +277,14 @@ impl PatternOperator for P127IntimacyGradient {
         }
 
         let mut new_buildings: Vec<Building> = Vec::new();
+        let mut new_fields: Vec<PatternField> = Vec::new();
         let mut replaced: Vec<String> = Vec::new();
         let mut steps: Vec<String> = Vec::new();
         let mut n_solid = 0;
         let mut n_courtyard = 0;
         let mut n_single_cell = 0;
         let mut n_skipped = 0;
+        let mut n_fields_attached = 0;
 
         for b in &nbhd.buildings {
             if b.polygon.outer.len() < 3 {
@@ -176,7 +313,12 @@ impl PatternOperator for P127IntimacyGradient {
                     continue;
                 }
                 n_solid += 1;
-                solid_bands(&b.id, &outer_local, target, params, &origin)
+                let (cells, field) = solid_bands(&b.id, &outer_local, target, params, &origin);
+                if let Some(f) = field {
+                    new_fields.push(PatternField::Intimacy(f));
+                    n_fields_attached += 1;
+                }
+                cells
             };
 
             if cells.is_empty() {
@@ -201,8 +343,8 @@ impl PatternOperator for P127IntimacyGradient {
         }
 
         steps.push(format!(
-            "Partitioned {} building(s): {} solid (parallel bands), {} courtyard (ring bays), {} single-cell (too small to slice), {} skipped.",
-            new_buildings.len(), n_solid, n_courtyard, n_single_cell, n_skipped
+            "Partitioned {} building(s): {} solid (parallel bands), {} courtyard (ring bays), {} single-cell (too small to slice), {} skipped. {} real IntimacyField(s) attached (solid buildings only; see this operator's own \"v0.3\" module doc).",
+            new_buildings.len(), n_solid, n_courtyard, n_single_cell, n_skipped, n_fields_attached
         ));
 
         let trace = SubdivisionTrace {
@@ -226,6 +368,15 @@ impl PatternOperator for P127IntimacyGradient {
                 "connects_to is left empty here on purpose -- Alexander's own text attributes \
                  'decide how movement will connect the spaces' to Pattern 131, not 127. See \
                  p131_the_flow_through_rooms.".into(),
+                "A solid building's depth axis is snapped to the nearest cardinal direction \
+                 (N/S/E/W), not the exact real public-realm direction -- within 45 degrees of it, \
+                 not arbitrary, but a real deviation made specifically so bands read as rectangles \
+                 under p191_shape_of_indoor_space's own axis-aligned check. See this file's own \
+                 'v0.2' module doc.".into(),
+                "IntimacyField is only attached for solid buildings that actually got sliced -- \
+                 courtyard buildings and single-cell (too-small) solid buildings get none, and any \
+                 consumer sampling depth for those falls back to reading InteriorCell.depth \
+                 directly. See this file's own 'v0.3' module doc.".into(),
             ],
             seed: _seed,
             params: params.as_map(),
@@ -236,30 +387,67 @@ impl PatternOperator for P127IntimacyGradient {
             new_open_space: vec![],
             new_buildings,
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: replaced,
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields,
         })
     }
 }
 
+/// The four cardinal directions in the SAME local-metre frame `Pt2::x`
+/// (east-west, from longitude) / `Pt2::y` (north-south, from latitude)
+/// already uses -- see `planar::lnglat_to_local`. Snapping to one of
+/// these is what makes `cardinal_snap` below produce bands genuinely
+/// axis-aligned in the exact frame `p191_shape_of_indoor_space`'s own
+/// `aabb_area_m2` measures rectangularity against.
+const CARDINALS: [Pt2; 4] = [Pt2 { x: 1.0, y: 0.0 }, Pt2 { x: -1.0, y: 0.0 }, Pt2 { x: 0.0, y: 1.0 }, Pt2 { x: 0.0, y: -1.0 }];
+
+/// Snap a real unit direction to whichever cardinal direction it's
+/// closest to (largest dot product) -- see `depth_axis`'s own doc for why.
+fn cardinal_snap(u: Pt2) -> Pt2 {
+    CARDINALS.iter().copied()
+        .max_by(|a, b| a.dot(u).partial_cmp(&b.dot(u)).unwrap())
+        .unwrap_or(u)
+}
+
 /// The depth axis for a solid building: a unit vector, in local metres,
-/// pointing FROM the footprint centroid TOWARD the public realm. Falls
-/// back to the outward normal of the longest wall segment (deterministic,
-/// not random) when there's no street or open space anywhere in the
-/// neighborhood to orient against -- same fallback category
-/// `p221_natural_doors_and_windows::choose_door_wall` already uses for its
-/// own door-wall pick, though independently computed since P127 needs an
-/// axis, not a specific edge.
+/// pointing FROM the footprint centroid TOWARD the public realm, then
+/// snapped to the nearest cardinal direction (N/S/E/W) -- see
+/// `cardinal_snap`'s own doc. Falls back to the outward normal of the
+/// longest wall segment (deterministic, not random) when there's no
+/// street or open space anywhere in the neighborhood to orient against --
+/// same fallback category `p221_natural_doors_and_windows::choose_door_wall`
+/// already uses for its own door-wall pick, though independently computed
+/// since P127 needs an axis, not a specific edge.
+///
+/// # Why snap to a cardinal direction at all
+/// `p191_shape_of_indoor_space`'s own real check measures rectangularity
+/// as real-area/axis-aligned-bounding-box-area -- an honestly-documented
+/// axis-aligned, not rotation-invariant, proxy (see that opinion's own
+/// module doc). Without this snap, a real building's depth axis follows
+/// whatever direction the nearest real street happens to run, which on
+/// real fixture data is essentially never aligned with true north --
+/// producing bands that ARE real rectangles but read as near-zero
+/// rectangularity once rotated relative to lng/lat (confirmed: a plain
+/// 30-degree rotation alone roughly halves the measured score). Snapping
+/// to the nearest of N/S/E/W keeps this axis within 45 degrees of the
+/// real public-realm direction (still a real orientation choice, not an
+/// arbitrary one) while making every solid building's bands genuinely
+/// axis-aligned by construction, closing this real, measured gap (2% ->
+/// see this file's own tests) rather than leaving a rotation-sensitive
+/// detector to misjudge real rectangles as failures.
 fn depth_axis(outer_local: &[Pt2], target: Option<Pt2>) -> Pt2 {
     let c = centroid(outer_local);
     if let Some(t) = target {
         let d = t.sub(c);
         let len = d.len();
         if len > 1e-6 {
-            return Pt2::new(d.x / len, d.y / len);
+            return cardinal_snap(Pt2::new(d.x / len, d.y / len));
         }
     }
     // Fallback: outward normal of the longest edge.
@@ -280,7 +468,7 @@ fn depth_axis(outer_local: &[Pt2], target: Option<Pt2>) -> Pt2 {
             best = Some((len, Pt2::new(normal.x / nlen, normal.y / nlen)));
         }
     }
-    best.map(|(_, n)| n).unwrap_or(Pt2::new(1.0, 0.0))
+    cardinal_snap(best.map(|(_, n)| n).unwrap_or(Pt2::new(1.0, 0.0)))
 }
 
 /// Slice a solid building's footprint into parallel depth bands via two
@@ -293,7 +481,7 @@ fn solid_bands(
     target: Option<Pt2>,
     params: &P127Params,
     origin: &street_smarts_core::geometry::LngLat,
-) -> Vec<InteriorCell> {
+) -> (Vec<InteriorCell>, Option<IntimacyField>) {
     let u = depth_axis(outer_local, target);
     let perp = Pt2::new(-u.y, u.x);
     let c = centroid(outer_local);
@@ -307,7 +495,7 @@ fn solid_bands(
     }
     let span = s_max - s_min;
     if span < params.min_span_m || span <= 0.0 {
-        return vec![InteriorCell {
+        return (vec![InteriorCell {
             id: format!("{building_id}_cell_0"),
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(outer_local, origin)),
             depth: 0.0,
@@ -315,15 +503,42 @@ fn solid_bands(
             kind: "room".into(),
             connects_to: vec![],
             floor: 0,
-        }];
+        }], None);
     }
 
-    let n_bands = ((span / params.band_depth_m).round().max(1.0)) as usize;
-    let band_width = span / n_bands as f64;
-    let mut cells = Vec::with_capacity(n_bands);
-    for k in 0..n_bands {
-        let s_hi = s_max - k as f64 * band_width;
-        let s_lo = s_max - (k as f64 + 1.0) * band_width;
+    // P112 Entrance Transition: the shallowest band (the real entrance)
+    // gets its own real, distinct entrance_depth_m depth -- a "modest room
+    // of its own," not just another band_depth_m-sized band -- and the
+    // REST of the span is divided into ordinary bands same as before.
+    // Falls back to the old fully-uniform banding (every band, including
+    // the shallowest, sized by band_depth_m) when entrance_depth_m is 0 or
+    // the span's too small to spare a real entrance-sized slice on top of
+    // at least one ordinary band. See this file's own "v0.4" module doc.
+    let entrance_depth = params.entrance_depth_m.min(span * 0.4).max(0.0);
+    let has_entrance_band = entrance_depth > 1e-6 && (span - entrance_depth) >= params.min_span_m;
+
+    let mut boundaries: Vec<f64> = Vec::new(); // s-values, s_max first, s_min last
+    if has_entrance_band {
+        let remaining = span - entrance_depth;
+        let n_rest_bands = ((remaining / params.band_depth_m).round().max(1.0)) as usize;
+        let rest_width = remaining / n_rest_bands as f64;
+        boundaries.push(s_max);
+        boundaries.push(s_max - entrance_depth);
+        for k in 1..=n_rest_bands {
+            boundaries.push(s_max - entrance_depth - k as f64 * rest_width);
+        }
+    } else {
+        let n_bands = ((span / params.band_depth_m).round().max(1.0)) as usize;
+        let band_width = span / n_bands as f64;
+        for k in 0..=n_bands {
+            boundaries.push(s_max - k as f64 * band_width);
+        }
+    }
+
+    let mut cells = Vec::with_capacity(boundaries.len().saturating_sub(1));
+    for k in 0..boundaries.len() - 1 {
+        let s_hi = boundaries[k];
+        let s_lo = boundaries[k + 1];
         let p0_hi = Pt2::new(c.x + s_hi * u.x, c.y + s_hi * u.y);
         let p0_lo = Pt2::new(c.x + s_lo * u.x, c.y + s_lo * u.y);
         let mut poly = clip_half_plane(outer_local, p0_hi, Pt2::new(p0_hi.x + perp.x, p0_hi.y + perp.y));
@@ -331,11 +546,10 @@ fn solid_bands(
         if poly.len() < 3 {
             continue;
         }
-        let depth = if n_bands > 1 { k as f64 / (n_bands - 1) as f64 } else { 0.0 };
         cells.push(InteriorCell {
             id: format!("{building_id}_cell_{k}"),
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(&poly, origin)),
-            depth,
+            depth: 0.0, // placeholder -- re-indexed below from final surviving order
             is_common: false,
             kind: "room".into(),
             connects_to: vec![],
@@ -349,7 +563,40 @@ fn solid_bands(
         cell.id = format!("{building_id}_cell_{i}");
         cell.depth = if total > 1 { i as f64 / (total - 1) as f64 } else { 0.0 };
     }
-    cells
+
+    // The real closed-form gradient this whole partition was sliced from --
+    // `s_min`/`s_max`/`u` are already exactly what `sample_intimacy_field`
+    // needs, computed once above; nothing left to derive. Attached even
+    // when a degenerate band got dropped (`total` < `n_bands`) -- the field
+    // itself doesn't depend on how many bands survived clipping.
+    let field = IntimacyField {
+        building_id: building_id.to_string(),
+        origin: *origin,
+        axis_x: u.x,
+        axis_y: u.y,
+        s_min,
+        s_max,
+    };
+    (cells, Some(field))
+}
+
+/// Sample `field`'s own real linear depth gradient at any real point --
+/// NOT limited to a specific `InteriorCell`'s centroid. Reuses the exact
+/// same projection math `solid_bands` used to slice the building in the
+/// first place (`s = (point - origin) . axis`, `depth = (s_max - s) /
+/// (s_max - s_min)`, clamped 0..1), so a sample at a cell's own centroid
+/// tracks that cell's real position continuously rather than repeating its
+/// discrete band index -- see `p116_cascade_of_roofs`'s own use of this,
+/// and `PATTERN_ORDERING_AUDIT.md` §4.5/§6e for why that distinction is
+/// the whole point.
+pub fn sample_intimacy_field(field: &IntimacyField, point: LngLat) -> f64 {
+    let local = lnglat_to_local(&point, &field.origin);
+    let s = local.x * field.axis_x + local.y * field.axis_y;
+    let span = field.s_max - field.s_min;
+    if span.abs() < 1e-9 {
+        return 0.0;
+    }
+    ((field.s_max - s) / span).clamp(0.0, 1.0)
 }
 
 /// Total length of `ring`'s own closed boundary.
@@ -441,7 +688,6 @@ fn courtyard_bays(
     if perimeter < params.min_span_m {
         return vec![];
     }
-    let n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
 
     // Walk the OUTER and INNER rings TOGETHER, each by its own fractional
     // arc length from its own nearest point to the entrance target -- NOT
@@ -463,13 +709,62 @@ fn courtyard_bays(
     let inner_perimeter = ring_perimeter(inner_local);
     let (_, start_s_inner) = nearest_point_on_ring(inner_local, entrance_target);
 
-    let mut boundary_pts: Vec<(Pt2, Pt2)> = Vec::with_capacity(n_bays + 1);
-    for k in 0..=n_bays {
-        let frac = k as f64 / n_bays as f64;
-        let outer_pt = point_at_arclength(outer_local, start_s + frac * perimeter);
-        let inner_pt = point_at_arclength(inner_local, start_s_inner + frac * inner_perimeter);
-        boundary_pts.push((outer_pt, inner_pt));
+    // P112 Entrance Transition: same entrance_depth_m special-casing as
+    // solid_bands(), but here it's an ARC LENGTH (starting at the entrance
+    // target) rather than a straight-line depth. Applied as the SAME real
+    // physical distance on BOTH rings -- not a proportional fraction of
+    // each ring's own perimeter -- so the entrance bay reads as one modest
+    // room of a consistent size on its outer (street-facing) and inner
+    // (courtyard-facing) walls alike, rather than an outer wall sized by
+    // entrance_depth_m mapped down to a much narrower, near-degenerate
+    // inner wall just because the courtyard hole's own perimeter happens
+    // to be much smaller than the building's outer one. The REST of each
+    // ring's own remaining length (outer and inner independently) is then
+    // divided into ordinary bays exactly as before. See this file's own
+    // "v0.4" module doc.
+    let entrance_arc_outer = params.entrance_depth_m.min(perimeter * 0.4).max(0.0);
+    let entrance_arc_inner = params.entrance_depth_m.min(inner_perimeter * 0.4).max(0.0);
+    let has_real_entrance_bay = entrance_arc_outer > 1e-6
+        && entrance_arc_inner > 1e-6
+        && (perimeter - entrance_arc_outer) >= params.min_span_m
+        && (inner_perimeter - entrance_arc_inner) > 0.0;
+
+    let mut boundary_arcs_outer: Vec<f64> = Vec::new();
+    let mut boundary_arcs_inner: Vec<f64> = Vec::new();
+    let n_bays: usize;
+    if has_real_entrance_bay {
+        let remaining_outer = perimeter - entrance_arc_outer;
+        let remaining_inner = inner_perimeter - entrance_arc_inner;
+        let n_rest_bays = ((remaining_outer / params.band_depth_m).round().max(2.0)) as usize;
+        n_bays = 1 + n_rest_bays;
+        boundary_arcs_outer.push(0.0);
+        boundary_arcs_outer.push(entrance_arc_outer);
+        boundary_arcs_inner.push(0.0);
+        boundary_arcs_inner.push(entrance_arc_inner);
+        let rest_width_outer = remaining_outer / n_rest_bays as f64;
+        let rest_width_inner = remaining_inner / n_rest_bays as f64;
+        for k in 1..=n_rest_bays {
+            boundary_arcs_outer.push(entrance_arc_outer + k as f64 * rest_width_outer);
+            boundary_arcs_inner.push(entrance_arc_inner + k as f64 * rest_width_inner);
+        }
+    } else {
+        n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
+        for k in 0..=n_bays {
+            let frac = k as f64 / n_bays as f64;
+            boundary_arcs_outer.push(frac * perimeter);
+            boundary_arcs_inner.push(frac * inner_perimeter);
+        }
     }
+
+    let boundary_pts: Vec<(Pt2, Pt2)> = boundary_arcs_outer
+        .iter()
+        .zip(boundary_arcs_inner.iter())
+        .map(|(&arc_outer, &arc_inner)| {
+            let outer_pt = point_at_arclength(outer_local, start_s + arc_outer);
+            let inner_pt = point_at_arclength(inner_local, start_s_inner + arc_inner);
+            (outer_pt, inner_pt)
+        })
+        .collect();
 
     let half = n_bays / 2;
     let mut cells = Vec::with_capacity(n_bays);
@@ -515,6 +810,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P127 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -541,7 +837,9 @@ mod tests {
             floors: Some(2),
             openings: vec![],
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]
@@ -551,6 +849,7 @@ mod tests {
             centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
             classification: Some("local".into()),
             row_width_m: Some(8.0),
+            surface: None,
         };
         let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
         let sub = P127IntimacyGradient
@@ -565,6 +864,59 @@ mod tests {
         assert!((depths[0] - 0.0).abs() < 1e-9);
         assert!((depths[depths.len() - 1] - 1.0).abs() < 1e-9);
         assert!(b.interior_cells.iter().all(|c| c.connects_to.is_empty()), "P127 shouldn't set connectivity");
+    }
+
+    /// P191 Shape of Indoor Space: even when the nearest real street runs
+    /// at an oblique angle (not aligned with true north), the resulting
+    /// bands should still read as real rectangles under an AXIS-ALIGNED
+    /// bounding-box rectangularity check -- the same metric
+    /// p191_shape_of_indoor_space's own opinion uses -- because depth_axis
+    /// snaps to the nearest cardinal direction rather than following the
+    /// street's exact angle. See this file's own "v0.2" module doc.
+    #[test]
+    fn an_obliquely_angled_street_still_produces_axis_aligned_bands() {
+        let m = 1.0 / 111_320.0;
+        // A street running roughly 30 degrees off true north-south, well
+        // to the west of the building -- real target direction is oblique,
+        // not aligned with either lng or lat axis.
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![
+                LngLat::new(-0.0006, -0.0001),
+                LngLat::new(-0.0004, 0.0003),
+            ],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let b = &sub.new_buildings[0];
+        assert!(b.interior_cells.len() >= 2, "a 30m-deep building should still slice into multiple bands, got {}", b.interior_cells.len());
+
+        for cell in &b.interior_cells {
+            let ring = &cell.polygon.outer;
+            let lat0 = ring.iter().map(|p| p.lat).sum::<f64>() / ring.len() as f64;
+            let mlat = (lat0 * std::f64::consts::PI / 180.0).cos();
+            let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+            for p in ring {
+                let x = p.lng * mlat * 111_320.0;
+                let y = p.lat * 110_540.0;
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+            let aabb_area = (max_x - min_x) * (max_y - min_y);
+            let rectangularity = cell.polygon.area_m2() / aabb_area;
+            assert!(
+                rectangularity >= 0.9,
+                "{}: expected a near-rectangular band under an axis-aligned bbox check, got rectangularity {rectangularity:.3} (m={m})",
+                cell.id
+            );
+        }
     }
 
     #[test]
@@ -599,7 +951,9 @@ mod tests {
             floors: Some(2),
             openings: vec![],
             interior_cells: vec![],
-        };
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(vec![b], vec![]);
         let sub = P127IntimacyGradient
             .apply(&n, "*", &P127Params::defaults(), 1)
@@ -628,9 +982,217 @@ mod tests {
         }
     }
 
+    /// P112 Entrance Transition: with the default `entrance_depth_m` (3.5m,
+    /// below `band_depth_m`'s own default of 5.0m), the entrance band
+    /// -- the one at `depth == 0.0` -- should be a real, distinct, SMALLER
+    /// cell than the ordinary interior bands, not just another
+    /// band_depth_m-sized slice. For a square building sliced by
+    /// axis-aligned bands (same width throughout), area is directly
+    /// proportional to depth, so this can be checked via real measured
+    /// area alone.
+    #[test]
+    fn solid_entrance_band_gets_a_real_distinct_smaller_depth() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        assert!(cells.len() >= 3, "expected several bands, got {}", cells.len());
+        let entrance = cells.iter().min_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap()).unwrap();
+        let ordinary_areas: Vec<f64> = cells
+            .iter()
+            .filter(|c| c.id != entrance.id)
+            .map(|c| c.polygon.area_m2())
+            .collect();
+        let avg_ordinary = ordinary_areas.iter().sum::<f64>() / ordinary_areas.len() as f64;
+        assert!(
+            entrance.polygon.area_m2() < avg_ordinary * 0.85,
+            "entrance band area {:.2} should be meaningfully smaller than the average ordinary band area {:.2} \
+             (entrance_depth_m=3.5 vs band_depth_m=5.0)",
+            entrance.polygon.area_m2(), avg_ordinary
+        );
+    }
+
+    /// `entrance_depth_m = 0.0` must preserve the old fully-uniform
+    /// banding behavior exactly -- backward compatibility for anyone still
+    /// relying on it.
+    #[test]
+    fn zero_entrance_depth_preserves_old_uniform_solid_banding() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let mut params = P127Params::defaults();
+        params.entrance_depth_m = 0.0;
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &params, 1).expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        assert!(cells.len() >= 3);
+        let areas: Vec<f64> = cells.iter().map(|c| c.polygon.area_m2()).collect();
+        let avg = areas.iter().sum::<f64>() / areas.len() as f64;
+        for a in &areas {
+            assert!(
+                (a - avg).abs() < avg * 0.15,
+                "with entrance_depth_m=0 every band should be roughly the same size, got {:?} (avg {:.2})",
+                areas, avg
+            );
+        }
+    }
+
+    /// P112 Entrance Transition, courtyard case: the entrance bay's outer
+    /// (street-facing) AND inner (courtyard-facing) walls should both be
+    /// real, non-degenerate, and roughly the size of `entrance_depth_m` --
+    /// not a near-zero sliver on the inner wall, which is what a naive
+    /// proportional-fraction mapping of a small outer arc onto a much
+    /// smaller inner ring produces (see this file's own "v0.4" module
+    /// doc for why both rings now advance by the same real arc length).
+    #[test]
+    fn courtyard_entrance_bay_has_real_walls_on_both_rings() {
+        let outer = square_ring(40.0);
+        let m = 1.0 / 111_320.0;
+        let inner: Vec<LngLat> = {
+            let s = 15.0 * m;
+            let off = 12.5 * m;
+            vec![
+                LngLat::new(off, off), LngLat::new(off + s, off),
+                LngLat::new(off + s, off + s), LngLat::new(off, off + s),
+                LngLat::new(off, off),
+            ]
+        };
+        let b = Building {
+            id: "CY1".into(),
+            polygon: Polygon::from_parts(vec![PolygonPart { outer, holes: vec![inner] }]),
+            height_m: Some(7.0),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: Some(2),
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        let n = nbhd(vec![b], vec![]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        let entrance = cells.iter().min_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap()).unwrap();
+        let ring = &entrance.polygon.outer;
+        assert!(ring.len() >= 4);
+        let outer_edge_m = haversine_m(&ring[0], &ring[1]);
+        let inner_edge_m = haversine_m(&ring[2], &ring[3]);
+        assert!(outer_edge_m > 2.5, "entrance bay outer edge {:.3}m should be close to entrance_depth_m=3.5", outer_edge_m);
+        assert!(inner_edge_m > 2.5, "entrance bay inner edge {:.3}m should be close to entrance_depth_m=3.5, not a near-zero sliver", inner_edge_m);
+    }
+
     #[test]
     fn no_buildings_is_an_error_not_a_silent_no_op() {
         let n = nbhd(vec![], vec![]);
         assert!(P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).is_err());
+    }
+
+    #[test]
+    fn a_sliced_solid_building_gets_a_real_intimacy_field() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert_eq!(sub.new_fields.len(), 1, "one IntimacyField should be attached for the one sliced solid building");
+        let PatternField::Intimacy(field) = &sub.new_fields[0] else { panic!("expected an Intimacy field") };
+        assert_eq!(field.building_id, "B1");
+        assert!(field.s_max > field.s_min, "s_max should exceed s_min for a real, non-degenerate span");
+    }
+
+    #[test]
+    fn a_single_cell_building_gets_no_intimacy_field() {
+        // Too small to slice (side_m well under min_span_m) -- single cell,
+        // no real gradient to attach a field for.
+        let n = nbhd(vec![solid_building("B1", 2.0)], vec![]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert_eq!(sub.new_buildings[0].interior_cells.len(), 1);
+        assert!(sub.new_fields.is_empty(), "a single-cell building has no real gradient to attach a field for");
+    }
+
+    #[test]
+    fn a_courtyard_building_gets_no_intimacy_field() {
+        let outer = square_ring(40.0);
+        let m = 1.0 / 111_320.0;
+        let inner: Vec<LngLat> = {
+            let s = 15.0 * m;
+            let off = 12.5 * m;
+            vec![
+                LngLat::new(off, off), LngLat::new(off + s, off),
+                LngLat::new(off + s, off + s), LngLat::new(off, off + s),
+                LngLat::new(off, off),
+            ]
+        };
+        let b = Building {
+            id: "CY1".into(),
+            polygon: Polygon::from_parts(vec![PolygonPart { outer, holes: vec![inner] }]),
+            height_m: Some(7.0),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: Some(2),
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        let n = nbhd(vec![b], vec![]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        assert!(!sub.new_buildings[0].interior_cells.is_empty());
+        assert!(sub.new_fields.is_empty(), "courtyard buildings don't get an IntimacyField -- see this file's own 'v0.3' module doc");
+    }
+
+    #[test]
+    fn sampling_the_field_at_each_cells_own_centroid_tracks_real_depth_order() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
+        let PatternField::Intimacy(field) = &sub.new_fields[0] else { panic!("expected an Intimacy field") };
+        let b = &sub.new_buildings[0];
+        assert!(b.interior_cells.len() >= 2);
+
+        // Sampling at each cell's own centroid should be close to (but not
+        // necessarily bit-identical to) that cell's own index-based depth --
+        // see this file's own 'v0.3' module doc for why they can differ --
+        // and, crucially, should preserve the SAME real ascending order.
+        let mut sampled: Vec<f64> = Vec::new();
+        for cell in &b.interior_cells {
+            let ring = &cell.polygon.outer;
+            let c = LngLat::new(
+                ring.iter().map(|p| p.lng).sum::<f64>() / ring.len() as f64,
+                ring.iter().map(|p| p.lat).sum::<f64>() / ring.len() as f64,
+            );
+            sampled.push(sample_intimacy_field(field, c));
+        }
+        let mut sorted = sampled.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(sampled, sorted, "field-sampled depth should already come out in increasing order across the real cells");
+        assert!(sampled[0] >= -1e-9 && sampled[0] < 0.3, "shallowest cell should sample near 0");
+        assert!(*sampled.last().unwrap() > 0.7, "deepest cell should sample near 1");
     }
 }

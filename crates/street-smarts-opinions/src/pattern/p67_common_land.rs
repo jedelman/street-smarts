@@ -215,6 +215,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P67 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -370,7 +371,9 @@ mod tests {
             floors: None,
             openings: vec![],
             interior_cells: vec![],
-        };
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
             vec![common_patch("BLOCK_1_common", 0.0, 0.0, 50.0)],
@@ -404,7 +407,9 @@ mod tests {
             floors: None,
             openings: vec![],
             interior_cells: vec![],
-        };
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
             vec![common_patch("BLOCK_1_common", 0.0, 0.0, 50.0)],

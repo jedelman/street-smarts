@@ -56,13 +56,14 @@ fn four_corner_blocks() -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P52 unit fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]
 fn loop_budget_zero_gives_pure_mst_tree() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     // 4 blocks -> MST has exactly 3 edges, no loop edges.
@@ -81,7 +82,7 @@ fn loop_budget_zero_gives_pure_mst_tree() {
 #[test]
 fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 1.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 1.0, local_loop_budget: 0.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_streets.len(), 4, "MST (3) + loop_budget 1 = 4 edges");
@@ -94,7 +95,7 @@ fn loop_budget_one_adds_exactly_one_pedestrian_edge() {
 #[test]
 fn local_loop_budget_one_adds_exactly_one_local_edge() {
     let nbhd = four_corner_blocks();
-    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 1.0, ..PathNetworkParams::defaults() };
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 1.0, arterial_count: 0.0, ..PathNetworkParams::defaults() };
     let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
 
     assert_eq!(sub.new_streets.len(), 4, "MST (3) + local_loop_budget 1 = 4 edges");
@@ -162,14 +163,259 @@ fn bulge_is_deterministic_for_the_same_seed() {
     assert_eq!(sub_a.new_streets, sub_b.new_streets, "the same seed should reproduce the identical bulge shape");
 }
 
+/// Five blocks at the vertices of a regular pentagon (radius 100m). A
+/// pentagon's MST is 4 of its 5 equal-length perimeter edges (a path);
+/// the 6 non-MST edges (1 perimeter + 5 diagonals) would, if all added
+/// unconstrained, form the complete graph K5 -- every node at degree 4,
+/// a four-way-or-more intersection everywhere. Exactly the case P50 T
+/// Junctions' "avoid four-way intersections" targets.
+fn pentagon_blocks() -> Neighborhood {
+    let m_per_deg = 111_320.0;
+    let radius_m = 100.0;
+
+    let make_pad = |id: &str, cx: f64, cy: f64, block: &str| -> Parcel {
+        let s = 0.00005;
+        let ring = vec![
+            LngLat::new(cx - s, cy - s),
+            LngLat::new(cx + s, cy - s),
+            LngLat::new(cx + s, cy + s),
+            LngLat::new(cx - s, cy + s),
+        ];
+        Parcel {
+            id: id.into(),
+            polygon: Polygon::from_ring(ring),
+            area_acres: 0.01,
+            use_category: Some("p95_building_pad".into()),
+            ownership: None,
+            is_eda: false,
+            spec: Some(block.into()),
+            density_tier: None,
+            target_stories: None,
+        }
+    };
+
+    let mut parcels = Vec::new();
+    for k in 0..5 {
+        let theta = std::f64::consts::TAU * (k as f64) / 5.0;
+        let x_m = radius_m * theta.cos();
+        let y_m = radius_m * theta.sin();
+        let cx = x_m / m_per_deg;
+        let cy = y_m / m_per_deg;
+        parcels.push(make_pad(&format!("p{k}"), cx, cy, &format!("BLOCK_{k}")));
+    }
+
+    Neighborhood {
+        id: "test".into(),
+        bbox_wgs84: [-0.001, -0.001, 0.001, 0.001],
+        parcels,
+        buildings: vec![],
+        streets: vec![],
+        open_space: vec![],
+        boundaries: vec![],
+        activity_nodes: vec![],
+        metadata: NeighborhoodMeta {
+            source: "synthetic".into(),
+            fetched_at: "test".into(),
+            license: "test".into(),
+            layer_provenance: Default::default(),
+            label: "P50 degree-cap fixture".into(),
+        },
+            pattern_fields: vec![],
+        }
+}
+
+#[test]
+fn loop_edge_selection_never_pushes_a_node_past_a_three_way_meeting() {
+    // Ask for every remaining edge (1 perimeter + 5 diagonals = 6) --
+    // unconstrained, this would produce K5 (every node at degree 4).
+    let nbhd = pentagon_blocks();
+    let params = PathNetworkParams { loop_budget: 3.0, local_loop_budget: 3.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    let mut degree: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for s in &sub.new_streets {
+        let a = s.centerline.first().unwrap();
+        let b = s.centerline.last().unwrap();
+        // Snap to the fixture's own block centroids by nearest match --
+        // simpler here to just count endpoints directly since ids encode
+        // the block pair.
+        let parts: Vec<&str> = s.id.trim_start_matches("path_").trim_start_matches("localloop_").trim_start_matches("loop_").split("_to_").collect();
+        assert_eq!(parts.len(), 2, "unexpected street id shape: {}", s.id);
+        *degree.entry(parts[0].to_string()).or_default() += 1;
+        *degree.entry(parts[1].to_string()).or_default() += 1;
+        let _ = (a, b); // endpoints only used for the id-parsing sanity check above
+    }
+
+    assert!(
+        sub.new_streets.len() < 10,
+        "K5 (all 5 blocks pairwise connected) would be 10 edges -- degree capping should have skipped some, got {}",
+        sub.new_streets.len()
+    );
+    for (block, d) in &degree {
+        assert!(*d <= 3, "block {block} ended up at degree {d} -- P50 T Junctions requires no node exceed a three-way meeting");
+    }
+}
+
+/// P53 Main Gateways: path_network should emit one real site-perimeter
+/// Boundary (convex hull of every block's own outer ring), and every
+/// street endpoint from the four-corner-blocks fixture should sit near
+/// that hull -- the blocks themselves are the hull's own corners.
+#[test]
+fn emits_a_real_site_perimeter_boundary() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults();
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert_eq!(sub.new_boundaries.len(), 1, "expected exactly one site-perimeter boundary");
+    let boundary = &sub.new_boundaries[0];
+    assert_eq!(boundary.id, "site_perimeter");
+    assert!(boundary.centerline.len() >= 4, "a real quadrilateral hull should have at least 4 vertices (closed ring), got {}", boundary.centerline.len());
+    assert_eq!(boundary.centerline.first(), boundary.centerline.last(), "the boundary ring should be closed");
+}
+
+#[test]
+fn arterial_count_zero_gives_no_arterial_streets() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams { arterial_count: 0.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert!(
+        sub.new_streets.iter().all(|s| s.classification.as_deref() != Some("arterial")),
+        "arterial_count=0 should produce no arterial streets"
+    );
+    assert!(
+        sub.new_streets.iter().all(|s| s.surface.as_deref() != Some("asphalt")),
+        "arterial_count=0 should produce no asphalt-surfaced streets"
+    );
+}
+
+#[test]
+fn arterial_count_one_reclassifies_exactly_one_mst_backbone_edge() {
+    let nbhd = four_corner_blocks();
+    let params = PathNetworkParams::defaults(); // arterial_count: 1.0
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    let arterial: Vec<_> = sub
+        .new_streets
+        .iter()
+        .filter(|s| s.classification.as_deref() == Some("arterial"))
+        .collect();
+    assert_eq!(arterial.len(), 1, "arterial_count=1 should reclassify exactly one edge");
+    let a = arterial[0];
+    assert!(
+        a.id.starts_with("path_"),
+        "the arterial edge should come from the MST backbone, not a loop edge, got {}",
+        a.id
+    );
+    assert_eq!(a.row_width_m, Some(params.arterial_width_m));
+    assert_eq!(a.surface.as_deref(), Some("asphalt"));
+}
+
+/// Three blocks in a line, unevenly spaced (10m then 100m), so the MST is
+/// unambiguous (the two adjacent edges, never the 110m direct span) and its
+/// two edges have clearly distinct real lengths -- lets this test prove
+/// arterial classification really does pick the LONGEST backbone edge, not
+/// an arbitrary one.
+fn three_blocks_uneven_spacing() -> Neighborhood {
+    let m_per_deg = 111_320.0;
+    let make_pad = |id: &str, cx: f64, block: &str| -> Parcel {
+        let s = 0.00002;
+        let ring = vec![
+            LngLat::new(cx - s, -s),
+            LngLat::new(cx + s, -s),
+            LngLat::new(cx + s, s),
+            LngLat::new(cx - s, s),
+        ];
+        Parcel {
+            id: id.into(),
+            polygon: Polygon::from_ring(ring),
+            area_acres: 0.01,
+            use_category: Some("p95_building_pad".into()),
+            ownership: None,
+            is_eda: false,
+            spec: Some(block.into()),
+            density_tier: None,
+            target_stories: None,
+        }
+    };
+
+    let x0 = 0.0;
+    let x1 = 10.0 / m_per_deg;
+    let x2 = 110.0 / m_per_deg;
+    let parcels = vec![
+        make_pad("a", x0, "BLOCK_0"),
+        make_pad("b", x1, "BLOCK_1"),
+        make_pad("c", x2, "BLOCK_2"),
+    ];
+
+    Neighborhood {
+        id: "test".into(),
+        bbox_wgs84: [x0, -0.0001, x2, 0.0001],
+        parcels,
+        buildings: vec![],
+        streets: vec![],
+        open_space: vec![],
+        boundaries: vec![],
+        activity_nodes: vec![],
+        metadata: NeighborhoodMeta {
+            source: "synthetic".into(),
+            fetched_at: "test".into(),
+            license: "test".into(),
+            layer_provenance: Default::default(),
+            label: "arterial-length fixture".into(),
+        },
+            pattern_fields: vec![],
+        }
+}
+
+#[test]
+fn arterial_classification_picks_the_longest_mst_edge_not_an_arbitrary_one() {
+    let nbhd = three_blocks_uneven_spacing();
+    let params = PathNetworkParams { loop_budget: 0.0, local_loop_budget: 0.0, ..PathNetworkParams::defaults() };
+    let sub = PathNetwork.apply(&nbhd, "*", &params, 0).unwrap();
+
+    assert_eq!(sub.new_streets.len(), 2, "3 collinear blocks -> MST has exactly 2 edges");
+    let arterial: Vec<_> = sub
+        .new_streets
+        .iter()
+        .filter(|s| s.classification.as_deref() == Some("arterial"))
+        .collect();
+    assert_eq!(arterial.len(), 1);
+
+    let m = 111_320.0;
+    let segment_length = |s: &street_smarts_core::nir::Street| {
+        let a = s.centerline.first().unwrap();
+        let b = s.centerline.last().unwrap();
+        let (ax, ay) = (a.lng * m, a.lat * m);
+        let (bx, by) = (b.lng * m, b.lat * m);
+        ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
+    };
+    let local: Vec<_> = sub.new_streets.iter().filter(|s| s.classification.as_deref() == Some("local")).collect();
+    assert_eq!(local.len(), 1, "the other MST edge should remain local");
+    assert!(
+        segment_length(arterial[0]) > segment_length(local[0]),
+        "the arterial-classified edge ({:.1}m) should be the longer of the two real MST edges, got local edge {:.1}m",
+        segment_length(arterial[0]),
+        segment_length(local[0])
+    );
+}
+
 #[test]
 fn params_roundtrip() {
-    let p = PathNetworkParams { loop_budget: 5.0, local_loop_budget: 2.0, path_width_m: 6.0 };
+    let p = PathNetworkParams {
+        loop_budget: 5.0,
+        local_loop_budget: 2.0,
+        path_width_m: 6.0,
+        arterial_count: 2.0,
+        arterial_width_m: 24.0,
+    };
     let v = p.as_vector();
     let back = PathNetworkParams::from_vector(&v);
     assert_eq!(back.loop_budget, 5.0);
     assert_eq!(back.local_loop_budget, 2.0);
     assert_eq!(back.path_width_m, 6.0);
+    assert_eq!(back.arterial_count, 2.0);
+    assert_eq!(back.arterial_width_m, 24.0);
 }
 
 #[test]

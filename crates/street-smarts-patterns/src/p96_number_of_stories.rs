@@ -1,6 +1,6 @@
-//! P96 Number of Stories — turn a block's density-ring goal into real
-//! per-building story counts, honoring P21's four-story-ordinary-building
-//! constraint.
+//! P96 Number of Stories — pick the very few building pads that get to
+//! exceed the ordinary four-story cap, "placed with great care... widely
+//! spaced."
 //!
 //! From Alexander, *A Pattern Language*, Pattern 96:
 //! > Assign each building its correct height... In any neighborhood, four
@@ -8,49 +8,100 @@
 //! > stories more generally the rule -- except for a very few buildings,
 //! > which are the exceptions, and which should be placed with great care.
 //!
+//! # v0.3: exceptions only -- the ordinary cap moved to P21
+//!
+//! This operator used to do two different jobs in one pass: capping every
+//! pad's tier target at the ordinary ceiling, AND picking the very few
+//! that get to exceed it. Only the second genuinely needs P108 Connected
+//! Buildings to have already run (final merged areas to rank
+//! largest-first, final merged positions to check spacing) --
+//! `PATTERN_ORDERING_AUDIT.md` §4.2 names this as a "mixed" deviation: the
+//! ordinary-cap half is a pure per-pad field read that doesn't need P108 at
+//! all. That half is now `p21_four_story_limit` (Alexander's own P21, the
+//! same citation this file always named for the cap), running right after
+//! P95, before P108. This operator now runs ONLY the exception-selection
+//! and P99 main-building logic below, still after P108, since both
+//! genuinely need the final, merged pad set.
+//!
 //! # What this does
 //! Runs once, site-scale (`parcel_id == "*"`), over every parcel tagged
 //! `use_category: "p95_building_pad"` (or `"p95_pad_with_building"`) --
-//! the same convention P107 already uses. Groups pads by `density_tier`
-//! (set by P29 Density Rings; pads with no tier fall into an
-//! `"unspecified"` group using `default_target_stories`). Within each
-//! group:
-//! - Every pad is capped at `max_ordinary_stories` (Alexander's own
-//!   number, default 4) UNLESS the group's `target_stories` (P29's goal)
-//!   exceeds the cap.
-//! - When it does, up to `tall_exception_fraction` of that group's pads
-//!   (by count, rounded down, at least one if the group is non-empty) may
-//!   be assigned the group's full `target_stories` instead of the cap --
-//!   Alexander's "very few... exceptions." Candidates are picked
-//!   largest-pad-first (a taller building deserves a correspondingly
-//!   larger footprint, not a token exception on a sliver) and only kept if
-//!   they're at least `min_tall_spacing_m` from every exception already
-//!   chosen -- the "placed with great care... widely spaced" half of the
-//!   pattern, not just a bare count limit.
+//! the same convention P107 already uses, i.e. AFTER P108 has had its
+//! chance to merge pads into their final footprints. Groups pads by their
+//! INHERITED `density_tier` -- the same coarse, per-block grouping the
+//! pre-split operator always used (still just what P108 copied verbatim
+//! from whichever source pad a cluster started growing from; the real
+//! `p108_connected_buildings.rs` caveat about that isn't reconciled here,
+//! either -- see its own module doc). What IS new: since P21 (run before
+//! P108) already overwrote every over-cap pad's own `target_stories` down
+//! to the ordinary ceiling, this operator can no longer read a group's
+//! real target off any pad directly -- it resamples P29's `DensityField`
+//! once per group, at that group's own largest pad's centroid, to recover
+//! what the field actually asked for before P21's cap erased it. (An
+//! earlier version of this fix resampled the field per PAD instead of per
+//! GROUP, which split one uniform block-level tier into several finer
+//! ones and let two exceptions from different resulting groups -- so never
+//! checked against each other -- land closer than `min_tall_spacing_m`;
+//! reverted, see `tests/p96_number_of_stories.rs`'s own regression test.)
+//! Falls back to the pad's own remaining `target_stories` if no field is
+//! attached (P29 didn't run) -- fully backward compatible.
 //!
-//! Sets `target_stories` on each pad's own `Parcel` (overwriting P29's
-//! block-level goal with this pad's actual assignment). Does NOT set
+//! Within each group:
+//! - Every pad starts from whatever `target_stories` it already carries
+//!   (P21's ordinary cap, or `default_target_stories` if P21 never ran) --
+//!   left untouched unless it's picked as an exception or the main
+//!   building below.
+//! - When the group's real target exceeds `max_ordinary_stories`, up to
+//!   `tall_exception_fraction` of that group's pads (by count, rounded
+//!   down, at least one if the group is non-empty) may be assigned the
+//!   group's full real target instead of the cap -- Alexander's "very
+//!   few... exceptions." Candidates are picked largest-pad-first (a taller
+//!   building deserves a correspondingly larger footprint, not a token
+//!   exception on a sliver) and only kept if they're at least
+//!   `min_tall_spacing_m` from every exception already chosen -- the
+//!   "placed with great care... widely spaced" half of the pattern, not
+//!   just a bare count limit.
+//!
+//! Sets `target_stories` on each pad's own `Parcel`. Does NOT set
 //! `height_m` directly -- there's no such field on `Parcel`; P107 reads
 //! `target_stories` back (via `floor_to_floor_m`) when it creates the real
 //! `Building` entity. A pipeline that runs P96 before P107 gets real
 //! height variation; skipping P96 leaves P107's own flat
-//! `assumed_height_m` fallback unchanged, so this is backward compatible.
+//! `assumed_height_m` fallback (or P21's ordinary cap, if that ran)
+//! unchanged, so this is backward compatible.
 //!
 //! # What this deliberately does NOT do
 //! - Doesn't reconsider whether a pad's FOOTPRINT should change for a
 //!   taller building (larger footprint for structural/egress reasons at
-//!   height) -- purely assigns a story count to whatever footprint P95
+//!   height) -- purely assigns a story count to whatever footprint P95/P108
 //!   already produced.
 //! - `min_tall_spacing_m` spacing is checked pad-centroid to pad-centroid,
 //!   straight-line -- doesn't account for what's between them (a tall
 //!   exception across a street from another one still counts as "close").
+//!
+//! # v0.2: P99 Main Building, one real extension
+//!
+//! Alexander's P99: "decide which building... houses the most essential
+//! function... form this building as the main building, with a central
+//! position, higher roof." This schema has no program/use data to identify
+//! "most essential function" -- but position and height are both real.
+//! After the per-tier story assignment above, when 2+ pads exist, the ONE
+//! pad nearest the area-weighted centroid of every pad gets
+//! `main_building_boost_stories` added on top of whatever its tier already
+//! assigned -- uncapped by `max_ordinary_stories`, the same class of
+//! deliberate override as a tall exception, since Alexander's own text
+//! explicitly singles this one building out. This directly targets
+//! `p99_main_building`'s own two real proxies: height_dominance (the boost
+//! makes it measurably taller) and centrality (it's the nearest-to-center
+//! pad by construction).
 
+use crate::p29_density_rings::sample_density_field;
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{Neighborhood, Parcel};
+use street_smarts_core::nir::{Neighborhood, Parcel, PatternField};
 use street_smarts_core::Scope;
 use street_smarts_core::opinion::SourceCitation;
 
@@ -70,6 +121,11 @@ pub struct P96Params {
     /// so P96 alone (no P29) is a no-op relative to P107's own flat
     /// default height.
     pub default_target_stories: f64,
+    /// Extra stories added, on top of its tier's normal assignment, to
+    /// the ONE pad nearest the area-weighted centroid of every pad --
+    /// Alexander's P99 Main Building ("form this building... with a
+    /// central position, higher roof"). 0 = no main-building boost.
+    pub main_building_boost_stories: f64,
 }
 
 impl Parameters for P96Params {
@@ -95,6 +151,11 @@ impl Parameters for P96Params {
                 "Target stories for pads with no density_tier (P29 didn't run).",
                 1.0, 8.0, 3.0,
             ).with_unit("stories"),
+            ParamSpec::float(
+                "main_building_boost_stories",
+                "Extra stories added to the one pad nearest the site's own area-weighted centroid (P99 Main Building).",
+                0.0, 10.0, 3.0,
+            ).with_unit("stories"),
         ]
     }
     fn defaults() -> Self {
@@ -103,10 +164,11 @@ impl Parameters for P96Params {
             tall_exception_fraction: 0.15,
             min_tall_spacing_m: 80.0,
             default_target_stories: 3.0,
+            main_building_boost_stories: 3.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.max_ordinary_stories, self.tall_exception_fraction, self.min_tall_spacing_m, self.default_target_stories]
+        vec![self.max_ordinary_stories, self.tall_exception_fraction, self.min_tall_spacing_m, self.default_target_stories, self.main_building_boost_stories]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -115,6 +177,7 @@ impl Parameters for P96Params {
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.tall_exception_fraction = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.min_tall_spacing_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.default_target_stories = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.main_building_boost_stories = s.clamp(*x); }
         p
     }
 }
@@ -147,11 +210,13 @@ impl PatternOperator for P96NumberOfStories {
         }
     }
     fn description(&self) -> &'static str {
-        "Assign each building pad a real story count from its density-ring goal, capping ordinary buildings at 4 stories and allowing a very few, widely-spaced exceptions."
+        "Pick the very few building pads (widely spaced) that get to exceed the ordinary 4-story cap P21 already applied, plus P99's main building."
     }
 
     /// `parcel_id == "*"` (the only mode supported): assigns every pad
-    /// tagged `p95_building_pad`/`p95_pad_with_building` in one pass.
+    /// tagged `p95_building_pad`/`p95_pad_with_building` in one pass. Run
+    /// AFTER P108 Connected Buildings (and P21 Four-Story Limit) for
+    /// meaningful results -- see this file's own "v0.3" module doc.
     fn apply(
         &self,
         nbhd: &Neighborhood,
@@ -165,19 +230,37 @@ impl PatternOperator for P96NumberOfStories {
 
         let pads: Vec<&Parcel> = nbhd.select(&Scope::BUILDING_PAD).collect();
         if pads.is_empty() {
-            return Err("p96_number_of_stories: no building pads found -- run P95 Building Complex first.".into());
+            return Err("p96_number_of_stories: no building pads found -- run P95 Building Complex first (and P108 Connected Buildings, for real final footprints).".into());
         }
 
-        // Group pad indices by tier, largest area first within each group
-        // (a taller building gets a correspondingly larger footprint, not
-        // a token exception on a sliver).
+        // Group pad indices by their INHERITED density_tier -- the same
+        // coarse, per-block grouping the pre-split operator always used,
+        // and untouched by P21 (which only ever writes target_stories).
+        // Keeping this as the group key (not a per-pad resample) matters:
+        // pads from the same P37 block sharing one tier is exactly what
+        // keeps two same-block exceptions checked against each other for
+        // spacing -- resampling P29's field at each pad's own individual
+        // centroid was tried and reverted here after it split one uniform
+        // block-level group into several finer ones, letting two
+        // exceptions from DIFFERENT groups (so never spacing-checked
+        // against each other) land right next to each other. See
+        // `tests/p96_number_of_stories.rs`'s own
+        // `honors_the_ordinary_cap_with_only_a_few_widely_spaced_exceptions`
+        // for the regression this fix keeps closed.
+        let density_field = nbhd.pattern_fields.iter().find_map(|f| match f { PatternField::Density(d) => Some(d), _ => None });
         let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, p) in pads.iter().enumerate() {
             let tier = p.density_tier.clone().unwrap_or_else(|| "unspecified".into());
             groups.entry(tier).or_default().push(i);
         }
 
-        let mut assigned_stories: Vec<f64> = vec![params.default_target_stories; pads.len()];
+        // Every pad starts from whatever target_stories it already
+        // carries -- P21's ordinary cap (run before P108), or
+        // default_target_stories if P21 never ran -- and stays there
+        // unless picked as an exception or the main building below.
+        let mut assigned_stories: Vec<f64> = pads.iter()
+            .map(|p| p.target_stories.unwrap_or(params.default_target_stories))
+            .collect();
         let mut n_tall = 0;
         let mut n_ordinary = 0;
         let mut steps: Vec<String> = Vec::new();
@@ -185,17 +268,28 @@ impl PatternOperator for P96NumberOfStories {
         for (tier, mut idxs) in groups {
             idxs.sort_by(|&a, &b| pads[b].polygon.area_m2().partial_cmp(&pads[a].polygon.area_m2()).unwrap_or(std::cmp::Ordering::Equal));
 
+            // Recover the group's REAL (pre-P21-cap) target: P21 already
+            // overwrote every over-cap pad's own target_stories down to
+            // the ordinary cap, so trusting the pad's current value here
+            // would always read "already at the cap" and never find a
+            // real exception. One resample of P29's field, at the
+            // group's own largest pad's centroid (a single representative
+            // point for the whole group, not per pad -- see above),
+            // recovers what the field actually asked for. Falls back to
+            // whatever's still on the pad if no field is attached, same
+            // as a pipeline that never ran P29/P21.
             let tier_target = if tier == "unspecified" {
                 params.default_target_stories
+            } else if let Some(field) = density_field {
+                sample_density_field(field, pad_centroid(pads[idxs[0]])).1
             } else {
-                idxs.iter().find_map(|&i| pads[i].target_stories).unwrap_or(params.default_target_stories)
+                pads[idxs[0]].target_stories.unwrap_or(params.default_target_stories)
             };
 
             if tier_target <= params.max_ordinary_stories {
-                for &i in &idxs {
-                    assigned_stories[i] = tier_target.max(1.0);
-                    n_ordinary += 1;
-                }
+                // Already correct -- P21 (or the default fallback above)
+                // already left every one of these pads at tier_target.
+                n_ordinary += idxs.len();
                 steps.push(format!("{tier}: {} pad(s), all ordinary at {:.0} stories (tier target within the cap).", idxs.len(), tier_target));
                 continue;
             }
@@ -227,6 +321,30 @@ impl PatternOperator for P96NumberOfStories {
             ));
         }
 
+        // P99 Main Building: the one pad nearest the area-weighted centroid
+        // of every pad gets a real boost on top of its tier's assignment,
+        // uncapped -- see this file's own "v0.2" module doc.
+        let mut main_building_idx: Option<usize> = None;
+        if pads.len() >= 2 && params.main_building_boost_stories > 0.0 {
+            let mut cx = 0.0;
+            let mut cy = 0.0;
+            let mut total_area = 0.0;
+            let centroids: Vec<LngLat> = pads.iter().map(|p| pad_centroid(p)).collect();
+            for (p, c) in pads.iter().zip(&centroids) {
+                let a = p.polygon.area_m2().max(1.0);
+                cx += c.lng * a;
+                cy += c.lat * a;
+                total_area += a;
+            }
+            let center = LngLat::new(cx / total_area, cy / total_area);
+            let (idx, _) = centroids.iter().enumerate()
+                .map(|(i, c)| (i, dist_m(*c, center)))
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .expect("pads is non-empty here");
+            assigned_stories[idx] += params.main_building_boost_stories;
+            main_building_idx = Some(idx);
+        }
+
         let mut new_parcels: Vec<Parcel> = Vec::with_capacity(pads.len());
         let mut replaced: Vec<String> = Vec::with_capacity(pads.len());
         for (i, p) in pads.iter().enumerate() {
@@ -234,6 +352,12 @@ impl PatternOperator for P96NumberOfStories {
             updated.target_stories = Some(assigned_stories[i]);
             new_parcels.push(updated);
             replaced.push(p.id.clone());
+        }
+        if let Some(idx) = main_building_idx {
+            steps.push(format!(
+                "Main building: {} boosted by {:.0} stories (now {:.0}) as the pad nearest the site's own centroid.",
+                pads[idx].id, params.main_building_boost_stories, assigned_stories[idx]
+            ));
         }
 
         let trace = SubdivisionTrace {
@@ -256,6 +380,9 @@ impl PatternOperator for P96NumberOfStories {
                 "Pads with no density_tier (P29 didn't run, or ran on a different scope) all get \
                  the same flat default_target_stories -- P96 alone, without P29, doesn't create \
                  any real height variation.".into(),
+                "The main-building pad is picked purely by position (nearest the pads' own \
+                 area-weighted centroid) -- this schema has no 'most essential function'/program \
+                 data to pick it by use, as Alexander's own text actually prescribes.".into(),
             ],
             seed,
             params: params.as_map(),
@@ -266,11 +393,14 @@ impl PatternOperator for P96NumberOfStories {
             new_open_space: vec![],
             new_buildings: vec![],
             new_streets: vec![],
+            new_activity_nodes: vec![],
+            new_boundaries: vec![],
             replaced_parcel_ids: replaced,
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
+            new_fields: vec![],
         })
     }
 }

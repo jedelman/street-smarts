@@ -95,7 +95,9 @@ jobs:
           test -f public/vibe-render/clean_baseline.glb
           test -f public/vibe-render/clean_baseline_floorplan_ground.svg
           test -f public/vibe-render/clean_baseline_floorplan_largest_building.svg
-          test -f public/vibe-render/clean_baseline_lineage.svg
+          test -f public/vibe-render/cluster_interior_isometric.png
+          test -f public/vibe-render/cluster_interior.glb
+          test -f public/vibe-render/cluster_interior_interior_views.json
           echo "All required outputs present."
 
       - name: Visual regression check (isometric renders)
@@ -108,7 +110,8 @@ jobs:
         # A PR that intentionally changes a render updates the baseline
         # with: python3 tools/vibe-render/perceptual_hash.py update-baseline
         # tools/vibe-render/baselines/isometric.json target/vibe-render
-        # clean_baseline_isometric.png barrio_mallcore_isometric.png
+        # clean_baseline_isometric.png cluster_interior_isometric.png
+        # barrio_mallcore_isometric.png
         # mallcore_seeding_stratified_isometric.png mallcore_seeding_fieldguided_isometric.png
         #
         # Reads `target/vibe-render` -- the "Generate vibe-render gallery"
@@ -140,10 +143,25 @@ jobs:
         # tighter since the real number is known. Ratchet down over time
         # as real headroom data accumulates -- don't just raise it if it's
         # ever hit without asking why the bundle grew first.
+        #
+        # Raised 300,000 -> 310,000 after asking why (PR #27): real gzip
+        # size hit 300,362 with only ~2,650 bytes of headroom left even
+        # before that PR's own genuine growth (a new p21_four_story_limit
+        # generator, the IntimacyField primitive + its p116/p127
+        # consumers) -- see this workflow's own git history for the full
+        # measured numbers behind that first bump.
+        #
+        # Raised again 310,000 -> 1,000,000, explicitly authorized by the
+        # repo owner rather than re-derived from a new measurement -- the
+        # project was ratcheting this budget up roughly every other real
+        # feature commit, which is more churn than the check is worth at
+        # this bundle size; SPEC.md §3.5's actual hard ceiling was always
+        # 5MB compressed. Still a real, enforced ceiling, just one with
+        # enough headroom not to need another PR to raise it again soon.
         run: |
           RAW=$(stat -c%s public/pkg/street_smarts_web_bg.wasm)
           GZIP=$(gzip -c public/pkg/street_smarts_web_bg.wasm | wc -c)
-          BUDGET_GZIP_BYTES=300000
+          BUDGET_GZIP_BYTES=1000000
           echo "WASM raw   : ${RAW} bytes"
           echo "WASM gzip  : ${GZIP} bytes (budget: ${BUDGET_GZIP_BYTES} bytes)"
           if [ "$GZIP" -gt "$BUDGET_GZIP_BYTES" ]; then

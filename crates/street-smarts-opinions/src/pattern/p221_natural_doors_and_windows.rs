@@ -136,6 +136,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P221 opinion fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -169,7 +170,9 @@ mod tests {
             floors: Some(2),
             openings,
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

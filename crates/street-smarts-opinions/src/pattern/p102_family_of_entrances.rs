@@ -184,6 +184,7 @@ mod tests {
                 layer_provenance: Default::default(),
                 label: "P102 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -214,7 +215,9 @@ mod tests {
                 floor: 0,
             }],
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

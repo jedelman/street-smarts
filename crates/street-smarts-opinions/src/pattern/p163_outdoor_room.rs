@@ -179,6 +179,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P163 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -198,7 +199,9 @@ mod tests {
             id: id.into(), polygon: Polygon::from_ring(square_at(x_m, y_m, side)),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None,
             parcel_id: None, floors: Some(2), openings: vec![], interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     fn plaza(id: &str, x_m: f64, y_m: f64, side: f64) -> OpenSpace {

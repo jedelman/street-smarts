@@ -54,7 +54,8 @@ fn rect_neighborhood(width_m: f64, depth_m: f64, use_category: Option<String>) -
             layer_provenance: Default::default(),
             label: "P107 unit fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
 }
 
 #[test]

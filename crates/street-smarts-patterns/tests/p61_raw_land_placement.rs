@@ -1,5 +1,5 @@
 use street_smarts_core::geometry::{LngLat, Polygon};
-use street_smarts_core::nir::{Neighborhood, NeighborhoodMeta, OpenSpace, OpenSpaceKind, Parcel};
+use street_smarts_core::nir::{Neighborhood, NeighborhoodMeta, OpenSpace, OpenSpaceKind, Parcel, Street};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
 use street_smarts_patterns::p61_small_public_squares::{P61Params, P61SmallPublicSquares};
 use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
@@ -48,7 +48,14 @@ fn nbhd(parcels: Vec<Parcel>, open_space: Vec<OpenSpace>) -> Neighborhood {
             layer_provenance: Default::default(),
             label: "P61 raw-placement fixture".into(),
         },
-    }
+            pattern_fields: vec![],
+        }
+}
+
+fn nbhd_with_streets(parcels: Vec<Parcel>, open_space: Vec<OpenSpace>, streets: Vec<Street>) -> Neighborhood {
+    let mut n = nbhd(parcels, open_space);
+    n.streets = streets;
+    n
 }
 
 #[test]
@@ -81,6 +88,35 @@ fn raw_parcel_with_no_plaza_gets_new_squares_placed_directly() {
     if sub.new_open_space.len() > 1 {
         assert_eq!(sub.new_streets.len(), sub.new_open_space.len() - 1, "squares should be linked by an MST, not a mesh");
         assert!(sub.new_streets.iter().all(|s| s.classification.as_deref() == Some("pedestrian")));
+    }
+}
+
+/// P126 Something Roughly in the Middle: every newly placed square gets a
+/// real ActivityNode, jittered off (not exactly at) the square's own
+/// centroid, and still real close to it.
+#[test]
+fn every_new_square_gets_a_real_activity_node_near_but_not_exactly_at_its_centroid() {
+    let n = nbhd(vec![raw_parcel("RAW_1", square_ring(0.0, 0.0, 100.0))], vec![]);
+    let sub = P61SmallPublicSquares.apply(&n, "RAW_1", &P61Params::defaults(), 7).unwrap();
+
+    assert_eq!(sub.new_activity_nodes.len(), sub.new_open_space.len(), "every square should get exactly one ActivityNode");
+
+    let m_per_deg_lat = 110_540.0;
+    let m_per_deg_lng = 111_320.0;
+    for sq in &sub.new_open_space {
+        let outer = &sq.polygon.outer;
+        let centroid_lng = outer.iter().map(|p| p.lng).sum::<f64>() / outer.len() as f64;
+        let centroid_lat = outer.iter().map(|p| p.lat).sum::<f64>() / outer.len() as f64;
+
+        let node = sub.new_activity_nodes.iter()
+            .find(|a| a.id.starts_with(&sq.id))
+            .unwrap_or_else(|| panic!("expected an ActivityNode for square {}", sq.id));
+
+        let dx = (node.location.lng - centroid_lng) * m_per_deg_lng;
+        let dy = (node.location.lat - centroid_lat) * m_per_deg_lat;
+        let offset_m = (dx * dx + dy * dy).sqrt();
+        assert!(offset_m > 0.01, "{}: ActivityNode should be jittered off the exact centroid, got {offset_m:.3}m offset", sq.id);
+        assert!(offset_m < 10.0, "{}: ActivityNode should still sit close to its square, got {offset_m:.1}m offset", sq.id);
     }
 }
 
@@ -162,4 +198,59 @@ fn real_p37_then_p61_then_p95_chain_has_zero_overlap() {
         block_id, sub61.new_open_space.len(), sub95.new_parcels.len(), sub95.new_open_space.len(), overlap_area
     );
     assert!(overlap_area < 1.0, "P95 should build around P61's squares with zero real overlap, got {overlap_area} m²");
+}
+
+/// P30 Activity Nodes: a real street convergence point (two streets
+/// sharing an endpoint) inside a raw parcel should anchor a placed square,
+/// not just land at an arbitrary stratified-random position.
+#[test]
+fn a_real_street_convergence_point_anchors_a_square_there() {
+    let m = 1.0 / 111_320.0;
+    let parcel = raw_parcel("RAW_1", square_ring(0.0, 0.0, 100.0));
+
+    // Two streets sharing one real endpoint at local (50, 50) inside the
+    // 100m parcel -- a real intersection node, the same shape PathNetwork
+    // output takes (shared/coincident endpoints, not crossing segments).
+    let convergence_lng = 50.0 * m;
+    let convergence_lat = 50.0 * m;
+    let s1 = Street {
+        id: "S1".into(),
+        centerline: vec![LngLat::new(10.0 * m, 10.0 * m), LngLat::new(convergence_lng, convergence_lat)],
+        classification: Some("local".into()),
+        row_width_m: Some(6.0),
+        surface: None,
+    };
+    let s2 = Street {
+        id: "S2".into(),
+        centerline: vec![LngLat::new(90.0 * m, 10.0 * m), LngLat::new(convergence_lng, convergence_lat)],
+        classification: Some("local".into()),
+        row_width_m: Some(6.0),
+        surface: None,
+    };
+    let n = nbhd_with_streets(vec![parcel], vec![], vec![s1, s2]);
+
+    let mut params = P61Params::defaults();
+    params.max_squares = 1.0;
+    let sub = P61SmallPublicSquares.apply(&n, "RAW_1", &params, 7).unwrap();
+
+    assert_eq!(sub.new_open_space.len(), 1, "expected exactly one square with max_squares=1");
+    let sq = &sub.new_open_space[0];
+    let outer = &sq.polygon.outer;
+    let centroid_lng = outer.iter().map(|p| p.lng).sum::<f64>() / outer.len() as f64;
+    let centroid_lat = outer.iter().map(|p| p.lat).sum::<f64>() / outer.len() as f64;
+
+    let dx = (centroid_lng - convergence_lng) * 111_320.0;
+    let dy = (centroid_lat - convergence_lat) * 110_540.0;
+    let offset_m = (dx * dx + dy * dy).sqrt();
+    // Not near-zero: the square gets clipped off the street corridor
+    // itself (real right-of-way reserved around both streets), so its
+    // final centroid sits adjacent to the intersection, not on top of it.
+    // Still nowhere near the ~35-70m a stratified-random pick could land
+    // at within this 100m parcel.
+    assert!(
+        offset_m < 15.0,
+        "the single placed square should be anchored close to the real street-convergence point \
+         (50,50), got centroid offset {offset_m:.1}m instead -- looks like it fell back to \
+         stratified-random"
+    );
 }

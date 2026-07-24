@@ -47,6 +47,7 @@ fn p95_builds_pads_around_pre_placed_squares_with_zero_overlap() {
             centerline: vec![local_to_lnglat(path_nodes[*i], &origin), local_to_lnglat(path_nodes[*j], &origin)],
             classification: Some("local".into()),
             row_width_m: Some(4.0),
+            surface: None,
         });
     }
 
@@ -80,6 +81,9 @@ fn p95_builds_pads_around_pre_placed_squares_with_zero_overlap() {
         new_open_space: new_open.clone(),
         new_buildings: vec![],
         new_streets: new_streets.clone(),
+        new_activity_nodes: vec![],
+        new_boundaries: vec![],
+        new_fields: vec![],
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],

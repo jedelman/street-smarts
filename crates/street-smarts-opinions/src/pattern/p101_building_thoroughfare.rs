@@ -15,8 +15,10 @@
 //!
 //! # A real, checkable proxy
 //!
-//! `p131_the_flow_through_rooms`/`p132` already tag a loop-closing
-//! `InteriorCell` `kind: "passage"`. This opinion checks that a real
+//! `p131_the_flow_through_rooms` already tags a loop-closing
+//! `InteriorCell` `kind: "passage"` (folding in Alexander's own Pattern
+//! 132 Short Passages rule directly -- see p131's own module doc for why
+//! there's no separate P132 operator). This opinion checks that a real
 //! passage cell connects to TWO OR MORE other cells (`connects_to.len()
 //! >= 2`) -- a real through-route with openings at both ends, not a
 //! single-connection dead-end stub.
@@ -126,6 +128,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P101 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -144,7 +147,9 @@ mod tests {
             id: id.into(),
             polygon: Polygon::from_ring(vec![LngLat::new(0.0, 0.0), LngLat::new(20.0 * m, 0.0), LngLat::new(20.0 * m, 20.0 * m), LngLat::new(0.0, 20.0 * m), LngLat::new(0.0, 0.0)]),
             height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: None, floors: Some(2), openings: vec![], interior_cells: cells,
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

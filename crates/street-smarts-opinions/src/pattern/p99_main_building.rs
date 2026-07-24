@@ -149,6 +149,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P99 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -164,7 +165,9 @@ mod tests {
             height_m: Some(height_m), typology: Some("p107_solid_v01".into()),
             year_built: None, parcel_id: None, floors: None, openings: vec![],
             interior_cells: vec![],
-        }
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
     }
 
     #[test]

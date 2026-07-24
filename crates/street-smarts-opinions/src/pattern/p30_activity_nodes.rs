@@ -183,6 +183,7 @@ mod tests {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P30 unit fixture".into(),
             },
+            pattern_fields: vec![],
         }
     }
 
@@ -202,7 +203,7 @@ mod tests {
 
     fn street_endpoint_at(id: &str, x_m: f64, y_m: f64, x2_m: f64, y2_m: f64) -> Street {
         let m = 1.0 / 111_320.0;
-        Street { id: id.into(), centerline: vec![LngLat::new(x_m * m, y_m * m), LngLat::new(x2_m * m, y2_m * m)], classification: Some("local".into()), row_width_m: Some(6.0) }
+        Street { id: id.into(), centerline: vec![LngLat::new(x_m * m, y_m * m), LngLat::new(x2_m * m, y2_m * m)], classification: Some("local".into()), row_width_m: Some(6.0), surface: None }
     }
 
     #[test]

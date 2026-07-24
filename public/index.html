@@ -16,6 +16,15 @@
     --abstain: #8a7f6b;
     --highlight: #e5dec7;
     --warn: #b8602a;
+    /* Vision surface's own palette -- a dusk indigo, deliberately not the
+       page's cream (--bg) or the render canvas's near-black (#2a2a2e),
+       so the section reads as a distinct kind of thing on sight, before
+       anyone reads a word of its copy. */
+    --vision-bg: #241f38;
+    --vision-line: #6b5f95;
+    --vision-ink: #f0ecf9;
+    --vision-muted: #b9aed6;
+    --vision-accent: #d9a441;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -549,19 +558,6 @@
   .svg-thumb:hover img { border-color: var(--ink); background: var(--highlight); }
   .svg-thumb span { color: var(--muted); }
 
-  /* The lineage animation is a real self-contained SVG (SMIL, no JS) --
-     <object> gives it its own document context, unlike <img>, which most
-     browsers silently disable SMIL inside (a static first-frame image,
-     not an animation). */
-  .lineage-animation {
-    margin-top: .9rem;
-    background: white;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: .6rem;
-  }
-  .lineage-animation object { display: block; width: 100%; height: 480px; }
-  .lineage-animation p.note { margin: .5rem 0 0; color: var(--muted); font-size: 0.82rem; }
 
   .downloads {
     margin-top: .75rem;
@@ -583,9 +579,79 @@
   }
   .downloads a:hover { background: var(--highlight); border-color: var(--ink); }
 
+  /* Real camera-placement buttons for the cluster_interior model-viewer --
+     same visual language as .downloads a (border/pill), not a styled
+     <select>, since there's only ever a couple of real rooms to offer. */
+  .camera-views { margin: .75rem 0 0; display: flex; flex-wrap: wrap; gap: .4rem; font-size: 0.82rem; }
+  .camera-views button {
+    font: inherit;
+    color: var(--ink);
+    background: white;
+    padding: .15rem .6rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .camera-views button:hover { background: var(--highlight); border-color: var(--ink); }
+  .camera-views button[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }
+
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
   .pair figure.render { margin: 0; }
+
+  /* Vision surface -- deliberately NOT styled like anything else on this
+     page (white cards, the dark render canvas). A real place for hope
+     and imagination to run ahead of the data, structurally impossible to
+     mistake for the computed geometry above: different palette (a dusk
+     indigo, not the page cream or the render's near-black), a dashed
+     "sketch" border instead of a solid one, and a badge that's part of
+     the section's own layout, not a caption someone can scroll past. See
+     the section's own copy for why this exists and what never belongs in
+     the computed render above it. */
+  section.vision-surface {
+    margin: 2rem 0;
+    padding: 1.5rem 1.6rem;
+    border-radius: 6px;
+    background: var(--vision-bg);
+    border: 2px dashed var(--vision-line);
+    color: var(--vision-ink);
+  }
+  section.vision-surface .vision-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--vision-bg);
+    background: var(--vision-accent);
+    padding: 0.25rem 0.65rem;
+    border-radius: 3px;
+    margin-bottom: 0.9rem;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+  }
+  section.vision-surface h2 {
+    margin: 0 0 0.6rem;
+    font-size: 1.25rem;
+    color: var(--vision-ink);
+  }
+  section.vision-surface p {
+    color: var(--vision-muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    margin: 0 0 0.9rem;
+  }
+  section.vision-surface p:last-of-type { margin-bottom: 0; }
+  section.vision-surface a { color: var(--vision-accent); }
+  section.vision-surface .vision-empty {
+    margin-top: 1.1rem;
+    padding: 1.6rem 1.2rem;
+    border: 1px dashed var(--vision-line);
+    border-radius: 4px;
+    text-align: center;
+    color: var(--vision-muted);
+    font-size: 0.9rem;
+    font-style: italic;
+  }
 </style>
 <!-- Google's <model-viewer> custom element, pinned to an exact version --
      interactive glTF/GLB viewer (orbit/zoom/pan, no page-authored WebGL
@@ -595,6 +661,16 @@
      build output would mean a new npm step in deploy.yml for one static
      script; revisit if that tradeoff stops being worth it. -->
 <script type="module" src="https://unpkg.com/@google/model-viewer@4.3.1/dist/model-viewer.min.js"></script>
+<!-- Real sky HDRI for both <model-viewer> embeds below (skybox-image for
+     the visible background, environment-image for the real IBL lighting
+     it also drives) -- a real low, early-evening sun (not the flat
+     procedural "neutral" environment-image model-viewer ships with, which
+     has no real directional light source and so no real shadows or
+     exterior/interior brightness contrast), chosen over an earlier midday
+     HDRI specifically for the longer, more raking shadows a low sun angle
+     casts across real building massing. See public/env/*.provenance.json
+     for the real source (Poly Haven, CC0 1.0, no attribution required but
+     credited anyway per this project's own convention). -->
 </head>
 <body>
 <div class="wrap">
@@ -627,16 +703,10 @@
     </p>
 
     <figure class="render">
-      <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" shadow-intensity="1" exposure="1" loading="lazy" reveal="auto"></model-viewer>
+      <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (P37 → P52 → P29 → P61 → P95 → P108 → P96 → P107 → P127 → P130 → P129 → P131 → P221 → P133). Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ, in the interactive model itself (orbit around it to see): the surrounding gray massing is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration. Only <code>clean_baseline</code> gets this treatment -- it's the one scenario with a real, geolocated site; the others' fixtures aren't real single addresses in the same way, so there's no honest "surrounding context" to show.</p>
-        <div class="lineage-animation">
-          <object data="/vibe-render/clean_baseline_lineage.svg" type="image/svg+xml" aria-label="Animation of the pattern pipeline building the site step by step, in real geometry">
-            <a href="/vibe-render/clean_baseline_lineage.svg">clean_baseline_lineage.svg</a>
-          </object>
-          <p class="note">Real parcel/pad footprints, not a diagram -- the site unfolding commit by commit (P37 → per-block P95 → P108), the same <code>HistoryStore</code> chain <code>block_membership</code> answers lineage questions from. Loops automatically.</p>
-        </div>
+        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (<!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P160<!-- PIPELINE_CHAIN:END -->). This list is generated straight from <code>language_graph::LANGUAGE</code> on every deploy (<code>scripts/vibe-render.sh</code>, <code>examples/dump_pipeline_chain.rs</code>) -- the same real order the pipeline actually executes in, not a hand-typed guess that can drift. Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ, in the interactive model itself (orbit around it to see): the surrounding gray massing is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration. Only <code>clean_baseline</code> gets this treatment -- it's the one scenario with a real, geolocated site; the others' fixtures aren't real single addresses in the same way, so there's no honest "surrounding context" to show.</p>
         <div class="svg-grid">
           <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
@@ -651,9 +721,81 @@
         <div class="downloads">
           <span class="label">3D model:</span>
           <a href="/vibe-render/clean_baseline.glb" download>.glb</a>
+          <a href="/walk.html?glb=/vibe-render/clean_baseline.glb">walk/fly through &rarr;</a>
         </div>
+        <p class="note">The SAME real whole-site geometry above, in a free-fly viewer: <code>WASD</code> + mouse on desktop. Exterior only -- this scenario's windows/doors are flat decals, not real punched voids (see the caption above and <code>tools/vibe-render/render.py</code>'s own module doc), so there's nothing behind a wall to fly into; no real per-building tour waypoints either, just the site from any angle at human scale. For a real interior to walk into, see the cluster below.</p>
       </figcaption>
     </figure>
+
+    <figure class="render">
+      <model-viewer id="cluster-interior-mv" src="/vibe-render/cluster_interior.glb" poster="/vibe-render/cluster_interior_isometric.png" alt="3D model of one real building cluster from the clean-baseline site, with real punched-through window/door openings in a solid exterior shell and real ground-floor interior partition walls visible through them -- drag to orbit" camera-controls touch-action="pan-y" min-camera-orbit="auto auto 0.05m" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
+      <div class="camera-views" id="cluster-interior-camera-views" hidden>
+        <button type="button" data-view="exterior" aria-pressed="true">Exterior</button>
+      </div>
+      <figcaption>
+        <h3>One cluster, with interiors</h3>
+        <p>The same real <code>clean_baseline</code> pipeline output, cropped to ONE real building cluster (<code>tools/vibe-render/extract_cluster.py</code>: the building with the most real neighbors within 60m, plus everything else -- other buildings, open space, streets -- within that same 60m of its centroid; no field in the schema names a "cluster" directly, so this is a real geometric proxy, not a fabricated grouping). At this scale, real per-opening geometry becomes affordable in a way the whole-site model above can't be: every real <code>p221_natural_doors_and_windows</code> window and door is a real OpenCascade boolean cut punched through the actual wall mass (not a flat decal), and the ground floor's real <code>p127_intimacy_gradient</code> <code>InteriorCell</code> layout is repeated at every real floor with a real floor plate between them (the whole-site model's own 7,765 real openings alone would push either past Cloudflare's 25 MiB limit -- see <code>tools/vibe-render/render.py</code>'s own module doc for the real measured numbers behind that split). The exterior shell is SOLID, not translucent -- once a real punched opening is the real way to see through a wall, an opaque wall around it is just a real wall, the same way an actual building works; a translucent shell was only ever standing in for that before real punching existed. Interior room layout is ground floor only -- <code>InteriorCell.floor</code> is hard-coded 0 everywhere in this schema, so every floor above repeats that SAME real layout rather than a different one nobody computed; no stairs (P133 only carries a 2D stair-core footprint, no tread/riser geometry exists to render), no furniture, no room labels, no doors cut into the interior partitions themselves -- Alexander's own pattern language describes spatial relationships, not a prescribed use, and this project doesn't invent a program the pipeline has no way to know. Lit by a real early-evening sky HDRI, low golden sun (Poly Haven, CC0 -- see <code>public/env/*.provenance.json</code>) rather than flat ambient light, so real shadows and a real bright-exterior/dim-interior contrast show up as you orbit.</p>
+        <p>The "Room" buttons above jump the SAME real, live <code>&lt;model-viewer&gt;</code> camera to sit inside one real <code>InteriorCell</code>, aimed back out along whichever real direction has the most open real room depth to sit in (<code>tools/vibe-render/render.py</code>'s own <code>interior_camera_views</code>/<code>_best_interior_view_direction</code>) -- a real hardware-accelerated WebGL camera placed in the real model, not a separate pre-rendered image. No furniture or textures yet -- just real structure, real punched openings, and real sky-lit daylight (see the caption above), honestly plain rather than dressed up otherwise.</p>
+        <div class="downloads">
+          <span class="label">3D model:</span>
+          <a href="/vibe-render/cluster_interior.glb" download>.glb</a>
+          <a href="/walk.html">walk/fly through &rarr;</a>
+        </div>
+        <p class="note">The SAME real geometry above, in a free-fly viewer: <code>WASD</code> + mouse on desktop, an automated tour of the real interior viewpoints on mobile -- <code>public/walk.html</code>.</p>
+      </figcaption>
+    </figure>
+    <script>
+      (function () {
+        var mv = document.getElementById('cluster-interior-mv');
+        var nav = document.getElementById('cluster-interior-camera-views');
+        if (!mv || !nav) return;
+        var exteriorBtn = nav.querySelector('[data-view="exterior"]');
+        var defaultOrbit = null;
+        var defaultTarget = null;
+
+        function setPressed(btn) {
+          nav.querySelectorAll('button').forEach(function (b) {
+            b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+          });
+        }
+
+        exteriorBtn.addEventListener('click', function () {
+          if (defaultOrbit) {
+            mv.cameraOrbit = defaultOrbit;
+            mv.cameraTarget = defaultTarget;
+          }
+          setPressed(exteriorBtn);
+        });
+
+        mv.addEventListener('load', function () {
+          if (defaultOrbit) return; // real initial pose, captured once
+          var o = mv.getCameraOrbit();
+          var t = mv.getCameraTarget();
+          defaultOrbit = o.theta + 'rad ' + o.phi + 'rad ' + o.radius + 'm';
+          defaultTarget = t.x + 'm ' + t.y + 'm ' + t.z + 'm';
+
+          fetch('/vibe-render/cluster_interior_interior_views.json')
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (views) {
+              if (!views.length) return;
+              views.forEach(function (view, i) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = 'Room ' + (i + 1) + ' (' + view.building_id.replace(/_building$/, '') + ')';
+                btn.setAttribute('aria-pressed', 'false');
+                btn.addEventListener('click', function () {
+                  mv.cameraTarget = view.camera_target;
+                  mv.cameraOrbit = view.camera_orbit;
+                  setPressed(btn);
+                });
+                nav.appendChild(btn);
+              });
+              nav.hidden = false;
+            })
+            .catch(function () { /* real views just won't offer themselves -- exterior still works */ });
+        });
+      })();
+    </script>
 
     <!-- Archived: the "Barrio breakdown: MALL_CORE" figure and the
          Stratified/FieldGuided seeding-mode comparison pair. Real markup,
@@ -663,6 +805,42 @@
          with all four scenarios enabled and reverting this file to the
          commit before this comment was added. -->
     <p style="color:var(--muted);font-size:0.85rem;margin-top:1rem;">Generated by <code>scripts/vibe-render.sh</code> during CI deploy.</p>
+  </section>
+
+  <!-- Vision surface: a real, permanent home for aspirational/speculative
+       content (mood boards, hand sketches, AI-illustrated concepts of
+       what this place could feel like), deliberately quarantined from
+       the computed geometry above -- see this section's own visible copy
+       for why. To add real content here: drop the image under
+       public/vision/ (create the directory), add a <figure> inside
+       .vision-empty's place below with its own real caption naming what
+       it is and who made it, and leave the "speculative" badge exactly
+       as prominent as it is now. Never let this section's content bleed
+       into #vibe-gallery's own figures, and never caption anything here
+       as if it were a real proposal or a claim about the actual site --
+       that's the one rule this section exists to enforce on itself. -->
+  <section class="vision-surface" id="vision-surface">
+    <span class="vision-badge">Speculative — not derived from site data</span>
+    <h2>Vision</h2>
+    <p>
+      Everything above this line is computed: real parcels, real pattern math, real citations,
+      honestly labeled gaps. This section is the opposite, on purpose — a place for imagination
+      to run ahead of what the pipeline has actually verified. A mood board, a hand sketch, an
+      AI-illustrated concept of what this could feel like to stand in — dreaming out loud about a
+      place is real, necessary work, especially for a neighborhood that's been told "no" by real
+      systems for a long time. It isn't a lesser kind of contribution than the geometry above.
+    </p>
+    <p>
+      It will never be merged into the render above, and the render above will never quietly
+      borrow from it. Nothing here is a proposal, a commitment, or a claim about this site — it's
+      a place to imagine together before anything is decided, kept in view, but never confused
+      with what's actually real.
+    </p>
+    <div class="vision-empty">
+      Nothing has been added here yet. This space is reserved for the neighborhood's own vision —
+      sketches, references, AI-illustrated concepts — each one clearly labeled, none of them
+      mistaken for a real proposal.
+    </div>
   </section>
 
   <p class="lede">
@@ -712,7 +890,7 @@
           <label>Seed: <input id="gen-seed" type="number" min="0" value="42" step="1"></label>
           <button id="gen-reseed" type="button" title="Random new seed">⟳ reseed</button>
           <button id="gen-run" type="button" class="generate-go">Generate</button>
-          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light (Alexander's own pattern order)">Run full pipeline</button>
+          <button id="gen-pipeline" type="button" class="generate-go" title="Run P37 House Cluster → PathNetwork → P29 Density Rings → P61 Small Public Squares (a few, spread across blocks by area) → per block P95 Building Complex → P108 Connected Buildings → P96 Number of Stories → P107 Wings of Light → P124 Activity Pockets → P197 Thick Walls (Alexander's own pattern order)">Run full pipeline</button>
         </div>
         <div id="gen-params" class="generate-params"></div>
         <p id="gen-status" class="generate-status"></p>
@@ -1753,12 +1931,32 @@
         allTraces.push({ operator_name: "p107_wings_of_light", headline: `Skipped (${e.message || e})`, steps: [] });
       }
 
+      // 9. P124 Activity Pockets, once -- carves a small real pocket from
+      // up to max_pockets_per_plaza buildings bordering each real Plaza.
+      // Must run before P197/P127/P221, all of which need the final
+      // building footprint. Not fatal if no building qualifies.
+      try {
+        currentJson = runStep(currentJson, "*", "p124_activity_pockets", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p124_activity_pockets", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
+      // 10. P197 Thick Walls, once -- assigns every real P107/P124
+      // building a real wall_thickness_m, capped relative to its own
+      // footprint. Not fatal if it fails (a real, expected skip if no
+      // buildings exist).
+      try {
+        currentJson = runStep(currentJson, "*", "p197_thick_walls", seed);
+      } catch (e) {
+        allTraces.push({ operator_name: "p197_thick_walls", headline: `Skipped (${e.message || e})`, steps: [] });
+      }
+
       const finalNbhd = JSON.parse(currentJson);
       const dt = (performance.now() - t0).toFixed(0);
 
       generatedCounter += 1;
       const key = `gen-${generatedCounter}`;
-      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107 × seed=${seed}`;
+      const label = `Pipeline: ${parcelId} × P37+P52+P29+P61(${totalSquares} sq/${blockIds.length} blocks)+P95×${blockIds.length}+P108+P96+P107+P197 × seed=${seed}`;
       generated.set(key, {
         neighborhood: finalNbhd,
         meta: {
