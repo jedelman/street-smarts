@@ -31,7 +31,7 @@ use street_smarts_patterns::planar::{ring_to_local, Pt2};
 /// the nearest-edge distance -- see `BuildingSolid::sdf`'s own doc for why
 /// a caller wants it (bucketing openings by wall, so a real building with
 /// hundreds of them doesn't need a linear scan of all of them per sample).
-fn sdf_polygon_2d_with_edge(u: f64, v: f64, poly: &[Pt2]) -> (f64, usize) {
+pub(crate) fn sdf_polygon_2d_with_edge(u: f64, v: f64, poly: &[Pt2]) -> (f64, usize) {
     let n = poly.len();
     let v0 = poly[0];
     let mut d2_min = (u - v0.x).powi(2) + (v - v0.y).powi(2);

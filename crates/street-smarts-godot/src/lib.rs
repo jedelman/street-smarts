@@ -6,15 +6,64 @@
 //! and opinion chorus / disagreement report engine directly to Godot as native nodes.
 
 use godot::classes::mesh::PrimitiveType;
-use godot::classes::{ArrayMesh, MeshInstance3D, SurfaceTool};
+use godot::classes::{ArrayMesh, MeshInstance3D, StandardMaterial3D, SurfaceTool};
 use godot::prelude::*;
 use street_smarts_conflict::build_report;
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::Neighborhood;
+use street_smarts_core::Mesh as SsMesh;
 use street_smarts_opinions::registry::evaluate_all;
 
 pub mod building_mesh;
+pub mod ground_features;
 use building_mesh::BuildingSolid;
+
+/// Builds a Godot `MeshInstance3D` from an extracted `Mesh`, with flat
+/// per-triangle face normals (see `rebuild_3d_mesh`'s own doc for why:
+/// Naive Surface Nets shares one vertex per grid cell across every face
+/// orientation it touches, which blends normals at sharp corners into a
+/// wrong-looking soft gradient -- confirmed against a real device
+/// screenshot). Returns `None` for an empty mesh or a SurfaceTool commit
+/// failure; the caller decides whether that's worth a warning.
+fn mesh_to_instance(mesh: &SsMesh, name: String, material: Option<&Gd<StandardMaterial3D>>) -> Option<Gd<MeshInstance3D>> {
+    if mesh.triangles.is_empty() {
+        return None;
+    }
+    let mut surface_tool = SurfaceTool::new_gd();
+    surface_tool.begin(PrimitiveType::TRIANGLES);
+    for tri in &mesh.triangles {
+        let p0 = mesh.positions[tri[0] as usize];
+        let p1 = mesh.positions[tri[1] as usize];
+        let p2 = mesh.positions[tri[2] as usize];
+        let e1 = (p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+        let e2 = (p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
+        let (mut fx, mut fy, mut fz) = (
+            e1.1 * e2.2 - e1.2 * e2.1,
+            e1.2 * e2.0 - e1.0 * e2.2,
+            e1.0 * e2.1 - e1.1 * e2.0,
+        );
+        let len = (fx * fx + fy * fy + fz * fz).sqrt();
+        if len > 1e-9 {
+            fx /= len;
+            fy /= len;
+            fz /= len;
+        }
+        let face_normal = Vector3::new(fx as real, fy as real, fz as real);
+        for &idx in tri {
+            let p = mesh.positions[idx as usize];
+            surface_tool.set_normal(face_normal);
+            surface_tool.add_vertex(Vector3::new(p.x as real, p.y as real, p.z as real));
+        }
+    }
+    if let Some(mat) = material {
+        surface_tool.set_material(mat);
+    }
+    let array_mesh = surface_tool.commit()?;
+    let mut mesh_instance = MeshInstance3D::new_alloc();
+    mesh_instance.set_name(&name);
+    mesh_instance.set_mesh(&array_mesh);
+    Some(mesh_instance)
+}
 
 struct StreetSmartsExtension;
 
@@ -153,11 +202,16 @@ impl NeighborhoodNode3D {
         dict
     }
 
-    /// Rebuilds the procedural 3D building massing via constructive SDF +
-    /// Surface Nets extraction (`building_mesh::BuildingSolid`), replacing
-    /// any previously generated massing children. Streets, plazas, and
-    /// Salingaros scale/center indicators are not yet built here -- only
-    /// building massing (Phase 2 continuation).
+    /// Rebuilds the procedural 3D scene via constructive SDF + Surface
+    /// Nets extraction: building massing (`building_mesh::BuildingSolid`,
+    /// punched doors/windows), street ribbons and plazas/commons
+    /// (`ground_features::FlatPolygon`), replacing any previously generated
+    /// children of each kind. Roofs (sloped, not flat), interior
+    /// partition walls, canopies, and wall niches are real data the
+    /// pipeline assigns that this still doesn't consume -- see this
+    /// method's own git history for exactly what's covered as of a given
+    /// commit, since that list only shrinks over time. Salingaros scale/
+    /// center indicators aren't built here at all yet.
     #[func]
     pub fn rebuild_3d_mesh(&mut self) -> bool {
         if self.neighborhood_json.is_empty() {
@@ -184,12 +238,22 @@ impl NeighborhoodNode3D {
             let base = self.base();
             (0..base.get_child_count())
                 .filter_map(|i| base.get_child(i))
-                .filter(|c| c.get_name().to_string().starts_with("GeneratedMassing_"))
+                .filter(|c| {
+                    let name = c.get_name().to_string();
+                    name.starts_with("GeneratedMassing_")
+                        || name.starts_with("GeneratedOpenSpace_")
+                        || name.starts_with("GeneratedStreet_")
+                })
                 .collect()
         };
         for mut child in stale {
             child.queue_free();
         }
+
+        let mut open_space_material = StandardMaterial3D::new_gd();
+        open_space_material.set_albedo(Color::from_rgb(0.35, 0.55, 0.32));
+        let mut street_material = StandardMaterial3D::new_gd();
+        street_material.set_albedo(Color::from_rgb(0.27, 0.27, 0.29));
 
         let rebuild_start = std::time::Instant::now();
         let mut meshed = 0i32;
@@ -206,73 +270,54 @@ impl NeighborhoodNode3D {
             // `suggested_voxel_size`'s own doc for measured numbers.
             let mesh = solid.to_mesh(solid.suggested_voxel_size());
             total_tris += mesh.triangles.len();
-            if mesh.triangles.is_empty() {
-                continue;
-            }
-
-            let mut surface_tool = SurfaceTool::new_gd();
-            surface_tool.begin(PrimitiveType::TRIANGLES);
-            for tri in &mesh.triangles {
-                // Flat (per-triangle) face normals, not the smooth
-                // gradient-based ones surface_nets.rs computes per shared
-                // vertex. Naive Surface Nets puts ONE vertex per grid
-                // cell, reused across every face orientation that cell
-                // touches -- at a building's sharp 90-degree corners
-                // (which is everywhere on a boxy massing) that shared
-                // vertex's normal is a blend between the two faces, which
-                // reads as a soft, wrong-looking gradient smeared across
-                // what should be a flat-shaded roof or wall (confirmed
-                // against a real device screenshot, not just reasoned
-                // about). Recomputing a face normal per triangle from its
-                // own 3 positions and using it for all 3 corners -- SAME
-                // right-hand-rule convention already verified correct in
-                // surface_nets.rs's own winding tests (signed volume
-                // matching analytic shapes) -- gives correct, if
-                // deliberately faceted/low-poly, per-face shading instead.
-                let p0 = mesh.positions[tri[0] as usize];
-                let p1 = mesh.positions[tri[1] as usize];
-                let p2 = mesh.positions[tri[2] as usize];
-                let e1 = (p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
-                let e2 = (p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
-                let (mut fx, mut fy, mut fz) = (
-                    e1.1 * e2.2 - e1.2 * e2.1,
-                    e1.2 * e2.0 - e1.0 * e2.2,
-                    e1.0 * e2.1 - e1.1 * e2.0,
-                );
-                let len = (fx * fx + fy * fy + fz * fz).sqrt();
-                if len > 1e-9 {
-                    fx /= len;
-                    fy /= len;
-                    fz /= len;
-                }
-                let face_normal = Vector3::new(fx as real, fy as real, fz as real);
-                for &idx in tri {
-                    let p = mesh.positions[idx as usize];
-                    surface_tool.set_normal(face_normal);
-                    surface_tool.add_vertex(Vector3::new(p.x as real, p.y as real, p.z as real));
-                }
-            }
-            let Some(array_mesh) = surface_tool.commit() else {
-                godot_warn!("SurfaceTool::commit() returned no mesh for building {}", building.id);
+            let Some(mesh_instance) = mesh_to_instance(&mesh, format!("GeneratedMassing_{}", building.id), None) else {
                 continue;
             };
-
-            let mut mesh_instance = MeshInstance3D::new_alloc();
-            mesh_instance.set_name(&format!("GeneratedMassing_{}", building.id));
-            mesh_instance.set_mesh(&array_mesh);
             self.base_mut().add_child(&mesh_instance);
             meshed += 1;
         }
 
+        let mut open_space_meshed = 0i32;
+        for open_space in &nir.open_space {
+            let Some(pad) = ground_features::open_space_polygon(open_space, &origin) else {
+                continue;
+            };
+            let mesh = pad.to_mesh();
+            total_tris += mesh.triangles.len();
+            let name = format!("GeneratedOpenSpace_{}", open_space.id);
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&open_space_material)) else {
+                continue;
+            };
+            self.base_mut().add_child(&mesh_instance);
+            open_space_meshed += 1;
+        }
+
+        let mut street_meshed = 0i32;
+        for street in &nir.streets {
+            for (seg_idx, pad) in ground_features::street_ribbon_segments(street, &origin).into_iter().enumerate() {
+                let mesh = pad.to_mesh();
+                total_tris += mesh.triangles.len();
+                let name = format!("GeneratedStreet_{}_seg{}", street.id, seg_idx);
+                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&street_material)) else {
+                    continue;
+                };
+                self.base_mut().add_child(&mesh_instance);
+                street_meshed += 1;
+            }
+        }
+
         godot_print!(
-            "Rebuilt 3D massing for {} of {} buildings ({} tris total) via Surface Nets extraction in {:?} ({} skipped: no height_m assigned).",
+            "Rebuilt scene: {} of {} buildings (Surface Nets), {} of {} open spaces, {} street segments (ear-clipping) -- {} tris total in {:?} ({} buildings skipped: no height_m assigned).",
             meshed,
             nir.buildings.len(),
+            open_space_meshed,
+            nir.open_space.len(),
+            street_meshed,
             total_tris,
             rebuild_start.elapsed(),
             skipped_no_height
         );
-        meshed > 0
+        meshed > 0 || open_space_meshed > 0 || street_meshed > 0
     }
 }
 
