@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://c8n1s7m9k2x4"]
+[gd_scene load_steps=6 format=3 uid="uid://c8n1s7m9k2x4"]
 
 [ext_resource type="Script" path="res://scripts/neighborhood_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scripts/orbit_camera.gd" id="2_orbit_camera"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.384, 0.525, 0.725, 1)
@@ -26,8 +27,8 @@ transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.6
 shadow_enabled = true
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 40, 60)
 fov = 60.0
+script = ExtResource("2_orbit_camera")
 
 [node name="NeighborhoodNode3D" type="NeighborhoodNode3D" parent="."]
 
