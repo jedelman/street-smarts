@@ -5,6 +5,7 @@ extends Node
 @onready var geometric_label: Label = $"../UI/Panel/VBox/GeometricChorusLabel"
 @onready var activist_label: Label = $"../UI/Panel/VBox/ActivistChorusLabel"
 @onready var prompt_label: Label = $"../UI/Panel/VBox/HumanPromptLabel"
+@onready var waypoint_dropdown: OptionButton = $"../UI/Panel/VBox/WaypointDropdown"
 
 ## Real 97.7-acre Military Circle site, the same parcel spec
 ## scripts/vibe-render.sh's clean_baseline scenario develops.
@@ -48,6 +49,7 @@ func _ready():
 
             neighborhood_node.rebuild_3d_mesh()
             _frame_generated_massing()
+            _populate_waypoints()
 
             var metrics = neighborhood_node.evaluate_opinions()
             if metrics.has("geometric_headline"):
@@ -82,3 +84,72 @@ func _frame_generated_massing() -> void:
                 combined = combined.merge(mesh_aabb)
     if have_any:
         camera.frame_bounds(combined.get_center(), combined.size.length() * 0.5)
+
+## Fills the dropdown with "Site Overview" (index 0, back to orbit mode)
+## plus one entry per real generated building, labeled with its real
+## generated id (e.g. "p108 merged 9 building") -- not a curated or
+## invented human name, since there isn't one to give it; the pattern
+## pipeline doesn't produce anything more readable than that. Selecting a
+## building entry switches to walk mode, standing just outside it.
+func _populate_waypoints() -> void:
+    if camera == null or not camera.has_method("set_mode_walk"):
+        return
+    if waypoint_dropdown.item_selected.is_connected(_on_waypoint_selected):
+        waypoint_dropdown.item_selected.disconnect(_on_waypoint_selected)
+    waypoint_dropdown.clear()
+    waypoint_dropdown.add_item("Site Overview")
+    waypoint_dropdown.set_item_metadata(0, null)
+
+    var overall_center := Vector3.ZERO
+    var have_overall := false
+    var entries := []
+    for child in neighborhood_node.get_children():
+        if child is MeshInstance3D and child.name.begins_with("GeneratedMassing_"):
+            var mesh_aabb: AABB = child.get_aabb()
+            var center := mesh_aabb.get_center()
+            entries.append({
+                "label": child.name.trim_prefix("GeneratedMassing_").replace("_", " "),
+                "center": center,
+                "size": mesh_aabb.size,
+            })
+            overall_center += center
+            have_overall = true
+    if have_overall:
+        overall_center /= entries.size()
+
+    for entry in entries:
+        var idx := waypoint_dropdown.item_count
+        waypoint_dropdown.add_item(entry["label"])
+        entry["overall_center"] = overall_center
+        waypoint_dropdown.set_item_metadata(idx, entry)
+
+    waypoint_dropdown.item_selected.connect(_on_waypoint_selected)
+
+func _on_waypoint_selected(index: int) -> void:
+    var meta = waypoint_dropdown.get_item_metadata(index)
+    if meta == null:
+        camera.set_mode_orbit()
+        _frame_generated_massing()
+        return
+
+    var building_center: Vector3 = meta["center"]
+    var building_size: Vector3 = meta["size"]
+    var overall_center: Vector3 = meta["overall_center"]
+
+    # Stand between the site's overall center and this building, facing
+    # inward -- a real, deterministic vantage point computed from the
+    # actual generated geometry, not a fabricated "front door" (openings
+    # aren't exposed to GDScript today, only the finished mesh AABB is).
+    var away := building_center - overall_center
+    away.y = 0.0
+    if away.length() < 0.5:
+        away = Vector3(0.0, 0.0, 1.0)
+    away = away.normalized()
+
+    var standoff: float = max(building_size.x, building_size.z) * 0.6 + 6.0
+    var spawn := building_center + away * standoff
+    spawn.y = 0.0
+
+    var to_building := building_center - spawn
+    var facing_yaw := atan2(to_building.x, to_building.z)
+    camera.set_mode_walk(spawn, facing_yaw)

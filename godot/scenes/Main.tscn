@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://c8n1s7m9k2x4"]
+[gd_scene load_steps=7 format=3 uid="uid://c8n1s7m9k2x4"]
 
 [ext_resource type="Script" path="res://scripts/neighborhood_controller.gd" id="1_controller"]
 [ext_resource type="Script" path="res://scripts/orbit_camera.gd" id="2_orbit_camera"]
+[ext_resource type="Script" path="res://scripts/touch_joystick.gd" id="3_touch_joystick"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.384, 0.525, 0.725, 1)
@@ -29,6 +30,7 @@ shadow_enabled = true
 [node name="Camera3D" type="Camera3D" parent="."]
 fov = 60.0
 script = ExtResource("2_orbit_camera")
+joystick_path = NodePath("../UI/Joystick")
 
 [node name="NeighborhoodNode3D" type="NeighborhoodNode3D" parent="."]
 
@@ -71,3 +73,19 @@ text = "Activist Chorus: Evaluating..."
 layout_mode = 2
 text = "Human Disagreement Prompts:"
 autowrap_mode = 2
+
+[node name="WaypointDropdown" type="OptionButton" parent="UI/Panel/VBox"]
+layout_mode = 2
+
+[node name="Joystick" type="Control" parent="UI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = -190.0
+offset_right = 170.0
+offset_bottom = -30.0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("3_touch_joystick")
