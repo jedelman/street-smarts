@@ -1,0 +1,13 @@
+[configuration]
+entry_symbol = "gdextension_entry"
+compatibility_minimum = "4.1"
+
+[libraries]
+macos.debug = "res://bin/libstreet_smarts_godot.dylib"
+macos.release = "res://bin/libstreet_smarts_godot.dylib"
+windows.debug.x86_64 = "res://bin/street_smarts_godot.dll"
+windows.release.x86_64 = "res://bin/street_smarts_godot.dll"
+linux.debug.x86_64 = "res://bin/libstreet_smarts_godot.so"
+linux.release.x86_64 = "res://bin/libstreet_smarts_godot.so"
+web.debug.wasm32 = "res://bin/street_smarts_godot.wasm"
+web.release.wasm32 = "res://bin/street_smarts_godot.wasm"
