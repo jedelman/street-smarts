@@ -376,6 +376,19 @@ honest and real rather than a stale, factually-inaccurate permanent NoView. Low 
 change (4 new tests, no geometry/render impact) -- full verification: `cargo test --workspace` (0
 failed), `cargo clippy --workspace --all-targets` (0 errors).
 
+**2026-07-24 update: P98 reconfirmed as a permanent, honest gap -- not attempted.** Unlike P31
+above, `p98_circulation_realms`'s own module doc claims were re-checked and are still fully
+accurate: `InteriorCell.depth` remains a single public-to-private scalar, not a sequence of
+marked, progressively smaller realms, and no interior/complex-scale gateway concept exists
+anywhere (`p53_main_gateways.rs`'s own `Neighborhood.boundaries` marks neighborhood-scale edges
+only). Alexander's own text scopes this pattern to "very large buildings and collections of small
+buildings" -- a multi-building-complex zoning concept this pipeline has never modeled at any
+level (P37's blocks and P108's merged-building groups are the closest real structures, and
+neither carries a nested "realm" hierarchy or a "gateway" marking a transition between them).
+Inventing one here would mean fabricating a zoning concept wholesale, not extending a real one --
+correctly left as a permanent, honestly-reasoned `NoView`, closing out this session's full pass
+through the remaining pattern list.
+
 ### New minor addition
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|
