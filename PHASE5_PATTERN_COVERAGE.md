@@ -89,6 +89,30 @@ generator each would extend, since that's the real dependency structure.
 | 99 | Main Building | Tag one building as "main," central position, higher roof. | P29 already knows distance-from-center; P96 already assigns story counts -- tagging the nearest-to-center building and boosting its height is a real, small extension. |
 | 126 | Something Roughly in the Middle | One object (fountain/tree/statue) near where paths cross a square. | P61 squares already exist; this is placing one marker point inside them near path intersections -- small, concrete addition. |
 
+**2026-07-24 update: P30 closed, with an honestly small measured effect.**
+`p61_small_public_squares`' raw-land placement (`place_new_squares_n`, the path the real
+corrected pipeline actually calls) used plain `stratified_seeds` -- unbiased grid+jitter, no
+relationship to the real street network. It now prefers real street-endpoint convergence points
+(`convergence_points_in_zone`, its own "v0.8" module doc: 2+ distinct real streets with endpoints
+within 30m of each other, the same threshold `p30_activity_nodes`'s own `path_convergence`
+sub-score checks) over stratified-random, falling back only for slots convergence points don't
+fill. Verified at the unit level (a real intersection does get picked over a random position) and
+against a real regression an earlier version of the fix introduced (a convergence point deep in a
+reserved street corridor could silently consume the whole placement budget and leave zero squares
+-- caught by `language_graph.rs`'s own real-pipeline-trace tests, fixed by pre-checking each
+convergence candidate against the same clip-and-min-area test every other candidate gets before
+letting it claim a slot).
+
+Measured honestly on the real fixture: this barely moves `p30_activity_nodes`'s own aggregate
+score (9-16% both before and after, across three seeds -- within noise). Root cause, also
+measured: `p61_small_public_squares`-placed squares are only 5-7% of ALL real `Plaza`-kind open
+space this pipeline produces (4 out of 57-81 real plazas per seed) -- the site-scale `max_squares`
+budget means this generator places a handful of squares total, while `p95_building_complex`/
+`p107_wings_of_light`'s own courtyard-plaza output (untouched by this fix) makes up nearly all the
+rest. The fix is real and correctly targeted at what this function controls; it just isn't where
+most of this pipeline's real Plaza area comes from. Extending real convergence-awareness to
+P95/P107's own courtyard placement would be a separate, larger change.
+
 ### Extend `p107_wings_of_light.rs` / building massing (facade & roof)
 No roof geometry exists at all today (`render.py`'s own docs: "no roof forms" is an explicit, named
 caveat) -- P116/117/118/162 share that same real prerequisite gap, flagged honestly, not hidden.

@@ -279,8 +279,14 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         check: CascadeCheck::MinValue(0.02),
         why: "data/apl-pattern-graph.json: P61's own larger-patterns list includes Activity Nodes \
               (30). p61_small_public_squares is the only real producer of Neighborhood.activity_nodes \
-              (see its own module doc). Measured on the real fixture: Value 0.062 (89 real plazas; \
-              2% sit where 2+ real streets converge). Floor set safely below that.",
+              (see its own module doc), and (since this session's 'v0.8' real street-convergence \
+              placement fix) the only generator that deliberately anchors any square to a real \
+              street intersection at all. Measured on the real fixture across three seeds: Value \
+              0.094-0.127 (57-81 real plazas per seed; 9-16% sit where 2+ real streets converge) \
+              -- see p61_small_public_squares' own 'v0.8' module doc for why this fix barely moves \
+              the aggregate number (P61-placed squares are only 5-7% of all real Plaza-kind open \
+              space this pipeline produces; most comes from P95/P107 courtyards, untouched by this \
+              fix). Floor set safely below that.",
     },
     CascadeContract {
         generator: "p61_small_public_squares",
