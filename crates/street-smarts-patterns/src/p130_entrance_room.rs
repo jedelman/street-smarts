@@ -28,21 +28,22 @@
 //! the pipeline instead of splitting a tightly-coupled pair across P129.
 //!
 //! # What this operator deliberately does NOT do
-//! **No resizing.** Alexander's text calls for a "modest" room, distinct
-//! in character from the rooms beyond it -- which would mean giving it its
-//! own real dimension, not just a label. This operator does not do that:
-//! `p127_intimacy_gradient`'s bands/bays are uniformly sized by
-//! construction (its own module doc already flags this: "not derived from
-//! any real room program"), and reshaping just the entrance cell without
-//! either a verified target dimension (blocked by the same 404 above) or
-//! risking a fragile ad hoc geometry cut was judged worse than being
-//! honest about the gap. What this DOES give the rest of the pipeline: a
-//! real `kind` distinction a renderer or opinion can key off of, where
-//! before every cell was indistinguishable `"room"` regardless of role.
-//! Sizing the entrance for real is future work (either a dedicated
-//! `entrance_depth_m` parameter threaded through `p127`'s own band/bay
-//! construction, or a boundary-aware clip here once there's a verified
-//! target number to clip to).
+//! **No resizing here.** Alexander's text calls for a "modest" room,
+//! distinct in character from the rooms beyond it -- which means giving it
+//! its own real dimension, not just a label. This operator still doesn't
+//! do that itself: it only tags whichever cell `p127_intimacy_gradient`
+//! already produced at `depth == 0.0`, it doesn't reshape anything. What
+//! this DOES give the rest of the pipeline: a real `kind` distinction a
+//! renderer or opinion can key off of, where before every cell was
+//! indistinguishable `"room"` regardless of role.
+//!
+//! **Update:** the real sizing gap this section used to name as future
+//! work is now closed, just not in this file -- `p127_intimacy_gradient`
+//! grew its own `entrance_depth_m` parameter (default 3.5m) that gives the
+//! shallowest band/bay a real, distinct, deliberately modest size instead
+//! of the uniform `band_depth_m` every other band gets. See that module's
+//! own "v0.4" doc section for the full mechanism. This operator's role is
+//! unchanged: it still just tags the result.
 
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};

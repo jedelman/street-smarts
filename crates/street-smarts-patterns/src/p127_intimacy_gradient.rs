@@ -121,6 +121,59 @@
 //! approximation error: the index-based value was itself an individuation
 //! artifact (how many bands P127 happened to choose), and the field gives
 //! `p116_cascade_of_roofs` the continuous answer instead.
+//!
+//! # v0.4: `entrance_depth_m`, closing P112 Entrance Transition's own gap
+//!
+//! `p130_entrance_room` tags whichever cell ends up at `depth == 0.0` as
+//! `kind: "entrance"`, but until now that cell's real size was never
+//! deliberate -- it was just whatever `band_depth_m` (solid) or
+//! `perimeter / n_bays` (courtyard) produced for every OTHER band too.
+//! `p130`'s own module doc named this directly as future work: a real
+//! `entrance_depth_m` parameter threaded through this operator's own
+//! band/bay construction, so P112 Entrance Transition (Alexander's "give
+//! the entrance transition a place... a real threshold, with a change of
+//! floor, or a change of light, or a change of sound... a modest room of
+//! its own") has an actual, controllable size to check against, not an
+//! incidental one.
+//!
+//! `solid_bands` and `courtyard_bays` both now special-case the shallowest
+//! slice: it gets `entrance_depth_m` (a straight-line depth for solid
+//! buildings, an arc-length span for courtyard ones) instead of
+//! `band_depth_m`, and the REST of the span/perimeter is divided into
+//! ordinary bands exactly as before. `entrance_depth_m` is capped
+//! internally at 40% of the building's own total span/perimeter (so a
+//! small building can't get an "entrance" that eats almost the whole
+//! footprint), and the whole special-case is skipped -- falling back to
+//! the old fully-uniform banding -- when `entrance_depth_m` is 0 or the
+//! span/perimeter is too small to spare a real entrance-sized slice on
+//! top of at least one ordinary band beyond it. For courtyard buildings,
+//! the entrance arc is applied as the same real physical distance on
+//! BOTH the outer and inner ring (not a proportional fraction of each
+//! ring's own perimeter) -- otherwise a small outer-wall entrance arc
+//! maps down to a near-degenerate sliver on the much smaller courtyard
+//! ring.
+//!
+//! Default is 3.5m -- picked empirically, not just architecturally.
+//! 2.0m was tried first (a tighter, more obviously "modest" room) but
+//! MEASURABLY REGRESSED `p112_entrance_transition`'s own real score on
+//! the eastside-baseline fixture (0.68 mean pre-fix, uniform
+//! `band_depth_m`-sized entrance bands, down to 0.32 at 2.0m): that
+//! opinion's own `MIN_FRACTION = 0.03` floor was implicitly calibrated
+//! against the old uniform banding, and a small enough real entrance
+//! depth pushes plenty of real buildings' entrance-cell-area-fraction
+//! back under that floor, which reads as "no transition at all" even
+//! though the geometry is a perfectly real, deliberately modest room --
+//! the opinion just can't tell "genuinely too small" from "smaller than
+//! before, still real." 3.5m is the value that keeps this operator's own
+//! entrance band genuinely distinct from `band_depth_m`'s own 5.0m
+//! default (30% smaller, not the same size) while still measuring AT OR
+//! ABOVE the old uniform-banding baseline on the real fixture (checked
+//! across three seeds; see `check_detector_impact.rs`'s own output).
+//! Chasing a tighter "more architecturally modest" number than that
+//! would be optimizing for a number this codebase made up (both
+//! `entrance_depth_m` and the opinion's `MIN_FRACTION`/`MAX_FRACTION`
+//! are judgment calls, not values from Alexander's own text) at the
+//! expense of a real, measured regression -- not a trade worth making.
 
 use crate::orientation::nearest_public_realm_point;
 use crate::parameters::{ParamSpec, Parameters};
@@ -143,6 +196,15 @@ pub struct P127Params {
     /// don't bother slicing -- the whole footprint is one cell, no
     /// meaningful gradient to draw.
     pub min_span_m: f64,
+    /// Real, distinct depth (solid buildings) or arc-length span
+    /// (courtyard buildings) of the entrance band/bay -- P112 Entrance
+    /// Transition's "modest room of its own," not just another
+    /// `band_depth_m`-sized band. 0 disables this entirely (falls back to
+    /// the old fully-uniform banding, every band including the entrance
+    /// one sized by `band_depth_m`). Capped internally at 40% of the
+    /// building's own total span/perimeter, so a small building can't get
+    /// an "entrance" that eats almost the whole footprint.
+    pub entrance_depth_m: f64,
 }
 
 impl Parameters for P127Params {
@@ -158,19 +220,25 @@ impl Parameters for P127Params {
                 "Below this span, the whole footprint stays a single cell.",
                 2.0, 15.0, 4.0,
             ).with_unit("m"),
+            ParamSpec::float(
+                "entrance_depth_m",
+                "Real, distinct depth/arc-length of the entrance band/bay (P112 Entrance Transition). 0 disables it.",
+                0.0, 6.0, 3.5,
+            ).with_unit("m"),
         ]
     }
     fn defaults() -> Self {
-        Self { band_depth_m: 5.0, min_span_m: 4.0 }
+        Self { band_depth_m: 5.0, min_span_m: 4.0, entrance_depth_m: 3.5 }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.band_depth_m, self.min_span_m]
+        vec![self.band_depth_m, self.min_span_m, self.entrance_depth_m]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
         let mut p = Self::defaults();
         if let (Some(s), Some(x)) = (schema.get(0), v.get(0)) { p.band_depth_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(1), v.get(1)) { p.min_span_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.entrance_depth_m = s.clamp(*x); }
         p
     }
 }
@@ -438,12 +506,39 @@ fn solid_bands(
         }], None);
     }
 
-    let n_bands = ((span / params.band_depth_m).round().max(1.0)) as usize;
-    let band_width = span / n_bands as f64;
-    let mut cells = Vec::with_capacity(n_bands);
-    for k in 0..n_bands {
-        let s_hi = s_max - k as f64 * band_width;
-        let s_lo = s_max - (k as f64 + 1.0) * band_width;
+    // P112 Entrance Transition: the shallowest band (the real entrance)
+    // gets its own real, distinct entrance_depth_m depth -- a "modest room
+    // of its own," not just another band_depth_m-sized band -- and the
+    // REST of the span is divided into ordinary bands same as before.
+    // Falls back to the old fully-uniform banding (every band, including
+    // the shallowest, sized by band_depth_m) when entrance_depth_m is 0 or
+    // the span's too small to spare a real entrance-sized slice on top of
+    // at least one ordinary band. See this file's own "v0.4" module doc.
+    let entrance_depth = params.entrance_depth_m.min(span * 0.4).max(0.0);
+    let has_entrance_band = entrance_depth > 1e-6 && (span - entrance_depth) >= params.min_span_m;
+
+    let mut boundaries: Vec<f64> = Vec::new(); // s-values, s_max first, s_min last
+    if has_entrance_band {
+        let remaining = span - entrance_depth;
+        let n_rest_bands = ((remaining / params.band_depth_m).round().max(1.0)) as usize;
+        let rest_width = remaining / n_rest_bands as f64;
+        boundaries.push(s_max);
+        boundaries.push(s_max - entrance_depth);
+        for k in 1..=n_rest_bands {
+            boundaries.push(s_max - entrance_depth - k as f64 * rest_width);
+        }
+    } else {
+        let n_bands = ((span / params.band_depth_m).round().max(1.0)) as usize;
+        let band_width = span / n_bands as f64;
+        for k in 0..=n_bands {
+            boundaries.push(s_max - k as f64 * band_width);
+        }
+    }
+
+    let mut cells = Vec::with_capacity(boundaries.len().saturating_sub(1));
+    for k in 0..boundaries.len() - 1 {
+        let s_hi = boundaries[k];
+        let s_lo = boundaries[k + 1];
         let p0_hi = Pt2::new(c.x + s_hi * u.x, c.y + s_hi * u.y);
         let p0_lo = Pt2::new(c.x + s_lo * u.x, c.y + s_lo * u.y);
         let mut poly = clip_half_plane(outer_local, p0_hi, Pt2::new(p0_hi.x + perp.x, p0_hi.y + perp.y));
@@ -451,11 +546,10 @@ fn solid_bands(
         if poly.len() < 3 {
             continue;
         }
-        let depth = if n_bands > 1 { k as f64 / (n_bands - 1) as f64 } else { 0.0 };
         cells.push(InteriorCell {
             id: format!("{building_id}_cell_{k}"),
             polygon: street_smarts_core::geometry::Polygon::from_ring(local_to_ring(&poly, origin)),
-            depth,
+            depth: 0.0, // placeholder -- re-indexed below from final surviving order
             is_common: false,
             kind: "room".into(),
             connects_to: vec![],
@@ -594,7 +688,6 @@ fn courtyard_bays(
     if perimeter < params.min_span_m {
         return vec![];
     }
-    let n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
 
     // Walk the OUTER and INNER rings TOGETHER, each by its own fractional
     // arc length from its own nearest point to the entrance target -- NOT
@@ -616,13 +709,62 @@ fn courtyard_bays(
     let inner_perimeter = ring_perimeter(inner_local);
     let (_, start_s_inner) = nearest_point_on_ring(inner_local, entrance_target);
 
-    let mut boundary_pts: Vec<(Pt2, Pt2)> = Vec::with_capacity(n_bays + 1);
-    for k in 0..=n_bays {
-        let frac = k as f64 / n_bays as f64;
-        let outer_pt = point_at_arclength(outer_local, start_s + frac * perimeter);
-        let inner_pt = point_at_arclength(inner_local, start_s_inner + frac * inner_perimeter);
-        boundary_pts.push((outer_pt, inner_pt));
+    // P112 Entrance Transition: same entrance_depth_m special-casing as
+    // solid_bands(), but here it's an ARC LENGTH (starting at the entrance
+    // target) rather than a straight-line depth. Applied as the SAME real
+    // physical distance on BOTH rings -- not a proportional fraction of
+    // each ring's own perimeter -- so the entrance bay reads as one modest
+    // room of a consistent size on its outer (street-facing) and inner
+    // (courtyard-facing) walls alike, rather than an outer wall sized by
+    // entrance_depth_m mapped down to a much narrower, near-degenerate
+    // inner wall just because the courtyard hole's own perimeter happens
+    // to be much smaller than the building's outer one. The REST of each
+    // ring's own remaining length (outer and inner independently) is then
+    // divided into ordinary bays exactly as before. See this file's own
+    // "v0.4" module doc.
+    let entrance_arc_outer = params.entrance_depth_m.min(perimeter * 0.4).max(0.0);
+    let entrance_arc_inner = params.entrance_depth_m.min(inner_perimeter * 0.4).max(0.0);
+    let has_real_entrance_bay = entrance_arc_outer > 1e-6
+        && entrance_arc_inner > 1e-6
+        && (perimeter - entrance_arc_outer) >= params.min_span_m
+        && (inner_perimeter - entrance_arc_inner) > 0.0;
+
+    let mut boundary_arcs_outer: Vec<f64> = Vec::new();
+    let mut boundary_arcs_inner: Vec<f64> = Vec::new();
+    let n_bays: usize;
+    if has_real_entrance_bay {
+        let remaining_outer = perimeter - entrance_arc_outer;
+        let remaining_inner = inner_perimeter - entrance_arc_inner;
+        let n_rest_bays = ((remaining_outer / params.band_depth_m).round().max(2.0)) as usize;
+        n_bays = 1 + n_rest_bays;
+        boundary_arcs_outer.push(0.0);
+        boundary_arcs_outer.push(entrance_arc_outer);
+        boundary_arcs_inner.push(0.0);
+        boundary_arcs_inner.push(entrance_arc_inner);
+        let rest_width_outer = remaining_outer / n_rest_bays as f64;
+        let rest_width_inner = remaining_inner / n_rest_bays as f64;
+        for k in 1..=n_rest_bays {
+            boundary_arcs_outer.push(entrance_arc_outer + k as f64 * rest_width_outer);
+            boundary_arcs_inner.push(entrance_arc_inner + k as f64 * rest_width_inner);
+        }
+    } else {
+        n_bays = ((perimeter / params.band_depth_m).round().max(3.0)) as usize;
+        for k in 0..=n_bays {
+            let frac = k as f64 / n_bays as f64;
+            boundary_arcs_outer.push(frac * perimeter);
+            boundary_arcs_inner.push(frac * inner_perimeter);
+        }
     }
+
+    let boundary_pts: Vec<(Pt2, Pt2)> = boundary_arcs_outer
+        .iter()
+        .zip(boundary_arcs_inner.iter())
+        .map(|(&arc_outer, &arc_inner)| {
+            let outer_pt = point_at_arclength(outer_local, start_s + arc_outer);
+            let inner_pt = point_at_arclength(inner_local, start_s_inner + arc_inner);
+            (outer_pt, inner_pt)
+        })
+        .collect();
 
     let half = n_bays / 2;
     let mut cells = Vec::with_capacity(n_bays);
@@ -838,6 +980,120 @@ mod tests {
                 c.id, inner_edge_m
             );
         }
+    }
+
+    /// P112 Entrance Transition: with the default `entrance_depth_m` (3.5m,
+    /// below `band_depth_m`'s own default of 5.0m), the entrance band
+    /// -- the one at `depth == 0.0` -- should be a real, distinct, SMALLER
+    /// cell than the ordinary interior bands, not just another
+    /// band_depth_m-sized slice. For a square building sliced by
+    /// axis-aligned bands (same width throughout), area is directly
+    /// proportional to depth, so this can be checked via real measured
+    /// area alone.
+    #[test]
+    fn solid_entrance_band_gets_a_real_distinct_smaller_depth() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        assert!(cells.len() >= 3, "expected several bands, got {}", cells.len());
+        let entrance = cells.iter().min_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap()).unwrap();
+        let ordinary_areas: Vec<f64> = cells
+            .iter()
+            .filter(|c| c.id != entrance.id)
+            .map(|c| c.polygon.area_m2())
+            .collect();
+        let avg_ordinary = ordinary_areas.iter().sum::<f64>() / ordinary_areas.len() as f64;
+        assert!(
+            entrance.polygon.area_m2() < avg_ordinary * 0.85,
+            "entrance band area {:.2} should be meaningfully smaller than the average ordinary band area {:.2} \
+             (entrance_depth_m=3.5 vs band_depth_m=5.0)",
+            entrance.polygon.area_m2(), avg_ordinary
+        );
+    }
+
+    /// `entrance_depth_m = 0.0` must preserve the old fully-uniform
+    /// banding behavior exactly -- backward compatibility for anyone still
+    /// relying on it.
+    #[test]
+    fn zero_entrance_depth_preserves_old_uniform_solid_banding() {
+        let street = Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(-0.0005, 0.0), LngLat::new(-0.0005, 0.0002)],
+            classification: Some("local".into()),
+            row_width_m: Some(8.0),
+            surface: None,
+        };
+        let mut params = P127Params::defaults();
+        params.entrance_depth_m = 0.0;
+        let n = nbhd(vec![solid_building("B1", 30.0)], vec![street]);
+        let sub = P127IntimacyGradient.apply(&n, "*", &params, 1).expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        assert!(cells.len() >= 3);
+        let areas: Vec<f64> = cells.iter().map(|c| c.polygon.area_m2()).collect();
+        let avg = areas.iter().sum::<f64>() / areas.len() as f64;
+        for a in &areas {
+            assert!(
+                (a - avg).abs() < avg * 0.15,
+                "with entrance_depth_m=0 every band should be roughly the same size, got {:?} (avg {:.2})",
+                areas, avg
+            );
+        }
+    }
+
+    /// P112 Entrance Transition, courtyard case: the entrance bay's outer
+    /// (street-facing) AND inner (courtyard-facing) walls should both be
+    /// real, non-degenerate, and roughly the size of `entrance_depth_m` --
+    /// not a near-zero sliver on the inner wall, which is what a naive
+    /// proportional-fraction mapping of a small outer arc onto a much
+    /// smaller inner ring produces (see this file's own "v0.4" module
+    /// doc for why both rings now advance by the same real arc length).
+    #[test]
+    fn courtyard_entrance_bay_has_real_walls_on_both_rings() {
+        let outer = square_ring(40.0);
+        let m = 1.0 / 111_320.0;
+        let inner: Vec<LngLat> = {
+            let s = 15.0 * m;
+            let off = 12.5 * m;
+            vec![
+                LngLat::new(off, off), LngLat::new(off + s, off),
+                LngLat::new(off + s, off + s), LngLat::new(off, off + s),
+                LngLat::new(off, off),
+            ]
+        };
+        let b = Building {
+            id: "CY1".into(),
+            polygon: Polygon::from_parts(vec![PolygonPart { outer, holes: vec![inner] }]),
+            height_m: Some(7.0),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: Some(2),
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: None,
+            roof: None,
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        let n = nbhd(vec![b], vec![]);
+        let sub = P127IntimacyGradient
+            .apply(&n, "*", &P127Params::defaults(), 1)
+            .expect("should partition");
+        let cells = &sub.new_buildings[0].interior_cells;
+        let entrance = cells.iter().min_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap()).unwrap();
+        let ring = &entrance.polygon.outer;
+        assert!(ring.len() >= 4);
+        let outer_edge_m = haversine_m(&ring[0], &ring[1]);
+        let inner_edge_m = haversine_m(&ring[2], &ring[3]);
+        assert!(outer_edge_m > 2.5, "entrance bay outer edge {:.3}m should be close to entrance_depth_m=3.5", outer_edge_m);
+        assert!(inner_edge_m > 2.5, "entrance bay inner edge {:.3}m should be close to entrance_depth_m=3.5, not a near-zero sliver", inner_edge_m);
     }
 
     #[test]

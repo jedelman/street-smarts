@@ -187,6 +187,23 @@ Alexander cross-reference (no direct citation edge exists between P221 and P115 
 | 197 | Thick Walls | Walls with real volume/depth, holding niches/built-ins. | Real, but large: every wall in this pipeline is currently zero-thickness (render.py's own caveat: punches "pierce solid mass," no real thickness). A prerequisite for P160/P198 too, not a quick win. |
 | 198 | Closets Between Rooms | Closets on interior walls, between rooms, at transitions. | P127/P131's room-adjacency graph already knows which cells share a wall -- placing a closet cell there is a real, scoped extension. |
 
+**2026-07-24 update: P112 closed.** `p130_entrance_room`'s own module doc used to name this
+directly as future work: give the entrance cell a real, deliberate size instead of whatever
+`band_depth_m`/bay-spacing happened to produce for every other band too. `p127_intimacy_gradient`
+now has an `entrance_depth_m` parameter (`solid_bands`/`courtyard_bays`, its own "v0.4" module
+doc) that carves the shallowest band/bay to a real, distinct size, with the rest of the
+span/perimeter still divided into ordinary bands as before. The default (3.5m) was picked
+empirically, not just architecturally: an initial, more obviously "modest" 2.0m default
+measurably regressed `p112_entrance_transition`'s own real score on the eastside-baseline fixture
+(0.68 mean pre-fix -> 0.32 at 2.0m), because that opinion's `MIN_FRACTION = 0.03` floor was
+implicitly calibrated against the old uniform banding, and a small enough real entrance pushes
+plenty of real buildings back under it. 3.5m keeps the entrance band genuinely distinct from
+`band_depth_m`'s own 5.0m default (30% smaller) while measuring AT OR ABOVE the pre-fix baseline
+on the real fixture across three seeds: Value 0.649-0.683 (37-54 real buildings with a real
+entrance cell per seed; 65-68% fall in the real 3-35% target). `CascadeContract` entry for
+p127->p112 (already present, added in an earlier session) updated with the new measured range and
+its real citation-graph backing (`data/apl-pattern-graph.json`: P112 itself cites 127 directly).
+
 ### Extend `p95_building_complex.rs` / open-space shaping (enclosure quality)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

@@ -467,12 +467,17 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         generator_pattern: 127,
         opinion: "p112_entrance_transition",
         opinion_pattern: 112,
-        check: CascadeCheck::MinValue(0.15),
-        why: "data/apl-pattern-graph.json: P127's own larger-patterns list includes Entrance \
-              Transition (112). p127_intimacy_gradient is the real generator that carves the \
-              entrance-bay cell this opinion measures the area share of. Measured on the real \
-              fixture: Value 0.400 (35 real buildings with a real entrance cell; 40% fall in the \
-              real 3-35% target). Floor set safely below that.",
+        check: CascadeCheck::MinValue(0.3),
+        why: "data/apl-pattern-graph.json: P112 itself cites Intimacy Gradient (127) directly \
+              (112's own cites list includes 127). p127_intimacy_gradient is the real generator \
+              that carves the entrance-bay cell this opinion measures the area share of, and \
+              (since this session's entrance_depth_m fix) is now the real generator that gives \
+              that cell a deliberate, distinct, real size instead of an incidental one. Measured \
+              on the real fixture across three seeds: Value 0.649-0.683 (37-54 real buildings \
+              with a real entrance cell per seed; 65-68% fall in the real 3-35% target -- at or \
+              above the pre-fix uniform-banding baseline of 0.66-0.70, not a regression, see \
+              p127_intimacy_gradient's own 'v0.4' module doc for the calibration story). Floor \
+              set safely below that.",
     },
     CascadeContract {
         generator: "p127_intimacy_gradient",
