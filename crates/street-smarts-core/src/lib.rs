@@ -14,6 +14,7 @@ pub mod nir;
 pub mod opinion;
 pub mod provenance;
 pub mod scope;
+pub mod sdf;
 pub mod timer;
 pub mod world;
 
@@ -23,5 +24,6 @@ pub use nir::{ActivityNode, Boundary, Building, Neighborhood, NeighborhoodMeta, 
 pub use opinion::{Capability, Opinion, OpinionFamily, OpinionOutput, OpinionRef, SourceCitation};
 pub use provenance::ProvenanceTag;
 pub use scope::Scope;
+pub use sdf::{sdf_box, sdf_cylinder, sdf_difference, sdf_intersection, sdf_smin, sdf_sphere, sdf_union, AABB3D, Vec3};
 pub use timer::Timer;
 pub use world::World;

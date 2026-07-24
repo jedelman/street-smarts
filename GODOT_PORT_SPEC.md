@@ -1,31 +1,67 @@
-# GODOT_PORT_SPEC.md — Rust + Godot 4 Spatial Engine Integration
+# GODOT_PORT_SPEC.md — Alexandrian Spatial SDF & Godot 4 Integration
 
 **Status:** Implementation Initialized on branch `antigravity/godot-rust-port`.  
-**Architecture Target:** Unified Rust GDExtension (`gdext` crate) + Godot 4.3 Forward+/Mobile rendering engine.
+**Architecture Target:** Unified Rust GDExtension (`gdext` crate) + Godot 4 (WebGL2 / Compatibility & Forward+ Export).
 
 ---
 
-## 1. Overview & Architectural Goals
+## 1. Overview & Architectural Philosophy
 
-The current rendering pipeline (`tools/vibe-render/render.py`) relies on an out-of-band Python sidecar utilizing CadQuery / OpenCASCADE for B-Rep 3D extrusion, Matplotlib for 2D line-art floorplans, and offline glTF (`.glb`) exports.
+This specification unifies the `street-smarts` Christopher Alexander provocation engine with an **Alexandrian Spatial SDF Engine** running in **Godot 4 via Rust WebAssembly / GDExtension**.
 
-This port transitions `street-smarts` into a **unified, interactive 60FPS spatial engine**:
+Instead of static CAD CSG scripts (`render.py`) or heavy polygon modeling, the engine models architectural design as a system of **3D spatial forces and constraints via Signed Distance Fields (SDFs)**.
 
-1. **Pure Rust Core Preservation**: `street-smarts-core`, `street-smarts-opinions`, `street-smarts-conflict`, and `street-smarts-patterns` remain 100% engine-agnostic crates without engine or GUI dependencies.
-2. **Native GDExtension Bindings (`street-smarts-godot`)**: A dedicated GDExtension crate exposes native Godot nodes (`NeighborhoodNode3D`, `OpinionEvaluatorNode`) directly into Godot 4.
-3. **Procedural Building Mesh & Opening Punching**: Replaces Python OpenCASCADE script runs with direct procedural 3D mesh building in Rust using Godot's `SurfaceTool` and `CSGCombiner3D`.
-4. **Interactive Opinion Chorus & Disagreement Overlays**: Enables real-time evaluation of Alexander's 15 properties, Salingaros geometric ratios ($2\text{--}5\times$), and ownership patterns as users edit or steer neighborhood form.
-5. **Zero-Cloud Client Execution**: Godot 4 GDExtension builds run natively on Desktop (Windows, macOS, Linux) and target HTML5/WebAssembly for zero-cloud browser execution.
+### Target Client Platform
+* **Primary Environment:** Mobile & Desktop Web Browsers (Android / iOS / Desktop WebGL2) and Native Desktop Executables.
+* **Viewport & Touch UI:** Godot 4 (WebGL2 / Compatibility Export).
+* **Logic & Math Engine:** Rust compiled to WebAssembly (`wasm32-unknown-unknown` + SIMD) / GDExtension (`gdext`).
+* **Geometry Pipeline:** 3D Implicit SDFs + Dual Contouring / Surface Nets + `manifold-rust` CSG.
 
 ---
 
-## 2. Directory & Workspace Structure
+## 2. Technical Stack & Geometry Pipeline
+
+```
+[ Client Platform: Android Mobile / Desktop Web Browser ]
+├── Viewport & Touch UI: Godot 4 (WebGL2 / Compatibility Export)
+├── Logic & Math Engine: Rust compiled to WASM (wasm32-unknown-unknown + SIMD) / GDExtension
+└── Geometry Pipeline: 3D Implicit SDFs + Dual Contouring / Manifold CSG
+```
+
+### 1. 3D SDF Formulations & Alexandrian Operators
+Spatial forces and apertures are evaluated natively in Rust (`street-smarts-core::sdf`):
+* **Union:** $\min(A, B)$
+* **Intersection:** $\max(A, B)$
+* **Difference (Aperture Cuts P221):** $\max(A, -B)$
+* **Smooth Union ($\text{smin}$):** Organic architectural transitions (arches, fillets, wall-to-ceiling transitions).
+
+### 2. Texturing & Material Pipeline (Triplanar Mapping)
+To avoid costly CPU/WASM 2D UV unwrapping on dynamic SDF cuts:
+* Apply Godot’s `StandardMaterial3D` with **Triplanar Mapping** enabled (`uv1_triplanar = true`).
+* Materials (brick, plaster, wood, concrete) automatically align seamlessly across dynamic procedural cuts without UV degradation.
+
+---
+
+## 3. Site Scale Strategy (91-Acre / Multi-Scale)
+
+To evaluate thousands of apertures (`P221`) across a 91-acre site (e.g. Eastside Commons in Norfolk) on mobile ARM chips without memory or thermal starvation:
+
+1. **Hierarchical Spatial Indexing (BVH / AABB):**
+   * Wrap pattern evaluators in Bounding Volume Hierarchies (BVH) and `AABB3D` bounds.
+   * Instantly prune distant aperture/window SDF computations when query points fall outside a local structure's bounding box.
+2. **Static Neighborhood Context vs. Active Parcel Isolation:**
+   * **Neighborhood Hot-Loading:** Surrounding context buildings and GIS/CAD terrain load as static, low-poly Godot `ArrayMesh` buffers **once**.
+   * **Active Parcel Isolation:** Dynamic SDF math, Alexander pattern evaluation, and Dual Contouring surface extraction occur **only within the bounding box of the active parcel being remodeled**.
+
+---
+
+## 4. Directory & Workspace Structure
 
 ```
 street-smarts/
 ├── Cargo.toml                      (Workspace root: includes crates/street-smarts-godot)
 ├── crates/
-│   ├── street-smarts-core/         (NIR schema, geometry primitives, opinion protocols)
+│   ├── street-smarts-core/         (NIR schema, geometry primitives, 3D SDF primitives & BVH)
 │   ├── street-smarts-opinions/     (Levels of Scale, Strong Centers, Ownership Pattern)
 │   ├── street-smarts-conflict/     (Disagreement detection & human prompts)
 │   ├── street-smarts-patterns/     (Procedural pattern operators: P95, P127, P221)
@@ -34,7 +70,7 @@ street-smarts/
 │       └── src/
 │           └── lib.rs              (GDExtension entrypoint & Godot nodes)
 ├── godot/                          [NEW] Godot 4 Engine Project
-│   ├── project.godot               (Godot project settings)
+│   ├── project.godot               (Godot WebGL2/Compatibility & Forward+ project settings)
 │   ├── street_smarts.gdextension   (GDExtension platform library mapping)
 │   ├── bin/                        (Staged compiled .dll / .so / .dylib binaries)
 │   └── scenes/
@@ -46,7 +82,7 @@ street-smarts/
 
 ---
 
-## 3. Node API Reference
+## 5. Node API Reference
 
 ### `NeighborhoodNode3D` (Subclass of `Node3D`)
 - `load_nir_json(json_str: String) -> bool`: Parses an NIR JSON representation into Rust memory.
@@ -59,28 +95,20 @@ street-smarts/
 
 ---
 
-## 4. Building & Running
+## 6. Development & Performance Guidelines
 
-### 1. Build the GDExtension Library
-```bash
-# Windows (PowerShell)
-.\scripts\build-godot.ps1 -Configuration release
-
-# Linux / macOS
-./scripts/build-godot.sh release
-```
-
-### 2. Launch Godot Project
-Open the `godot/` directory inside Godot 4.3+ or run:
-```bash
-godot --path godot/
-```
+* **Language Mapping:**
+  * Implement spatial math, BVH trees, 3D SDF primitives, and Dual Contouring mesh extraction in **Rust**.
+  * Implement UI interaction, gesture handling, and scene composition in **GDScript** or **`godot-rust` GDExtension**.
+* **Performance Constraints:**
+  * Debounce/throttle UI touch interactions (run mesh recalculation cycles at $30\text{--}60\text{ms}$ intervals).
+  * Do **not** generate WebGL2 compute shaders (`RenderingDevice`) due to mobile web driver limits; execute spatial grids via WASM on the mobile CPU using SIMD.
 
 ---
 
-## 5. Phase Roadmap
+## 7. Phase Roadmap
 
-- [x] **Phase 1: Workspace & GDExtension Skeleton**: Crate setup, `.gdextension` manifest, `project.godot`, and base nodes.
-- [ ] **Phase 2: Procedural SurfaceTool Extrusion**: Building footprint extrusion, street mesh generation, and wall thickness.
+- [x] **Phase 1: Workspace & GDExtension Skeleton**: Crate setup, `.gdextension` manifest, `project.godot`, base nodes, and `street-smarts-core::sdf` 3D primitives.
+- [ ] **Phase 2: Dual Contouring & Procedural Mesh Extrusion**: Dynamic SDF surface nets for active parcels, triplanar material integration, and static context hot-loading.
 - [ ] **Phase 3: Real-Time Openings & Intimacy Shaders**: Procedural P221 door/window CSG punches and floorplan intimacy gradient visualizers.
-- [ ] **Phase 4: Interactive Provocation Viewport**: User interaction controls for live pattern steering and real-time disagreement prompts.
+- [ ] **Phase 4: Interactive Mobile Viewport**: Touch/orbit gesture controls for live pattern steering and real-time disagreement prompts.
