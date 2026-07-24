@@ -308,6 +308,24 @@ Voronoi grid, when it splits an oversized plaza (P114 cited directly from P61 in
 decent real number. Given the real regression risk against a real render baseline versus a modest,
 unverified potential gain, this was not attempted. Left open rather than forced.
 
+**2026-07-24 update: P105/P161 investigated, not closed -- a real, confirmed gap, but the fix
+means making P95's core pad-seeding orientation-aware.** Measured on the real fixture:
+`p105_south_facing_outdoors`'s `building_is_north` sub-score is 42-49% across three seeds -- close
+enough to the 50% a purely unbiased layout would produce by chance that it confirms no orientation
+preference exists anywhere in this pipeline's building-vs-open-space placement, exactly as this
+table's original note suspected. `p161_sunny_place` (which reuses this same check) sees an even
+lower 35-39%, since it additionally requires real 30m adjacency. `p163_outdoor_room` (bundled with
+these in the original table) is a separate story: it's already real and decent (68-71%,
+area-weighted enclosure/circularity) with no generator changes needed.
+
+A real fix for P105/P161 would mean giving `p95_building_complex`'s own pad-seeding a deliberate
+north/south preference relative to whatever open space (P37 common land, P61 squares, its own
+courtyard holes) a pad ends up bordering -- not a small tie-break like P129's (a single
+per-building choice among a handful of ties), but a bias threaded through a packing/stratified-seed
+algorithm that places MANY pads at once and whose current correctness a large number of other
+tests and the perceptual-hash render baselines already depend on. A genuine structural change, not
+a scoped fix -- deferred rather than forced, same category as P100.
+
 **2026-07-24 update: P120 closed -- already reasonably satisfied, no code change needed.** Measured
 on the real fixture: `p120_paths_and_goals` scores 1.000 across three seeds on parcel `00001129`
 (13-14 real streets per seed; every one has a real building or open-space centroid within 15m of
