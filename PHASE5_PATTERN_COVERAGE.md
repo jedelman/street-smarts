@@ -282,6 +282,21 @@ Voronoi grid, when it splits an oversized plaza (P114 cited directly from P61 in
 decent real number. Given the real regression risk against a real render baseline versus a modest,
 unverified potential gain, this was not attempted. Left open rather than forced.
 
+**2026-07-24 update: P120 closed -- already reasonably satisfied, no code change needed.** Measured
+on the real fixture: `p120_paths_and_goals` scores 1.000 across three seeds on parcel `00001129`
+(13-14 real streets per seed; every one has a real building or open-space centroid within 15m of
+BOTH endpoints; `check_detector_impact.rs`), and 0.667 on parcel `MILITARY_CIRCLE_ASSEMBLED`/seed
+42 (the fixture `pattern_cascade.rs`'s own permanent regression test uses) -- both real numbers,
+not a contradiction, since which streets end up with a real goal at both ends depends on each
+parcel's own real block/building layout. `path_network.rs` itself still just connects block
+centroids (no explicit routing through P61 squares or P99's main building, as this table's original
+idea proposed) -- but by the time this opinion evaluates the FINAL pipeline output, P95/P61 have
+already built real pads and squares that land close to those same centroids, satisfying the real
+proxy this opinion checks without any deliberate "route through a goal" step, on most real parcels.
+The existing `path_network` -> `p120_paths_and_goals` `CascadeContract` floor updated (0.4 -> 0.5)
+to reflect both real measured numbers. No generator change made -- there's no real gap left worth
+the risk of touching `path_network.rs`'s own real routing logic for.
+
 ### New minor addition
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|
