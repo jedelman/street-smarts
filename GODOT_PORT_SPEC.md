@@ -1,6 +1,6 @@
 # GODOT_PORT_SPEC.md — Alexandrian Spatial SDF & Godot 4 Integration
 
-**Status:** Implementation Initialized on branch `antigravity/godot-rust-port`.  
+**Status:** Phase 2 (building massing extraction) implemented and tested; see §8 for exactly what is and isn't verified.  
 **Architecture Target:** Unified Rust GDExtension (`gdext` crate) + Godot 4 (WebGL2 / Compatibility & Forward+ Export).
 
 ---
@@ -68,7 +68,9 @@ street-smarts/
 │   └── street-smarts-godot/        [NEW] Native GDExtension Crate
 │       ├── Cargo.toml
 │       └── src/
-│           └── lib.rs              (GDExtension entrypoint & Godot nodes)
+│           ├── lib.rs              (GDExtension entrypoint & Godot nodes)
+│           └── building_mesh.rs    (Building -> SDF -> Mesh: footprint extrusion, P221 punches)
+│   street-smarts-core/src/surface_nets.rs  (generic SDF -> triangle mesh extractor, used by building_mesh)
 ├── godot/                          [NEW] Godot 4 Engine Project
 │   ├── project.godot               (Godot WebGL2/Compatibility & Forward+ project settings)
 │   ├── street_smarts.gdextension   (GDExtension platform library mapping)
@@ -88,7 +90,7 @@ street-smarts/
 - `load_nir_json(json_str: String) -> bool`: Parses an NIR JSON representation into Rust memory.
 - `get_building_count() -> i32`: Returns the active building footprint count.
 - `evaluate_opinions() -> Dictionary`: Evaluates the full opinion chorus and returns summary metrics (`geometric_headline`, `activist_headline`, `geometric_mean`, `question_count`).
-- `rebuild_3d_mesh() -> bool`: Triggers procedural 3D mesh reconstruction for building massings, streets, and Salingaros centers.
+- `rebuild_3d_mesh() -> bool`: For every building with a `height_m`, builds a real constructive-SDF solid (footprint extrusion + P221 opening punches, `building_mesh::BuildingSolid`), extracts it via Surface Nets, and attaches it as a `MeshInstance3D` child (`GeneratedMassing_<building.id>`), replacing any from the previous call. Streets, plazas, and Salingaros scale/center indicators are **not yet built** — massing only. Returns `true` iff at least one building produced geometry.
 
 ### `OpinionEvaluatorNode` (Subclass of `Node`)
 - `evaluate_nir_json(json_str: String) -> Dictionary`: Standalone evaluation function that takes raw NIR JSON and returns a full structured `DisagreementReport` with human prompts.
@@ -109,6 +111,30 @@ street-smarts/
 ## 7. Phase Roadmap
 
 - [x] **Phase 1: Workspace & GDExtension Skeleton**: Crate setup, `.gdextension` manifest, `project.godot`, base nodes, and `street-smarts-core::sdf` 3D primitives.
-- [ ] **Phase 2: Dual Contouring & Procedural Mesh Extrusion**: Dynamic SDF surface nets for active parcels, triplanar material integration, and static context hot-loading.
-- [ ] **Phase 3: Real-Time Openings & Intimacy Shaders**: Procedural P221 door/window CSG punches and floorplan intimacy gradient visualizers.
+- [~] **Phase 2: Surface Extraction & Procedural Mesh Building** (partial — see §8):
+  - [x] Generic SDF → triangle mesh extraction (`street-smarts-core::surface_nets`, Naive Surface Nets, not Dual Contouring — see §8 for why).
+  - [x] Real building massing from NIR data: footprint extrusion to `height_m`, ground-floor `Opening`s punched as real P221 aperture cuts (`street-smarts-godot::building_mesh`).
+  - [x] Wired into `NeighborhoodNode3D::rebuild_3d_mesh()` — builds and attaches real `ArrayMesh` geometry via `SurfaceTool`, replacing the earlier no-op stub.
+  - [ ] Triplanar material integration (`uv1_triplanar`).
+  - [ ] Static neighborhood context hot-loading vs. active-parcel-only recompute (§3's 91-acre strategy — every call currently rebuilds every building).
+  - [ ] `wall_thickness_m` as a real hollow shell (punches currently notch a solid mass, no interior cavity behind them).
+  - [ ] `roof` / `roof_segments` / `canopies` / `wall_niches` geometry.
+- [ ] **Phase 3: Real-Time Openings & Intimacy Shaders**: Live re-punching as a user edits (today's punches are correct but rebuilt from scratch, not incrementally), and floorplan intimacy gradient visualizers.
 - [ ] **Phase 4: Interactive Mobile Viewport**: Touch/orbit gesture controls for live pattern steering and real-time disagreement prompts.
+
+---
+
+## 8. What's Actually Verified (and What Isn't)
+
+This environment has the Rust toolchain and network access to crates.io, but **no Godot editor and no display** — nothing here has been visually confirmed inside Godot. Everything below was checked the only way available: `cargo test`/`cargo build` against the real `gdext` 0.2.4 crate.
+
+**Verified:**
+- `street-smarts-core::surface_nets` (Naive Surface Nets): extracted meshes for a sphere and a box match their analytic volumes within 5% (via the divergence theorem, `Mesh::signed_volume`), and every extracted vertex sits within one grid cell of the true SDF zero-surface. This is what proves the triangle winding-correction logic (§ code comments) actually produces a closed, consistently outward-wound mesh, not just "some triangles."
+- `street-smarts-godot::building_mesh`: a synthetic rectangular building's extracted massing matches its analytic box volume within 5%; a real `Opening` placed via its actual `ring_index`/`t`/`width_m`/`sill_height_m`/`head_height_m` fields punches a hole exactly there (SDF flips sign at the opening's real position, stays solid elsewhere on the same wall) and measurably reduces the mesh's enclosed volume.
+- `cargo build -p street-smarts-godot` produces a linked `libstreet_smarts_godot.so` against the real generated `SurfaceTool`/`ArrayMesh`/`MeshInstance3D` bindings (method signatures were read directly from `gdext`'s own codegen output, not guessed).
+- The original Phase 1 code on `antigravity/godot-rust-port` did **not** actually compile against current `main`: `street-smarts-opinions::registry::evaluate_all`'s signature had changed (2 call sites), one `Variant`/`AsArg` mismatch, and `#![forbid(unsafe_code)]` directly conflicted with gdext's own required `unsafe impl ExtensionLibrary`. All fixed as part of this pass.
+
+**Not verified (needs an actual Godot editor):**
+- That the generated `MeshInstance3D` actually renders — winding order is corrected analytically per-quad (see `emit_quad` in `surface_nets.rs`) against the SDF gradient direction, and back-face culling has deliberately been left at Godot's default rather than force-disabled, so an error here would show as missing/inverted faces, not a crash.
+- Frame rate/thermal behavior of rebuilding a whole neighborhood's massing per `rebuild_3d_mesh()` call — no active-parcel isolation yet (§3), so this does not yet scale to the 91-acre case the spec's Site Scale Strategy targets.
+- Touch/orbit input, WebGL2 export size and load time, and the COOP/COEP header requirement for a threaded web export (all still open per the original assessment of this branch).
