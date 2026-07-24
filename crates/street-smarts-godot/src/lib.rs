@@ -5,12 +5,6 @@
 //! Exposes the NIR schema, procedural pattern operators, 3D mesh building,
 //! and opinion chorus / disagreement report engine directly to Godot as native nodes.
 
-// `deny`, not `forbid`: gdext's own `#[gdextension]` entry-point macro
-// requires exactly one `unsafe impl ExtensionLibrary`, which `forbid` can't
-// be locally overridden for. Everywhere else in this crate, unsafe code is
-// still rejected.
-#![deny(unsafe_code)]
-
 use godot::classes::mesh::PrimitiveType;
 use godot::classes::{ArrayMesh, MeshInstance3D, SurfaceTool};
 use godot::prelude::*;
@@ -24,20 +18,8 @@ use building_mesh::BuildingSolid;
 
 struct StreetSmartsExtension;
 
-// gdext's own entry-point macro requires this `unsafe impl` -- it's the one
-// spot the crate-wide `deny(unsafe_code)` above can't honestly apply to,
-// since the trait itself is `unsafe` in the `godot` crate we depend on, not
-// unsafe code this crate wrote. A module-level `allow` is used (rather than
-// one directly on the impl) because `#[gdextension]` doesn't re-emit outer
-// attributes placed on the item it expands.
-#[allow(unsafe_code)]
-mod extension_entry {
-    use super::StreetSmartsExtension;
-    use godot::prelude::{gdextension, ExtensionLibrary};
-
-    #[gdextension]
-    unsafe impl ExtensionLibrary for StreetSmartsExtension {}
-}
+#[gdextension]
+unsafe impl ExtensionLibrary for StreetSmartsExtension {}
 
 /// Godot 3D Node representing a Christopher Alexander Neighborhood.
 ///

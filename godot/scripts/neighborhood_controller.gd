@@ -6,8 +6,15 @@ extends Node
 @onready var prompt_label: Label = $"../UI/Panel/VBox/HumanPromptLabel"
 
 func _ready():
-    # Load default NIR baseline fixture
-    var path = "res://eastside-baseline.json"
+    # Prefer the synthetic demo fixture: it's the only one with populated
+    # Building.height_m/openings today (the real eastside-*.json fixtures
+    # are parcel-only -- no generator has run to populate buildings yet),
+    # so it's the only one rebuild_3d_mesh() can actually put geometry on
+    # screen for. Falls back to the real site fixture (opinion chorus text,
+    # no visible massing) if the demo file isn't staged.
+    var path = "res://demo-massing.json"
+    if not FileAccess.file_exists(path):
+        path = "res://eastside-baseline.json"
     if not FileAccess.file_exists(path):
         path = "res://data/eastside-baseline.json"
     
