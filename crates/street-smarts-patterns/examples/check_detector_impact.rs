@@ -41,6 +41,7 @@ const NEW_DETECTORS: &[&str] = &[
     "p114_hierarchy_of_open_space",
     "p120_paths_and_goals",
     "p38_row_houses",
+    "p100_pedestrian_street",
 ];
 
 fn main() {

@@ -265,6 +265,20 @@ marks common -- the prior 0.029 (1/35) was a fragile fluke of one building's spe
 a real achievement, and it moved when the common-cell assignment did. See that contract's own "why"
 for the full explanation.
 
+**2026-07-24 update: P100 investigated, not closed.** The "open stairs directly from upper
+stories to the street" half of this pattern remains permanently out of reach -- no exterior
+vertical-circulation data exists in this schema (`p100_pedestrian_street`'s own module doc). The
+other, real, checkable half -- entrance density along the street -- IS measurably low: 0.149-0.733
+across three seeds (`check_detector_impact.rs`), with only 2 real Pedestrian streets per seed.
+Root cause: this pipeline's only Pedestrian-classified streets are `p61_small_public_squares`'
+own short connector segments between squares, not full urban blocks -- `p95_building_complex`
+doesn't know about them at all when siting pads, so whether real building frontage ends up
+alongside one is incidental. A real fix would mean coordinating P95's pad placement with P61's
+own connector geometry (which doesn't exist as a concept P95 reads today) -- a genuine
+cross-generator change, not a parameter tweak, and it's also fair to question whether a short
+landscaped link between two small squares is the kind of "pedestrian street" Alexander's own text
+describes (a real urban street lined with houses) in the first place. Deferred rather than forced.
+
 ### Extend `p95_building_complex.rs` / open-space shaping (enclosure quality)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|
