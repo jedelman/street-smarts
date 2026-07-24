@@ -9,7 +9,9 @@ extends Camera3D
 @export var target: Vector3 = Vector3(0.0, 5.0, 0.0)
 @export var distance: float = 72.0
 @export var min_distance: float = 8.0
-@export var max_distance: float = 250.0
+# High enough to fit the real Military Circle site (real buildings measured
+# spanning 600m+) via frame_bounds(), not just the small synthetic demo.
+@export var max_distance: float = 2000.0
 @export var yaw: float = 0.0
 @export var pitch: float = deg_to_rad(33.7)
 @export var min_pitch: float = deg_to_rad(10.0)
@@ -77,3 +79,22 @@ func _update_transform() -> void:
 	)
 	position = target + offset
 	look_at(target, Vector3.UP)
+
+## Recenters the orbit around `bounds_center`, at a distance that fits a
+## `bounds_radius`-sized sphere inside the vertical FOV (with a margin).
+## `target`/`distance`'s own @export defaults were tuned for the small
+## synthetic demo fixture clustered near local (0,0,0) -- the real
+## pattern-pipeline output projects buildings from the full site bbox's
+## own center, so a real building cluster can sit hundreds of meters away
+## from that origin and/or span a much larger area. Called by
+## neighborhood_controller.gd right after rebuild_3d_mesh(), from the
+## actual generated massing's own AABB, so the camera frames whatever was
+## really built instead of trusting a fixed guess.
+func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
+	target = bounds_center
+	if bounds_radius <= 0.0:
+		_update_transform()
+		return
+	var half_fov := deg_to_rad(fov) * 0.5
+	distance = clamp((bounds_radius / sin(half_fov)) * 1.3, min_distance, max_distance)
+	_update_transform()

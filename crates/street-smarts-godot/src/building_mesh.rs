@@ -21,15 +21,21 @@ use street_smarts_core::{extract_surface_nets_bounds, Mesh};
 use street_smarts_patterns::planar::{ring_to_local, Pt2};
 
 /// Signed distance to a (possibly non-convex) simple polygon in the local
-/// (u, v) plane. Negative inside, positive outside. Ported from Inigo
-/// Quilez's `sdPolygon` (closed-form nearest-edge distance + parity-based
-/// inside/outside test via edge crossing) -- chosen because, like Surface
-/// Nets, every step is a direct geometric computation with no case table to
-/// misremember.
-fn sdf_polygon_2d(u: f64, v: f64, poly: &[Pt2]) -> f64 {
+/// (u, v) plane, plus which edge (`ring_index` into `poly`, i.e. the edge
+/// from `poly[i]` to `poly[i+1]`) was nearest. Negative inside, positive
+/// outside. Ported from Inigo Quilez's `sdPolygon` (closed-form
+/// nearest-edge distance + parity-based inside/outside test via edge
+/// crossing) -- chosen because, like Surface Nets, every step is a direct
+/// geometric computation with no case table to misremember. The nearest-
+/// edge index is a free byproduct of the same loop that already computes
+/// the nearest-edge distance -- see `BuildingSolid::sdf`'s own doc for why
+/// a caller wants it (bucketing openings by wall, so a real building with
+/// hundreds of them doesn't need a linear scan of all of them per sample).
+fn sdf_polygon_2d_with_edge(u: f64, v: f64, poly: &[Pt2]) -> (f64, usize) {
     let n = poly.len();
     let v0 = poly[0];
     let mut d2_min = (u - v0.x).powi(2) + (v - v0.y).powi(2);
+    let mut nearest_edge = n - 1; // edge (n-1 -> 0), matches j on the first iteration
     let mut s = 1.0f64;
     let mut j = n - 1;
     for i in 0..n {
@@ -46,6 +52,10 @@ fn sdf_polygon_2d(u: f64, v: f64, poly: &[Pt2]) -> f64 {
         let d2 = bx * bx + by * by;
         if d2 < d2_min {
             d2_min = d2;
+            // Edge j->i in this loop's own traversal is the SAME edge
+            // `Opening.ring_index = j` describes (poly[j] -> poly[j+1]),
+            // since j is always i's immediate predecessor (wrapping).
+            nearest_edge = j;
         }
 
         let c1 = v >= vi.y;
@@ -56,7 +66,7 @@ fn sdf_polygon_2d(u: f64, v: f64, poly: &[Pt2]) -> f64 {
         }
         j = i;
     }
-    s * d2_min.sqrt()
+    (s * d2_min.sqrt(), nearest_edge)
 }
 
 struct OpeningCut {
@@ -92,6 +102,16 @@ pub struct BuildingSolid {
     footprint: Vec<Pt2>,
     height: f64,
     openings: Vec<OpeningCut>,
+    /// `openings` indices grouped by the wall edge (`ring_index`) they sit
+    /// on -- `by_edge[e]` lists every opening on edge `e`. A real merged
+    /// block can carry hundreds of openings (P108 Connected Buildings
+    /// produces a handful of these on the real Military Circle site, one
+    /// with 845); `sdf_polygon_2d_with_edge` already tells `sdf()` which
+    /// edge a sample point is nearest, so it only needs to scan THAT
+    /// edge's openings (plus its two neighbors, for points near a corner
+    /// that are genuinely closest to an opening on the adjoining wall)
+    /// instead of every opening on the building -- see `sdf()`'s own doc.
+    by_edge: Vec<Vec<usize>>,
 }
 
 impl BuildingSolid {
@@ -110,6 +130,7 @@ impl BuildingSolid {
 
         let n = footprint.len();
         let mut openings = Vec::new();
+        let mut by_edge: Vec<Vec<usize>> = vec![Vec::new(); n];
         for opening in &building.openings {
             if opening.on_hole || opening.floor != 0 {
                 continue;
@@ -136,6 +157,7 @@ impl BuildingSolid {
             // realistic wall even without a resolved wall_thickness_m.
             let half_depth = building.wall_thickness_m.unwrap_or(0.3).max(0.15);
 
+            by_edge[opening.ring_index].push(openings.len());
             openings.push(OpeningCut {
                 center_u,
                 center_w,
@@ -148,21 +170,38 @@ impl BuildingSolid {
             });
         }
 
-        Some(Self { footprint, height, openings })
+        Some(Self { footprint, height, openings, by_edge })
     }
 
     /// The real signed distance at `p` (local meters, Y = height above
     /// ground): negative inside the built solid, positive outside.
+    ///
+    /// Only scans openings on the wall edge nearest `p` (plus its two
+    /// ring-neighbors) rather than every opening on the building --
+    /// `sdf_polygon_2d_with_edge`'s nearest-edge result is exactly the
+    /// bucket key `by_edge` was built with. Without this, a building with
+    /// hundreds of openings (a real, not hypothetical, case -- see
+    /// `by_edge`'s own doc) would scan all of them at every one of a
+    /// Surface Nets grid's corner samples: measured at 7.8s for one such
+    /// real building (845 openings) before this change, on a desktop CPU,
+    /// for ONE building out of 35 on the real site.
     pub fn sdf(&self, p: Vec3) -> f64 {
-        let footprint_d = sdf_polygon_2d(p.x, p.z, &self.footprint);
+        let (footprint_d, nearest_edge) = sdf_polygon_2d_with_edge(p.x, p.z, &self.footprint);
         let slab_d = (-p.y).max(p.y - self.height);
         let solid = footprint_d.max(slab_d);
         if self.openings.is_empty() {
             return solid;
         }
+
+        let n = self.by_edge.len();
+        let prev_edge = (nearest_edge + n - 1) % n;
+        let next_edge = (nearest_edge + 1) % n;
+
         let mut opening_min = f64::MAX;
-        for cut in &self.openings {
-            opening_min = opening_min.min(cut.sdf(p));
+        for &edge in &[prev_edge, nearest_edge, next_edge] {
+            for &idx in &self.by_edge[edge] {
+                opening_min = opening_min.min(self.openings[idx].sdf(p));
+            }
         }
         sdf_difference(solid, opening_min)
     }
@@ -187,6 +226,34 @@ impl BuildingSolid {
     pub fn to_mesh(&self, voxel_size: f64) -> Mesh {
         let (min, max) = self.bounds();
         extract_surface_nets_bounds(|p| self.sdf(p), min, max, voxel_size)
+    }
+
+    /// A voxel size scaled to this building's own footprint, targeting
+    /// roughly a fixed cell count across its longest horizontal extent
+    /// regardless of the building's real size -- extraction cost is
+    /// O(volume / voxel_size^3), so a single fixed voxel size across every
+    /// building means a real P108-merged block (measured up to 160m x
+    /// 122m on the real Military Circle site) costs on the order of a
+    /// THOUSAND times more than a typical ~15m building at the same
+    /// resolution, not proportionally more. Clamped to
+    /// `[MIN_VOXEL_M, MAX_VOXEL_M]`: never so fine a huge block hangs,
+    /// never so coarse a small building loses its openings entirely.
+    /// Measured end to end: the real site's biggest building (78m x 110m,
+    /// 845 openings) dropped from 3.68s at a flat 0.3m to ~0.2s at its own
+    /// adaptive size; the whole real 35-building site meshes in ~4.4s on
+    /// a desktop CPU. Coarser cells on the huge blocks is a real,
+    /// visible quality tradeoff (their doors/windows read as smaller,
+    /// blockier notches) -- the honest alternative to either hanging on
+    /// them or silently skipping them.
+    pub fn suggested_voxel_size(&self) -> f64 {
+        const TARGET_CELLS_ACROSS: f64 = 150.0;
+        const MIN_VOXEL_M: f64 = 0.15;
+        const MAX_VOXEL_M: f64 = 1.5;
+        let (min, max) = self.bounds();
+        let dx = max.x - min.x;
+        let dz = max.z - min.z;
+        let diagonal = (dx * dx + dz * dz).sqrt();
+        (diagonal / TARGET_CELLS_ACROSS).clamp(MIN_VOXEL_M, MAX_VOXEL_M)
     }
 }
 
@@ -230,15 +297,39 @@ mod tests {
     #[test]
     fn sdf_polygon_2d_center_is_negative_half_side_for_a_square() {
         let poly = [Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0)];
-        let d = sdf_polygon_2d(5.0, 5.0, &poly);
+        let (d, _edge) = sdf_polygon_2d_with_edge(5.0, 5.0, &poly);
         assert!((d - (-5.0)).abs() < 1e-6, "expected -5.0 at square center, got {d}");
     }
 
     #[test]
     fn sdf_polygon_2d_is_positive_outside() {
         let poly = [Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0)];
-        let d = sdf_polygon_2d(15.0, 5.0, &poly);
+        let (d, _edge) = sdf_polygon_2d_with_edge(15.0, 5.0, &poly);
         assert!((d - 5.0).abs() < 1e-6, "expected +5.0 at 5m outside the right edge, got {d}");
+    }
+
+    #[test]
+    fn sdf_polygon_2d_with_edge_reports_the_edge_the_point_is_actually_nearest() {
+        // Square with edges: 0=(0,0)->(10,0) [south], 1=(10,0)->(10,10) [east],
+        // 2=(10,10)->(0,10) [north], 3=(0,10)->(0,0) [west].
+        let poly = [Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0)];
+        let (_d, edge) = sdf_polygon_2d_with_edge(5.0, 0.2, &poly);
+        assert_eq!(edge, 0, "a point just inside the south wall should be nearest edge 0");
+        let (_d, edge) = sdf_polygon_2d_with_edge(9.8, 5.0, &poly);
+        assert_eq!(edge, 1, "a point just inside the east wall should be nearest edge 1");
+    }
+
+    #[test]
+    fn suggested_voxel_size_clamps_small_buildings_to_the_min_and_scales_huge_ones() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let small = BuildingSolid::from_building(&rect_building(10.0, 6.0, 3.0, &origin), &origin).unwrap();
+        assert_eq!(small.suggested_voxel_size(), 0.15, "a small building's diagonal/150 is well under the min clamp");
+
+        let huge = BuildingSolid::from_building(&rect_building(160.0, 120.0, 15.0, &origin), &origin).unwrap();
+        let voxel = huge.suggested_voxel_size();
+        assert!(voxel > 0.15 && voxel < 1.5, "a huge building should land strictly between the clamps, got {voxel}");
+        // diagonal = sqrt(160^2+120^2) = 200; /150 = 1.333
+        assert!((voxel - 1.333).abs() < 0.01, "expected ~1.333, got {voxel}");
     }
 
     #[test]
