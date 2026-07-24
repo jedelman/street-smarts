@@ -268,6 +268,20 @@ for the full explanation.
 | 161 | Sunny Place | A real south-facing outdoor room, wind-protected, 6ft+ deep. | Direct structural parallel to the already-built P105 South Facing Outdoors detector (see above) -- a generator could carve/tag a specific zone within existing open space. |
 | 163 | Outdoor Room | Enough enclosure to feel like a room, distinct from open garden. | Same enclosure-ratio mechanism as P106 -- bundle together. |
 
+**2026-07-24 update: P114 investigated, not closed -- a real, moderate baseline, no clean
+single-generator fix found.** Measured on the real fixture: `p114_hierarchy_of_open_space` already
+scores 0.439-0.498 (44-50% by area) across three seeds -- not the kind of near-zero score P30/P112
+had before their own fixes. This is real, not an accident: with P37 common land, P61 squares, P95
+courtyards, and P124 activity pockets all producing open space at genuinely different characteristic
+scales, plenty of small features already land near a real larger neighbor. The one concrete
+generator-level idea considered -- `p61_small_public_squares`'s own `partition_plaza` deliberately
+producing one clearly-larger "primary" square plus smaller "backing" squares, instead of a uniform
+Voronoi grid, when it splits an oversized plaza (P114 cited directly from P61 in
+`data/apl-pattern-graph.json`) -- would mean reshaping the actual partition geometry that
+`isometric.json`'s perceptual-hash baseline is keyed to, for an uncertain gain against an already
+decent real number. Given the real regression risk against a real render baseline versus a modest,
+unverified potential gain, this was not attempted. Left open rather than forced.
+
 ### New minor addition
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

@@ -38,6 +38,7 @@ const NEW_DETECTORS: &[&str] = &[
     "p112_entrance_transition",
     "p30_activity_nodes",
     "p128_indoor_sunlight",
+    "p114_hierarchy_of_open_space",
 ];
 
 fn main() {
