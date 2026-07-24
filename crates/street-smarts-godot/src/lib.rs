@@ -213,10 +213,42 @@ impl NeighborhoodNode3D {
             let mut surface_tool = SurfaceTool::new_gd();
             surface_tool.begin(PrimitiveType::TRIANGLES);
             for tri in &mesh.triangles {
+                // Flat (per-triangle) face normals, not the smooth
+                // gradient-based ones surface_nets.rs computes per shared
+                // vertex. Naive Surface Nets puts ONE vertex per grid
+                // cell, reused across every face orientation that cell
+                // touches -- at a building's sharp 90-degree corners
+                // (which is everywhere on a boxy massing) that shared
+                // vertex's normal is a blend between the two faces, which
+                // reads as a soft, wrong-looking gradient smeared across
+                // what should be a flat-shaded roof or wall (confirmed
+                // against a real device screenshot, not just reasoned
+                // about). Recomputing a face normal per triangle from its
+                // own 3 positions and using it for all 3 corners -- SAME
+                // right-hand-rule convention already verified correct in
+                // surface_nets.rs's own winding tests (signed volume
+                // matching analytic shapes) -- gives correct, if
+                // deliberately faceted/low-poly, per-face shading instead.
+                let p0 = mesh.positions[tri[0] as usize];
+                let p1 = mesh.positions[tri[1] as usize];
+                let p2 = mesh.positions[tri[2] as usize];
+                let e1 = (p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+                let e2 = (p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
+                let (mut fx, mut fy, mut fz) = (
+                    e1.1 * e2.2 - e1.2 * e2.1,
+                    e1.2 * e2.0 - e1.0 * e2.2,
+                    e1.0 * e2.1 - e1.1 * e2.0,
+                );
+                let len = (fx * fx + fy * fy + fz * fz).sqrt();
+                if len > 1e-9 {
+                    fx /= len;
+                    fy /= len;
+                    fz /= len;
+                }
+                let face_normal = Vector3::new(fx as real, fy as real, fz as real);
                 for &idx in tri {
                     let p = mesh.positions[idx as usize];
-                    let n = mesh.normals[idx as usize];
-                    surface_tool.set_normal(Vector3::new(n.x as real, n.y as real, n.z as real));
+                    surface_tool.set_normal(face_normal);
                     surface_tool.add_vertex(Vector3::new(p.x as real, p.y as real, p.z as real));
                 }
             }

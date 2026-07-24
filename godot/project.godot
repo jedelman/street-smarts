@@ -7,6 +7,19 @@ config/description="Rust + Godot 4 spatial engine for Alexander pattern language
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
 
+[input_devices]
+
+# Off, deliberately: on by Godot's own default, every touch ALSO
+# synthesizes a mouse-button/motion event. orbit_camera.gd's real mouse
+# handling exists for desktop testing, but with this on, a finger on
+# touch_joystick.gd's virtual stick generates a synthetic mouse drag too --
+# which orbit_camera.gd's _unhandled_input() sees and orbits/looks from,
+# since the joystick only claims the real InputEventScreenTouch/Drag
+# events, not their synthesized mouse counterparts. Confirmed against
+# Godot's own source (main.cpp, GLOBAL_DEF_BASIC default = true) before
+# touching this, not guessed.
+pointing/emulate_mouse_from_touch=false
+
 [display]
 
 window/size/viewport_width=720
