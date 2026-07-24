@@ -37,6 +37,7 @@ const NEW_DETECTORS: &[&str] = &[
     "p115_courtyards_which_live",
     "p112_entrance_transition",
     "p30_activity_nodes",
+    "p128_indoor_sunlight",
 ];
 
 fn main() {

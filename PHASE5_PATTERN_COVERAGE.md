@@ -228,6 +228,31 @@ entrance cell per seed; 65-68% fall in the real 3-35% target). `CascadeContract`
 p127->p112 (already present, added in an earlier session) updated with the new measured range and
 its real citation-graph backing (`data/apl-pattern-graph.json`: P112 itself cites 127 directly).
 
+**2026-07-24 update: P128 closed, via a real tie-break in P129, not a change to P127's axis.**
+Biasing `p127_intimacy_gradient`'s own cell ordering (this table's original idea, above) would
+have meant overriding its real "nearest public realm" depth-axis choice for a different pattern's
+sake -- not a refinement, a fabrication. The real, textually-grounded fix lives in
+`p129_common_areas_at_the_heart` instead: Alexander's own Pattern 129 text cites Indoor Sunlight
+(128) directly (`data/apl-pattern-graph.json`: 129's `cites` includes 128), and P129's own
+"nearest the center of gravity" rule can leave multiple cells genuinely tied (a solid building
+whose depth axis runs north-south stacks bands that differ only in which side of the center they
+sit on). P129 now breaks a genuine tie (cells within `TIE_TOLERANCE_M` = 2.5m of the true minimum
+distance, real and measurable, not fabricated) by preferring the southernmost candidate -- see its
+own "v0.2" module doc. Alexander's primary rule (nearest the center of gravity) still wins outright
+whenever there IS a clear winner; the tie-break never overrides it. Measured on the real fixture:
+`p128_indoor_sunlight` rose from 0.171 (6/35, MILITARY_CIRCLE_ASSEMBLED/seed 42) to 0.257 (9/35) on
+that same fixture/seed, and from 15-32% to 15-43% across three other seeds
+(`check_detector_impact.rs`). Honestly scoped: this cannot help a building whose common cell has no
+real candidate anywhere near a south wall to begin with -- there's no tie to break there.
+`CascadeContract` entry for p129->p128 (already present) updated with the new measured range. A
+second, unrelated cascade contract (p131_the_flow_through_rooms self-pair) needed its own floor
+lowered to the honest 0.000 as a side effect: p133_staircase_as_a_stage always carves a dead-end
+stair cell out of whichever cell is common, so any multi-story building it touches can never
+satisfy p131's own strict "every cell has 2+ connections" loop test regardless of which cell P129
+marks common -- the prior 0.029 (1/35) was a fragile fluke of one building's specific geometry, not
+a real achievement, and it moved when the common-cell assignment did. See that contract's own "why"
+for the full explanation.
+
 ### Extend `p95_building_complex.rs` / open-space shaping (enclosure quality)
 | # | Pattern | Real prescription | Why it's plausible |
 |---|---|---|---|

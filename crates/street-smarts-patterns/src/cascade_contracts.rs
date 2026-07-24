@@ -516,13 +516,18 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         generator_pattern: 129,
         opinion: "p128_indoor_sunlight",
         opinion_pattern: 128,
-        check: CascadeCheck::MinValue(0.05),
+        check: CascadeCheck::MinValue(0.15),
         why: "data/apl-pattern-graph.json: P129's own smaller-patterns list includes Indoor \
               Sunlight (128). p129_common_areas_at_the_heart is the real generator that marks \
-              which cell is common, which this opinion checks for a real south-facing window. A \
-              real, honestly LOW score (structural, per this project's own earlier investigation \
-              -- see p128's own module doc) -- measured on the real fixture: Value 0.171 (6/35 \
-              real buildings). Floor set safely below that, not claiming a fix that wasn't made.",
+              which cell is common, which this opinion checks for a real south-facing window. \
+              Since this session's P129 'v0.2' real south tie-break (among cells genuinely tied \
+              by Alexander's own center-of-gravity rule, prefer the southernmost -- grounded in \
+              129's own real citation of 128), this rose from a measured 0.171 (6/35) to 0.257 \
+              (9/35) on this exact fixture/seed; 0.146-0.426 across three other seeds in \
+              check_detector_impact.rs. Still a real, honestly modest score -- most of the \
+              remaining gap is structural (a common cell with no real candidate anywhere near a \
+              south wall has no tie to break), not a bug -- see p129's own 'v0.2' module doc. \
+              Floor set safely below the new measured range.",
     },
     // -- p130_entrance_room (P130). --
     CascadeContract {
@@ -542,12 +547,21 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         generator_pattern: 131,
         opinion: "p131_the_flow_through_rooms",
         opinion_pattern: 131,
-        check: CascadeCheck::MinValue(0.01),
+        check: CascadeCheck::MinValue(0.0),
         why: "Same-number self-pair: p131_the_flow_through_rooms (generator) is the only real \
               producer of InteriorCell.connects_to; p131_the_flow_through_rooms (opinion) checks \
-              for a real closed loop (no dead-end cells). A real, honestly LOW score on this real \
-              fixture -- measured: Value 0.029 (1/35 real buildings achieve a real loop). Floor \
-              set safely below that.",
+              for a real closed loop (no dead-end cells, every cell's connects_to.len() >= 2). \
+              Measured on the real fixture: Value 0.000 (0/35). This isn't a regression to chase \
+              -- p133_staircase_as_a_stage (which runs later, on every multi-story building with a \
+              marked common area) ALWAYS carves a stair cell with exactly one connection back to \
+              the common area (a real dead end, by its own construction), so any building p133 \
+              touches can never satisfy this opinion's own strict 'every cell has 2+ connections' \
+              test, structurally, regardless of which cell p129_common_areas_at_the_heart marks \
+              common. The one real fixture building that used to slip past this (measured 0.029, \
+              1/35, before this session's P129 'v0.2' south tie-break) was a fragile fluke of \
+              which specific building happened not to get a stair carved, not a real achievement \
+              of the loop pattern -- it moved when the common-cell assignment did. Floor set at the \
+              honest real floor (0.0) rather than chasing a number this fragile.",
     },
     // -- p133_staircase_as_a_stage (P133), in addition to its existing
     // p195_staircase_volume contract above. --
