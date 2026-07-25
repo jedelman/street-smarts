@@ -3,16 +3,20 @@
 //! mesh via `street_smarts_core::surface_nets`.
 //!
 //! Scope, honestly: massing-level only. This extrudes the real footprint
-//! polygon to `height_m` and punches each real `Opening` as a notch at its
-//! actual `ring_index`/`t`/`width_m`/`sill_height_m`/`head_height_m`. It does
-//! NOT model `wall_thickness_m` as a hollow shell -- there's no interior
-//! cavity behind a punch, so this proves the aperture-cut mechanism, not a
-//! full walkable interior. `roof`, `roof_segments`, `canopies`, and
-//! `wall_niches` are not yet consumed. Courtyard buildings (openings with
-//! `on_hole = true`, or footprints with holes) are skipped, not
-//! approximated. Openings above the ground floor (`floor > 0`) are skipped:
-//! `Building` carries no floor-to-floor height, so there's no real value to
-//! place them at.
+//! polygon (outer ring minus any real `polygon.holes` -- a courtyard
+//! building's actual courtyard void, subtracted the same way a P221
+//! opening is) to `height_m`, and punches each real ground-floor `Opening`
+//! as a notch at its actual `ring_index`/`t`/`width_m`/`sill_height_m`/
+//! `head_height_m`. It does NOT model `wall_thickness_m` as a hollow
+//! shell -- there's no interior cavity behind a punch, so this proves the
+//! aperture-cut mechanism, not a full walkable interior. `roof`,
+//! `roof_segments`, `canopies`, and `wall_niches` are not yet consumed.
+//! Openings on a hole ring (`on_hole = true` -- a door/window facing INTO
+//! a courtyard) are still skipped, not approximated: only the courtyard
+//! VOID itself is real here, not its own interior-facing openings.
+//! Openings above the ground floor (`floor > 0`) are skipped too:
+//! `Building` carries no floor-to-floor height, so there's no real value
+//! to place them at.
 
 use street_smarts_core::geometry::LngLat;
 use street_smarts_core::nir::Building;
@@ -100,6 +104,19 @@ impl OpeningCut {
 /// stay correctly positioned relative to each other).
 pub struct BuildingSolid {
     footprint: Vec<Pt2>,
+    /// Real courtyard/atrium voids (`Building.polygon.holes`) subtracted
+    /// from the outer footprint -- a `p107_courtyard_v01` typology
+    /// building's `outer` ring traces its FULL perimeter as if solid, with
+    /// the actual courtyard carved out via a hole ring, same as any
+    /// polygon-with-holes convention. Never consuming this meant a
+    /// courtyard building rendered as a solid block filling its own
+    /// courtyard -- confirmed against a real device screenshot showing a
+    /// real OpenSpace courtyard plaza's ground geometry visually
+    /// conflicting with that wrongly-solid fill (`p108_merged_1_building`,
+    /// typology `p107_courtyard_v01`, `polygon.holes.len() == 1`, on the
+    /// real Military Circle site) -- not a rendering glitch, a real,
+    /// specific field this struct just never read.
+    holes: Vec<Vec<Pt2>>,
     height: f64,
     openings: Vec<OpeningCut>,
     /// `openings` indices grouped by the wall edge (`ring_index`) they sit
@@ -127,6 +144,13 @@ impl BuildingSolid {
         if footprint.len() < 3 {
             return None;
         }
+        let holes: Vec<Vec<Pt2>> = building
+            .polygon
+            .holes
+            .iter()
+            .map(|ring| ring_to_local(ring, origin))
+            .filter(|hole| hole.len() >= 3)
+            .collect();
 
         let n = footprint.len();
         let mut openings = Vec::new();
@@ -170,7 +194,7 @@ impl BuildingSolid {
             });
         }
 
-        Some(Self { footprint, height, openings, by_edge })
+        Some(Self { footprint, holes, height, openings, by_edge })
     }
 
     /// The real signed distance at `p` (local meters, Y = height above
@@ -186,7 +210,12 @@ impl BuildingSolid {
     /// real building (845 openings) before this change, on a desktop CPU,
     /// for ONE building out of 35 on the real site.
     pub fn sdf(&self, p: Vec3) -> f64 {
-        let (footprint_d, nearest_edge) = sdf_polygon_2d_with_edge(p.x, p.z, &self.footprint);
+        let (outer_d, nearest_edge) = sdf_polygon_2d_with_edge(p.x, p.z, &self.footprint);
+        let mut footprint_d = outer_d;
+        for hole in &self.holes {
+            let (hole_d, _edge) = sdf_polygon_2d_with_edge(p.x, p.z, hole);
+            footprint_d = sdf_difference(footprint_d, hole_d);
+        }
         let slab_d = (-p.y).max(p.y - self.height);
         let solid = footprint_d.max(slab_d);
         if self.openings.is_empty() {
@@ -292,6 +321,74 @@ mod tests {
             canopies: vec![],
             wall_niches: vec![],
         }
+    }
+
+    fn courtyard_building(outer_side_m: f64, hole_side_m: f64, height_m: f64, origin: &LngLat) -> Building {
+        use street_smarts_patterns::planar::local_to_ring;
+        let margin = (outer_side_m - hole_side_m) / 2.0;
+        let outer_local = [
+            Pt2::new(0.0, 0.0),
+            Pt2::new(outer_side_m, 0.0),
+            Pt2::new(outer_side_m, outer_side_m),
+            Pt2::new(0.0, outer_side_m),
+        ];
+        let hole_local = [
+            Pt2::new(margin, margin),
+            Pt2::new(margin + hole_side_m, margin),
+            Pt2::new(margin + hole_side_m, margin + hole_side_m),
+            Pt2::new(margin, margin + hole_side_m),
+        ];
+        let mut polygon = Polygon::from_ring(local_to_ring(&outer_local, origin));
+        polygon.holes = vec![local_to_ring(&hole_local, origin)];
+        Building {
+            id: "COURTYARD_B1".into(),
+            polygon,
+            height_m: Some(height_m),
+            typology: Some("p107_courtyard_v01".into()),
+            year_built: None,
+            parcel_id: None,
+            floors: None,
+            openings: vec![],
+            interior_cells: vec![],
+            wall_thickness_m: Some(0.3),
+            roof: None,
+            roof_segments: vec![],
+            canopies: vec![],
+            wall_niches: vec![],
+        }
+    }
+
+    #[test]
+    fn courtyard_hole_is_a_real_void_not_a_solid_fill() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let building = courtyard_building(20.0, 8.0, 4.0, &origin);
+        let solid = BuildingSolid::from_building(&building, &origin).expect("valid outer + hole footprint");
+
+        // Dead center of the courtyard (10,10 in local coords, well inside
+        // the 8x8 hole centered there): must read OUTSIDE. This is the
+        // literal claim the real device screenshot showed failing --
+        // a courtyard's own center rendering as solid building mass.
+        let courtyard_center = Vec3::new(10.0, 2.0, 10.0);
+        let d_courtyard = solid.sdf(courtyard_center);
+        assert!(d_courtyard >= 0.0, "courtyard center should be a real void (sdf >= 0), got {d_courtyard}");
+
+        // Between the outer wall and the hole (in the real solid ring):
+        // must still read INSIDE.
+        let in_the_wall_ring = Vec3::new(3.0, 2.0, 10.0);
+        let d_wall = solid.sdf(in_the_wall_ring);
+        assert!(d_wall < 0.0, "the real solid ring around the courtyard should stay solid, got {d_wall}");
+
+        // Volume should match outer box minus hole box (both extruded to
+        // height), not the outer box alone.
+        let mesh = solid.to_mesh(0.2);
+        let expected_volume = (20.0 * 20.0 - 8.0 * 8.0) * 4.0;
+        let actual_volume = mesh.signed_volume();
+        let rel_err = (actual_volume - expected_volume).abs() / expected_volume;
+        assert!(
+            rel_err < 0.05,
+            "courtyard building volume off by {:.1}%: got {actual_volume}, expected {expected_volume}",
+            rel_err * 100.0
+        );
     }
 
     #[test]

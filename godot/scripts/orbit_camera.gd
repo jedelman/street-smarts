@@ -42,7 +42,19 @@ enum Mode { ORBIT, WALK }
 @export var mouse_zoom_step: float = 0.1
 
 @export var walk_height_m: float = 1.7
+## Speed for a tap-to-move trip is derived from its own distance (see
+## _try_set_walk_target()), not this flat value -- a short adjustment
+## across a plaza and a 300m cross-site trip shouldn't take the same
+## per-meter time. This is the walking pace for a short hop; distance
+## scales it up toward walk_max_speed_mps for longer trips.
 @export var walk_speed_mps: float = 3.0
+@export var walk_max_speed_mps: float = 25.0
+## Roughly how long a trip should take regardless of its distance --
+## speed = clamp(distance / walk_target_trip_seconds, walk_speed_mps,
+## walk_max_speed_mps). Fixed per trip at tap time, not recomputed as the
+## remaining distance shrinks -- a speed that keeps dropping as you
+## approach would make the last few meters crawl instead of arrive.
+@export var walk_target_trip_seconds: float = 12.0
 @export var walk_look_sensitivity: float = 0.006
 @export var walk_min_pitch: float = deg_to_rad(-80.0)
 @export var walk_max_pitch: float = deg_to_rad(80.0)
@@ -58,6 +70,7 @@ var walk_pitch: float = 0.0
 
 var _walk_target: Vector3 = Vector3.ZERO
 var _has_walk_target: bool = false
+var _current_walk_speed_mps: float = 3.0
 
 var _touch_points: Dictionary = {}     # touch index -> current Vector2 position
 var _touch_start_pos: Dictionary = {}  # touch index -> Vector2 position at press
@@ -107,18 +120,21 @@ func _walk_step(delta: float) -> void:
 		if dist < walk_arrive_epsilon_m:
 			_has_walk_target = false
 		else:
-			var step: float = min(walk_speed_mps * delta, dist)
+			var step: float = min(_current_walk_speed_mps * delta, dist)
 			var dir := to_target / dist
 			walk_position += dir * step
 			walk_yaw = atan2(dir.x, dir.z)
 	_apply_walk_transform()
 
 ## Raycasts from the camera through `screen_pos` onto the y=0 ground
-## plane, and if it hits one in front of the camera, walks there. No
-## collision/navmesh exists yet, so this targets the flat ground
-## specifically, not whatever building geometry might be under the tap
-## on screen -- consistent with walk mode's existing "no collision, can
-## walk through walls" limitation, not a new one.
+## plane, and if it hits one in front of the camera, walks there at a
+## speed derived from the trip's own distance (walk_speed_mps for a short
+## hop, scaling up toward walk_max_speed_mps so a long cross-site trip
+## doesn't take minutes at a fixed walking pace). No collision/navmesh
+## exists yet, so this targets the flat ground specifically, not whatever
+## building geometry might be under the tap on screen -- consistent with
+## walk mode's existing "no collision, can walk through walls" limitation,
+## not a new one.
 func _try_set_walk_target(screen_pos: Vector2) -> void:
 	var ray_origin := project_ray_origin(screen_pos)
 	var ray_dir := project_ray_normal(screen_pos)
@@ -129,6 +145,11 @@ func _try_set_walk_target(screen_pos: Vector2) -> void:
 		return  # ground plane is behind the camera
 	_walk_target = ray_origin + ray_dir * t
 	_has_walk_target = true
+
+	var horizontal := _walk_target - walk_position
+	horizontal.y = 0.0
+	var trip_distance := horizontal.length()
+	_current_walk_speed_mps = clamp(trip_distance / walk_target_trip_seconds, walk_speed_mps, walk_max_speed_mps)
 
 func _apply_walk_transform() -> void:
 	position = walk_position + Vector3(0.0, walk_height_m, 0.0)
