@@ -47,14 +47,14 @@ enum Mode { ORBIT, WALK }
 ## across a plaza and a 300m cross-site trip shouldn't take the same
 ## per-meter time. This is the walking pace for a short hop; distance
 ## scales it up toward walk_max_speed_mps for longer trips.
-@export var walk_speed_mps: float = 3.0
-@export var walk_max_speed_mps: float = 25.0
+@export var walk_speed_mps: float = 9.0
+@export var walk_max_speed_mps: float = 75.0
 ## Roughly how long a trip should take regardless of its distance --
 ## speed = clamp(distance / walk_target_trip_seconds, walk_speed_mps,
 ## walk_max_speed_mps). Fixed per trip at tap time, not recomputed as the
 ## remaining distance shrinks -- a speed that keeps dropping as you
 ## approach would make the last few meters crawl instead of arrive.
-@export var walk_target_trip_seconds: float = 12.0
+@export var walk_target_trip_seconds: float = 4.0
 @export var walk_look_sensitivity: float = 0.006
 @export var walk_min_pitch: float = deg_to_rad(-80.0)
 @export var walk_max_pitch: float = deg_to_rad(80.0)

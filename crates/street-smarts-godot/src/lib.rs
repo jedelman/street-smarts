@@ -257,6 +257,18 @@ impl NeighborhoodNode3D {
         // setup for z-fighting between the correctly-lit one and its
         // backwards-normal twin), so these need both faces visible from a
         // single triangle instead.
+        // Buildings are closed watertight solids (verified: zero boundary
+        // edges across all 35 real buildings), so back faces are hidden by
+        // front faces via the depth test anyway and disabling culling
+        // costs only fill rate. What it BUYS is that the handful of
+        // triangles Surface Nets still emits with inverted winding at
+        // sharp composite corners (178 of 3.26M site-wide after the voxel
+        // cap change, down from 1091) render as ordinary surface instead
+        // of being culled into see-through holes in a wall. A safety net
+        // for a known-residual, not a substitute for correct winding.
+        let mut building_material = StandardMaterial3D::new_gd();
+        building_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
         let mut open_space_material = StandardMaterial3D::new_gd();
         open_space_material.set_albedo(Color::from_rgb(0.35, 0.55, 0.32));
         open_space_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
@@ -279,7 +291,7 @@ impl NeighborhoodNode3D {
             // `suggested_voxel_size`'s own doc for measured numbers.
             let mesh = solid.to_mesh(solid.suggested_voxel_size());
             total_tris += mesh.triangles.len();
-            let Some(mesh_instance) = mesh_to_instance(&mesh, format!("GeneratedMassing_{}", building.id), None) else {
+            let Some(mesh_instance) = mesh_to_instance(&mesh, format!("GeneratedMassing_{}", building.id), Some(&building_material)) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);

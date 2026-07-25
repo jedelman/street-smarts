@@ -277,7 +277,24 @@ impl BuildingSolid {
     pub fn suggested_voxel_size(&self) -> f64 {
         const TARGET_CELLS_ACROSS: f64 = 150.0;
         const MIN_VOXEL_M: f64 = 0.15;
-        const MAX_VOXEL_M: f64 = 1.5;
+        // 0.5 m, not the 1.5 m this used to be. The smallest real P221
+        // opening on the real site is 1.0 m wide x 1.06 m tall (measured,
+        // not assumed) -- at a 1.5 m cap the grid cell was LARGER than the
+        // feature being cut, so Surface Nets shredded window bands into
+        // ragged, half-open tears and produced clusters of
+        // inverted-winding triangles right where the cuts were (up to
+        // 0.78% of one building's triangles). Measured across the whole
+        // real site: dropping the cap 1.5 -> 0.5 takes inverted triangles
+        // from 1091 to 178 (6x better) and roughly doubles meshing time
+        // (9.2s -> 21.3s on this dev CPU, 1.96M -> 3.26M triangles).
+        // Going finer still helps (0.25 m: 179 inverted, 10.4M triangles)
+        // but costs 102s, which is not worth it on a phone. Even at 0.5 m
+        // a 1 m window is only ~2 cells across, so openings on the biggest
+        // P108-merged blocks stay visibly coarse -- the real fix for those
+        // is drawing openings as surface panels instead of SDF cuts, so
+        // the whole building doesn't have to be voxelized at window
+        // resolution. Not attempted here.
+        const MAX_VOXEL_M: f64 = 0.5;
         let (min, max) = self.bounds();
         let dx = max.x - min.x;
         let dz = max.z - min.z;
@@ -422,11 +439,22 @@ mod tests {
         let small = BuildingSolid::from_building(&rect_building(10.0, 6.0, 3.0, &origin), &origin).unwrap();
         assert_eq!(small.suggested_voxel_size(), 0.15, "a small building's diagonal/150 is well under the min clamp");
 
+        // A mid-size building lands strictly between the clamps and scales
+        // with its own diagonal: sqrt(40^2+30^2) = 50; /150 = 0.333.
+        let mid = BuildingSolid::from_building(&rect_building(40.0, 30.0, 15.0, &origin), &origin).unwrap();
+        let mid_voxel = mid.suggested_voxel_size();
+        assert!(mid_voxel > 0.15 && mid_voxel < 0.5, "a mid-size building should land between the clamps, got {mid_voxel}");
+        assert!((mid_voxel - 0.333).abs() < 0.01, "expected ~0.333, got {mid_voxel}");
+
+        // A huge P108-merged-scale block saturates the max clamp. That
+        // ceiling is deliberately below the smallest real P221 opening
+        // (1.0 m wide) so a window is never smaller than the grid cell
+        // cutting it -- see suggested_voxel_size's own doc for the
+        // measured tearing/inverted-winding this prevents.
         let huge = BuildingSolid::from_building(&rect_building(160.0, 120.0, 15.0, &origin), &origin).unwrap();
         let voxel = huge.suggested_voxel_size();
-        assert!(voxel > 0.15 && voxel < 1.5, "a huge building should land strictly between the clamps, got {voxel}");
-        // diagonal = sqrt(160^2+120^2) = 200; /150 = 1.333
-        assert!((voxel - 1.333).abs() < 0.01, "expected ~1.333, got {voxel}");
+        assert_eq!(voxel, 0.5, "a huge building should saturate the max clamp, got {voxel}");
+        assert!(voxel < 1.0, "the voxel ceiling must stay under the smallest real opening width (1.0 m)");
     }
 
     #[test]
