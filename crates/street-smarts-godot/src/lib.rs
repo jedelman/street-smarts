@@ -20,6 +20,15 @@ pub mod cluster;
 pub mod ground_features;
 use building_mesh::{BuildingSolid, FootprintCollider};
 
+/// A face counts as "roof" (rather than wall) once its normal points at
+/// least this far upward. `0.5` is `cos(60°)`, deliberately far from both
+/// real cases this needs to separate: a wall's normal.y is ~0 (vertical),
+/// while even the shallowest real shed roof this pipeline generates (2m
+/// rise over a 100m+ run, per p117_sheltering_roof's own doc) has
+/// normal.y > 0.999 -- there's no real geometry anywhere near this
+/// boundary to misclassify.
+const ROOF_NORMAL_Y_THRESHOLD: f32 = 0.5;
+
 /// Builds a Godot `MeshInstance3D` from an extracted `Mesh`, with flat
 /// per-triangle face normals (see `rebuild_3d_mesh`'s own doc for why:
 /// Naive Surface Nets shares one vertex per grid cell across every face
@@ -27,12 +36,31 @@ use building_mesh::{BuildingSolid, FootprintCollider};
 /// wrong-looking soft gradient -- confirmed against a real device
 /// screenshot). Returns `None` for an empty mesh or a SurfaceTool commit
 /// failure; the caller decides whether that's worth a warning.
-fn mesh_to_instance(mesh: &SsMesh, name: String, material: Option<&Gd<StandardMaterial3D>>) -> Option<Gd<MeshInstance3D>> {
+///
+/// When `roof_material` is `Some`, upward-facing triangles (see
+/// `ROOF_NORMAL_Y_THRESHOLD`) are split into a second mesh surface and
+/// given that material instead of `material`. This exists because a real
+/// shed roof's slope (2m rise over a 100m+ building) is nearly invisible
+/// from the ground -- Alexander's own "sheltering roof" is a subtle,
+/// architecturally real pitch, not a dramatic one, so exaggerating the
+/// geometry itself would misrepresent the actual pattern data. Coloring
+/// the roof PLANE distinctly (independent of how steep it visually is)
+/// gets the "I can tell this building has a roof" legibility the geometry
+/// alone doesn't provide, without touching `roof_rise_m` or anything else
+/// that opinions/pattern data downstream actually reads. `None` keeps the
+/// exact single-surface behavior this function always had (open space and
+/// street ribbons don't have a roof to distinguish).
+fn mesh_to_instance(
+    mesh: &SsMesh,
+    name: String,
+    material: Option<&Gd<StandardMaterial3D>>,
+    roof_material: Option<&Gd<StandardMaterial3D>>,
+) -> Option<Gd<MeshInstance3D>> {
     if mesh.triangles.is_empty() {
         return None;
     }
-    // Built as two flat vertex/normal arrays and uploaded in ONE
-    // add_surface_from_arrays call, rather than driving SurfaceTool with
+    // Built as flat vertex/normal arrays and uploaded via
+    // add_surface_from_arrays, rather than driving SurfaceTool with
     // per-vertex add_vertex/set_normal calls. At real-site scale that was
     // ~9.8M individual FFI calls per rebuild (3 per triangle, x2 for
     // normals) plus SurfaceTool's own internal vertex dedup/index build,
@@ -45,8 +73,10 @@ fn mesh_to_instance(mesh: &SsMesh, name: String, material: Option<&Gd<StandardMa
     // don't share vertex attributes, so there is nothing to dedup. See
     // rebuild_3d_mesh's own doc for why the normals are flat.
     let vertex_count = mesh.triangles.len() * 3;
-    let mut positions: Vec<Vector3> = Vec::with_capacity(vertex_count);
-    let mut normals: Vec<Vector3> = Vec::with_capacity(vertex_count);
+    let mut wall_positions: Vec<Vector3> = Vec::with_capacity(vertex_count);
+    let mut wall_normals: Vec<Vector3> = Vec::with_capacity(vertex_count);
+    let mut roof_positions: Vec<Vector3> = Vec::new();
+    let mut roof_normals: Vec<Vector3> = Vec::new();
     for tri in &mesh.triangles {
         let p0 = mesh.positions[tri[0] as usize];
         let p1 = mesh.positions[tri[1] as usize];
@@ -65,6 +95,11 @@ fn mesh_to_instance(mesh: &SsMesh, name: String, material: Option<&Gd<StandardMa
             fz /= len;
         }
         let face_normal = Vector3::new(fx as real, fy as real, fz as real);
+        let (positions, normals) = if roof_material.is_some() && face_normal.y > ROOF_NORMAL_Y_THRESHOLD {
+            (&mut roof_positions, &mut roof_normals)
+        } else {
+            (&mut wall_positions, &mut wall_normals)
+        };
         for &idx in tri {
             let p = mesh.positions[idx as usize];
             positions.push(Vector3::new(p.x as real, p.y as real, p.z as real));
@@ -72,27 +107,37 @@ fn mesh_to_instance(mesh: &SsMesh, name: String, material: Option<&Gd<StandardMa
         }
     }
 
-    let mut arrays = VariantArray::new();
-    arrays.resize(ArrayType::MAX.ord() as usize, &Variant::nil());
-    arrays.set(
-        ArrayType::VERTEX.ord() as usize,
-        &PackedVector3Array::from(positions.as_slice()).to_variant(),
-    );
-    arrays.set(
-        ArrayType::NORMAL.ord() as usize,
-        &PackedVector3Array::from(normals.as_slice()).to_variant(),
-    );
-
     let mut array_mesh = ArrayMesh::new_gd();
-    array_mesh.add_surface_from_arrays(PrimitiveType::TRIANGLES, &arrays);
-    if let Some(mat) = material {
-        array_mesh.surface_set_material(0, mat);
+    add_surface(&mut array_mesh, &wall_positions, &wall_normals, material);
+    if let Some(roof_mat) = roof_material {
+        add_surface(&mut array_mesh, &roof_positions, &roof_normals, Some(roof_mat));
+    }
+    if array_mesh.get_surface_count() == 0 {
+        return None;
     }
 
     let mut mesh_instance = MeshInstance3D::new_alloc();
     mesh_instance.set_name(&name);
     mesh_instance.set_mesh(&array_mesh);
     Some(mesh_instance)
+}
+
+/// Appends one surface to `array_mesh` from flat position/normal arrays.
+/// No-op on an empty pair (a building with no roof-facing triangles, e.g.
+/// a degenerate sliver, shouldn't get an empty second surface).
+fn add_surface(array_mesh: &mut Gd<ArrayMesh>, positions: &[Vector3], normals: &[Vector3], material: Option<&Gd<StandardMaterial3D>>) {
+    if positions.is_empty() {
+        return;
+    }
+    let mut arrays = VariantArray::new();
+    arrays.resize(ArrayType::MAX.ord() as usize, &Variant::nil());
+    arrays.set(ArrayType::VERTEX.ord() as usize, &PackedVector3Array::from(positions).to_variant());
+    arrays.set(ArrayType::NORMAL.ord() as usize, &PackedVector3Array::from(normals).to_variant());
+    let surface_idx = array_mesh.get_surface_count();
+    array_mesh.add_surface_from_arrays(PrimitiveType::TRIANGLES, &arrays);
+    if let Some(mat) = material {
+        array_mesh.surface_set_material(surface_idx, mat);
+    }
 }
 
 struct StreetSmartsExtension;
@@ -405,6 +450,22 @@ impl NeighborhoodNode3D {
         let mut building_material = StandardMaterial3D::new_gd();
         building_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
+        // Roof surfaces get their own materials, split out by face normal
+        // in mesh_to_instance (see ROOF_NORMAL_Y_THRESHOLD's own doc) --
+        // a real shed roof's slope is only ~1 degree over a real building's
+        // own footprint, invisible on its own, so color is what actually
+        // makes "this building has a roof" legible. Shed roofs (the
+        // overwhelming majority -- see p117_sheltering_roof) get a warm
+        // terracotta/clay-tile tone; the tallest buildings' flat, occupiable
+        // P118 garden roofs get a distinct green, since they're a real,
+        // different thing (a walkable garden plane, not a shed).
+        let mut shed_roof_material = StandardMaterial3D::new_gd();
+        shed_roof_material.set_albedo(Color::from_rgb(0.62, 0.30, 0.20));
+        shed_roof_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut flat_garden_roof_material = StandardMaterial3D::new_gd();
+        flat_garden_roof_material.set_albedo(Color::from_rgb(0.30, 0.52, 0.24));
+        flat_garden_roof_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
         let mut open_space_material = StandardMaterial3D::new_gd();
         open_space_material.set_albedo(Color::from_rgb(0.35, 0.55, 0.32));
         open_space_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
@@ -481,7 +542,11 @@ impl NeighborhoodNode3D {
         for (idx, mesh) in &indexed_meshes {
             let building = prepared[*idx].0;
             total_tris += mesh.triangles.len();
-            let Some(mesh_instance) = mesh_to_instance(mesh, format!("GeneratedMassing_{}", building.id), Some(&building_material)) else {
+            let roof_material = match building.roof.as_ref().map(|r| r.shape) {
+                Some(street_smarts_core::nir::RoofShape::Flat) => &flat_garden_roof_material,
+                _ => &shed_roof_material,
+            };
+            let Some(mesh_instance) = mesh_to_instance(mesh, format!("GeneratedMassing_{}", building.id), Some(&building_material), Some(roof_material)) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -496,7 +561,7 @@ impl NeighborhoodNode3D {
             let mesh = pad.to_mesh();
             total_tris += mesh.triangles.len();
             let name = format!("GeneratedOpenSpace_{}", open_space.id);
-            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&open_space_material)) else {
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&open_space_material), None) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -509,7 +574,7 @@ impl NeighborhoodNode3D {
                 let mesh = pad.to_mesh();
                 total_tris += mesh.triangles.len();
                 let name = format!("GeneratedStreet_{}_seg{}", street.id, seg_idx);
-                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&street_material)) else {
+                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&street_material), None) else {
                     continue;
                 };
                 self.base_mut().add_child(&mesh_instance);
