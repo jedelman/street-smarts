@@ -507,3 +507,73 @@ mod tests {
         );
     }
 }
+
+/// A building's 2D footprint (outer ring minus courtyard holes) kept
+/// around after meshing purely for walk-mode collision queries.
+///
+/// Deliberately NOT a Godot physics body. The obvious route --
+/// `MeshInstance3D::create_trimesh_collision()` on the generated massing --
+/// would hand the physics server the full extracted mesh: 3.26M triangles
+/// site-wide, roughly 117 MB of face data before its BVH, rebuilt every
+/// time the pipeline re-runs. For a walker pinned to the ground plane none
+/// of that 3D detail is reachable: what actually matters is the 2D
+/// question "is this (x, z) inside a building?", which the real footprint
+/// polygon answers exactly, at a few hundred bytes per building, with no
+/// voxelization error. Godot's physics engine is the right tool the moment
+/// anything needs real 3D contact (falling, stairs, thrown objects); it
+/// isn't the right tool for this.
+pub struct FootprintCollider {
+    outer: Vec<Pt2>,
+    holes: Vec<Vec<Pt2>>,
+    min_x: f64,
+    max_x: f64,
+    min_z: f64,
+    max_z: f64,
+}
+
+impl FootprintCollider {
+    pub fn from_building(building: &Building, origin: &LngLat) -> Option<Self> {
+        let outer = ring_to_local(&building.polygon.outer, origin);
+        if outer.len() < 3 {
+            return None;
+        }
+        let holes: Vec<Vec<Pt2>> = building
+            .polygon
+            .holes
+            .iter()
+            .map(|r| ring_to_local(r, origin))
+            .filter(|h| h.len() >= 3)
+            .collect();
+        let mut min_x = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut min_z = f64::MAX;
+        let mut max_z = f64::MIN;
+        for p in &outer {
+            min_x = min_x.min(p.x);
+            max_x = max_x.max(p.x);
+            min_z = min_z.min(p.y);
+            max_z = max_z.max(p.y);
+        }
+        Some(Self { outer, holes, min_x, max_x, min_z, max_z })
+    }
+
+    /// Signed distance to this building's footprint in the ground plane:
+    /// negative inside the solid mass, positive outside it (and positive
+    /// inside a courtyard, which is real walkable ground).
+    pub fn distance(&self, x: f64, z: f64) -> f64 {
+        // Cheap bbox reject -- outside the box, the true distance is at
+        // least the box distance, which is all a caller comparing against
+        // a small body radius needs.
+        if x < self.min_x || x > self.max_x || z < self.min_z || z > self.max_z {
+            let dx = (self.min_x - x).max(0.0).max(x - self.max_x);
+            let dz = (self.min_z - z).max(0.0).max(z - self.max_z);
+            return (dx * dx + dz * dz).sqrt();
+        }
+        let (mut d, _edge) = sdf_polygon_2d_with_edge(x, z, &self.outer);
+        for hole in &self.holes {
+            let (hd, _e) = sdf_polygon_2d_with_edge(x, z, hole);
+            d = sdf_difference(d, hd);
+        }
+        d
+    }
+}

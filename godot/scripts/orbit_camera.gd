@@ -11,11 +11,13 @@ extends Camera3D
 ##   in-progress walk, so look always wins over a stale destination
 ##   instead of fighting it. Replaces an earlier virtual-joystick control
 ##   scheme (touch_joystick.gd, since removed) that coupled movement and
-##   look in a way that felt wrong on a real device -- straight-line only,
-##   no obstacle-avoiding pathfinding and no collision, so you can still
-##   walk through a building if you tap a point on the other side of one;
-##   a real navmesh needs real collision geometry on the buildings first,
-##   which doesn't exist yet either.
+##   look in a way that felt wrong on a real device. Movement is
+##   straight-line with wall collision + sliding (see `collider` and
+##   NeighborhoodNode3D::resolve_move), but NOT pathfinding: tapping a
+##   point behind a building walks into its near wall, slides along it,
+##   and gives up rather than routing around. A real navmesh is the next
+##   step and is now actually buildable, since the footprint polygons
+##   collision uses are exactly what a navmesh would be baked from.
 ##
 ## Both modes build their look direction from the SAME (pitch, yaw) ->
 ## direction formula (see _look_direction()), which orbit's own
@@ -62,6 +64,15 @@ enum Mode { ORBIT, WALK }
 ## counts as a tap (walk there); more than this counts as a look-drag.
 @export var tap_max_drag_px: float = 16.0
 @export var walk_arrive_epsilon_m: float = 0.3
+## Half-width of the walker used for wall collision. Set by
+## neighborhood_controller.gd along with `collider`.
+@export var body_radius_m: float = 0.35
+
+## NeighborhoodNode3D, which owns the real building footprints and resolves
+## a move against them (see its resolve_move). Left null -> no collision,
+## exactly the old walk-through-walls behaviour, so walk mode still works
+## if the node isn't wired up.
+var collider: Node = null
 
 var mode: Mode = Mode.ORBIT
 var walk_position: Vector3 = Vector3.ZERO
@@ -122,19 +133,28 @@ func _walk_step(delta: float) -> void:
 		else:
 			var step: float = min(_current_walk_speed_mps * delta, dist)
 			var dir := to_target / dist
-			walk_position += dir * step
-			walk_yaw = atan2(dir.x, dir.z)
+			var desired := walk_position + dir * step
+			var resolved := desired
+			if collider != null and collider.has_method("resolve_move"):
+				resolved = collider.resolve_move(walk_position, desired, body_radius_m)
+			# Fully blocked (slide failed too): drop the destination rather
+			# than grinding against the wall for the rest of the trip.
+			if resolved.distance_to(walk_position) < step * 0.05:
+				_has_walk_target = false
+			else:
+				walk_yaw = atan2(dir.x, dir.z)
+			walk_position = resolved
 	_apply_walk_transform()
 
 ## Raycasts from the camera through `screen_pos` onto the y=0 ground
 ## plane, and if it hits one in front of the camera, walks there at a
 ## speed derived from the trip's own distance (walk_speed_mps for a short
 ## hop, scaling up toward walk_max_speed_mps so a long cross-site trip
-## doesn't take minutes at a fixed walking pace). No collision/navmesh
-## exists yet, so this targets the flat ground specifically, not whatever
-## building geometry might be under the tap on screen -- consistent with
-## walk mode's existing "no collision, can walk through walls" limitation,
-## not a new one.
+## doesn't take minutes at a fixed walking pace). Targets the flat ground
+## plane specifically, not whatever building geometry is under the tap --
+## so tapping a rooftop walks to the ground point beneath it, and walls
+## are then handled by collision on the way there rather than by refusing
+## the destination.
 func _try_set_walk_target(screen_pos: Vector2) -> void:
 	var ray_origin := project_ray_origin(screen_pos)
 	var ray_dir := project_ray_normal(screen_pos)

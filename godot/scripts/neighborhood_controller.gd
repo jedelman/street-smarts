@@ -48,6 +48,7 @@ func _ready():
                 neighborhood_node.run_pattern_pipeline(REAL_PARCEL_ID, REAL_PIPELINE_SEED)
 
             neighborhood_node.rebuild_3d_mesh()
+            camera.collider = neighborhood_node
             _frame_generated_massing()
             _populate_waypoints()
 
