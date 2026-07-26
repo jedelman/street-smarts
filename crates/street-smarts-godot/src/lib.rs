@@ -18,6 +18,7 @@ use street_smarts_opinions::registry::evaluate_all;
 pub mod building_mesh;
 pub mod cluster;
 pub mod ground_features;
+pub mod pathfinding;
 use building_mesh::{canopy_mesh, BuildingSolid, FootprintCollider};
 
 /// A face counts as "roof" (rather than wall) once its normal points at
@@ -158,6 +159,10 @@ pub struct NeighborhoodNode3D {
     mean_wholeness_score: f64,
     /// Rebuilt alongside the massing; see `resolve_move`.
     colliders: Vec<FootprintCollider>,
+    /// Rebuilt alongside `colliders`; see `find_path`. `None` before the
+    /// first rebuild, or if the site has no real buildings to route
+    /// around at all.
+    nav_grid: Option<pathfinding::NavGrid>,
 }
 
 #[godot_api]
@@ -169,6 +174,7 @@ impl INode3D for NeighborhoodNode3D {
             building_count: 0,
             mean_wholeness_score: 0.0,
             colliders: Vec::new(),
+            nav_grid: None,
         }
     }
 
@@ -302,6 +308,29 @@ impl NeighborhoodNode3D {
             cluster_ids.len(), anchor_id_str, cluster_ids
         );
         true
+    }
+
+    /// Real A* route around every real building footprint on the site,
+    /// from `from` to `to` (Y ignored; the route is a ground-level
+    /// polyline, ordinary walk-mode height gets added on top by the
+    /// caller). Returns an empty array if nothing's been built yet, or if
+    /// `from`/`to` is genuinely unreachable (e.g. sealed inside a solid
+    /// block with no real opening) -- the caller falls back to the old
+    /// straight-line walk in that case, the same honest "no collider, no
+    /// smarts" precedent `resolve_move` already sets for an empty site.
+    /// See `pathfinding.rs`'s own doc for why this is a hand-rolled grid
+    /// over the same real footprint SDF `resolve_move` already trusts,
+    /// not Godot's own navigation subsystem.
+    #[func]
+    pub fn find_path(&self, from: Vector3, to: Vector3) -> PackedVector3Array {
+        let Some(grid) = &self.nav_grid else {
+            return PackedVector3Array::new();
+        };
+        let Some(path) = grid.find_path(&self.colliders, (from.x as f64, from.z as f64), (to.x as f64, to.z as f64)) else {
+            return PackedVector3Array::new();
+        };
+        let points: Vec<Vector3> = path.iter().map(|&(x, z)| Vector3::new(x as real, 0.0, z as real)).collect();
+        PackedVector3Array::from(points.as_slice())
     }
 
     /// Resolves a walk-mode move against real building footprints, so a
@@ -573,6 +602,28 @@ impl NeighborhoodNode3D {
             .iter()
             .filter_map(|b| FootprintCollider::from_building(b, &origin))
             .collect();
+
+        // Real A* pathfinding grid over the same colliders -- see
+        // pathfinding.rs's own doc for why a grid over this real SDF
+        // rather than Godot's own navigation subsystem. `None` on an
+        // empty site: nothing to route around, and no real bounds to size
+        // a grid from.
+        self.nav_grid = if self.colliders.is_empty() {
+            None
+        } else {
+            let mut min_x = f64::MAX;
+            let mut min_z = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_z = f64::MIN;
+            for c in &self.colliders {
+                let (cx0, cz0, cx1, cz1) = c.bounds();
+                min_x = min_x.min(cx0);
+                min_z = min_z.min(cz0);
+                max_x = max_x.max(cx1);
+                max_z = max_z.max(cz1);
+            }
+            Some(pathfinding::NavGrid::build(&self.colliders, (min_x, min_z, max_x, max_z)))
+        };
 
         for (idx, mesh) in &indexed_meshes {
             let building = prepared[*idx].0;

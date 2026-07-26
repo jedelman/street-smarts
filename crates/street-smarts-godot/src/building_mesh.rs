@@ -1149,4 +1149,11 @@ impl FootprintCollider {
         }
         d
     }
+
+    /// This building's own real (min_x, min_z, max_x, max_z) footprint
+    /// bounding box, local meters -- used to size a `pathfinding::NavGrid`
+    /// covering every real collider on the site.
+    pub fn bounds(&self) -> (f64, f64, f64, f64) {
+        (self.min_x, self.min_z, self.max_x, self.max_z)
+    }
 }

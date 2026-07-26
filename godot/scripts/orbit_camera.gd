@@ -6,18 +6,21 @@ extends Camera3D
 ## - WALK: fixed eye height above the ground plane (walk_height_m).
 ##   Tap-to-move (Diablo-style): a short tap raycasts from the camera
 ##   through the tapped screen point onto the y=0 ground plane and walks
-##   there in a straight line, auto-facing the direction of travel. A
+##   there, auto-facing the direction of travel. The route itself comes
+##   from NeighborhoodNode3D::find_path -- a real A* search around every
+##   real building footprint (see pathfinding.rs), not a straight line:
+##   tapping a point behind a building now routes around it instead of
+##   walking into its near wall. `resolve_move`'s per-step wall collision
+##   + sliding still runs on every leg regardless, as a real-time safety
+##   net under the planned route (grid-cell snapping means a leg can graze
+##   a few cm closer to a wall than intended). No collider wired up, or no
+##   real route exists (e.g. a fully sealed interior), falls back to the
+##   original straight-line walk rather than refusing to move at all. A
 ##   one-finger DRAG still looks around (unchanged) and cancels any
 ##   in-progress walk, so look always wins over a stale destination
 ##   instead of fighting it. Replaces an earlier virtual-joystick control
 ##   scheme (touch_joystick.gd, since removed) that coupled movement and
-##   look in a way that felt wrong on a real device. Movement is
-##   straight-line with wall collision + sliding (see `collider` and
-##   NeighborhoodNode3D::resolve_move), but NOT pathfinding: tapping a
-##   point behind a building walks into its near wall, slides along it,
-##   and gives up rather than routing around. A real navmesh is the next
-##   step and is now actually buildable, since the footprint polygons
-##   collision uses are exactly what a navmesh would be baked from.
+##   look in a way that felt wrong on a real device.
 ##
 ## Both modes build their look direction from the SAME (pitch, yaw) ->
 ## direction formula (see _look_direction()), which orbit's own
@@ -79,8 +82,13 @@ var walk_position: Vector3 = Vector3.ZERO
 var walk_yaw: float = 0.0
 var walk_pitch: float = 0.0
 
-var _walk_target: Vector3 = Vector3.ZERO
-var _has_walk_target: bool = false
+## The active route: real waypoints from NeighborhoodNode3D::find_path
+## (or a single-element fallback straight to the tapped point -- see
+## _try_set_walk_target), walked in order starting at _walk_path_index.
+## Empty means "no walk in progress," replacing the old _has_walk_target
+## bool now that a walk is a sequence of legs, not one target.
+var _walk_path: PackedVector3Array = PackedVector3Array()
+var _walk_path_index: int = 0
 var _current_walk_speed_mps: float = 3.0
 
 var _touch_points: Dictionary = {}     # touch index -> current Vector2 position
@@ -100,7 +108,7 @@ func _process(delta: float) -> void:
 ## themselves right after, same as neighborhood_controller.gd does.
 func set_mode_orbit() -> void:
 	mode = Mode.ORBIT
-	_has_walk_target = false
+	_clear_walk_path()
 	_update_transform()
 
 ## Switches to walk mode, spawning at `start_position` (ground level --
@@ -111,7 +119,7 @@ func set_mode_walk(start_position: Vector3, facing_yaw: float) -> void:
 	walk_position = start_position
 	walk_yaw = facing_yaw
 	walk_pitch = 0.0
-	_has_walk_target = false
+	_clear_walk_path()
 	_apply_walk_transform()
 
 func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
@@ -123,13 +131,18 @@ func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
 	distance = clamp((bounds_radius / sin(half_fov)) * 1.3, min_distance, max_distance)
 	_update_transform()
 
+func _clear_walk_path() -> void:
+	_walk_path = PackedVector3Array()
+	_walk_path_index = 0
+
 func _walk_step(delta: float) -> void:
-	if _has_walk_target:
-		var to_target := _walk_target - walk_position
+	if _walk_path_index < _walk_path.size():
+		var leg_target: Vector3 = _walk_path[_walk_path_index]
+		var to_target := leg_target - walk_position
 		to_target.y = 0.0
 		var dist := to_target.length()
 		if dist < walk_arrive_epsilon_m:
-			_has_walk_target = false
+			_walk_path_index += 1
 		else:
 			var step: float = min(_current_walk_speed_mps * delta, dist)
 			var dir := to_target / dist
@@ -137,24 +150,30 @@ func _walk_step(delta: float) -> void:
 			var resolved := desired
 			if collider != null and collider.has_method("resolve_move"):
 				resolved = collider.resolve_move(walk_position, desired, body_radius_m)
-			# Fully blocked (slide failed too): drop the destination rather
-			# than grinding against the wall for the rest of the trip.
+			# Fully blocked (slide failed too): drop the WHOLE remaining
+			# route, not just this leg -- a planned route that's still
+			# blocked here is stale (real geometry changed underneath it,
+			# or the grid-cell snap put a leg closer to a wall than the
+			# plan intended), and grinding through the rest of it leg by
+			# leg would just repeat the same failure.
 			if resolved.distance_to(walk_position) < step * 0.05:
-				_has_walk_target = false
+				_clear_walk_path()
 			else:
 				walk_yaw = atan2(dir.x, dir.z)
 			walk_position = resolved
 	_apply_walk_transform()
 
 ## Raycasts from the camera through `screen_pos` onto the y=0 ground
-## plane, and if it hits one in front of the camera, walks there at a
-## speed derived from the trip's own distance (walk_speed_mps for a short
-## hop, scaling up toward walk_max_speed_mps so a long cross-site trip
-## doesn't take minutes at a fixed walking pace). Targets the flat ground
-## plane specifically, not whatever building geometry is under the tap --
-## so tapping a rooftop walks to the ground point beneath it, and walls
-## are then handled by collision on the way there rather than by refusing
-## the destination.
+## plane, and if it hits one in front of the camera, plans a real route
+## there via NeighborhoodNode3D::find_path (around every real building
+## footprint) and walks it leg by leg, at a speed derived from the trip's
+## own straight-line distance (walk_speed_mps for a short hop, scaling up
+## toward walk_max_speed_mps so a long cross-site trip doesn't take
+## minutes at a fixed walking pace -- the ROUTE can be longer than that
+## straight-line distance when it has to detour, but the pace is set from
+## the direct distance, not the detour's own length). Targets the flat
+## ground plane specifically, not whatever building geometry is under the
+## tap -- so tapping a rooftop walks to the ground point beneath it.
 func _try_set_walk_target(screen_pos: Vector2) -> void:
 	var ray_origin := project_ray_origin(screen_pos)
 	var ray_dir := project_ray_normal(screen_pos)
@@ -163,10 +182,21 @@ func _try_set_walk_target(screen_pos: Vector2) -> void:
 	var t := -ray_origin.y / ray_dir.y
 	if t <= 0.0:
 		return  # ground plane is behind the camera
-	_walk_target = ray_origin + ray_dir * t
-	_has_walk_target = true
+	var destination: Vector3 = ray_origin + ray_dir * t
 
-	var horizontal := _walk_target - walk_position
+	_clear_walk_path()
+	if collider != null and collider.has_method("find_path"):
+		var route: PackedVector3Array = collider.find_path(walk_position, destination)
+		if route.size() > 0:
+			_walk_path = route
+	if _walk_path.is_empty():
+		# No collider wired up, or no real route exists (e.g. the
+		# destination is fully sealed off) -- the same honest
+		# straight-line fallback tap-to-walk always had, rather than
+		# silently refusing to move at all.
+		_walk_path = PackedVector3Array([destination])
+
+	var horizontal := destination - walk_position
 	horizontal.y = 0.0
 	var trip_distance := horizontal.length()
 	_current_walk_speed_mps = clamp(trip_distance / walk_target_trip_seconds, walk_speed_mps, walk_max_speed_mps)
@@ -225,9 +255,9 @@ func _orbit(relative: Vector2) -> void:
 	_update_transform()
 
 func _look(relative: Vector2) -> void:
-	# A manual look always wins over a stale tap-to-move destination,
-	# rather than the two fighting over walk_yaw every frame.
-	_has_walk_target = false
+	# A manual look always wins over a stale tap-to-move route, rather
+	# than the two fighting over walk_yaw every frame.
+	_clear_walk_path()
 	walk_yaw -= relative.x * walk_look_sensitivity
 	walk_pitch = clamp(walk_pitch - relative.y * walk_look_sensitivity, walk_min_pitch, walk_max_pitch)
 	_apply_walk_transform()
