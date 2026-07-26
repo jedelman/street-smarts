@@ -436,6 +436,134 @@ impl NeighborhoodNode3D {
         dict
     }
 
+    /// Real metadata for every pattern operator this pipeline knows about
+    /// -- name, description, source citation, and full parameter schema
+    /// (min/max/default/unit) -- so a UI can build a real pattern picker
+    /// and per-operator parameter sliders instead of hardcoding a list.
+    /// Backed by `street_smarts_patterns::registry::available_operators()`
+    /// -- the SAME registry the web client's own "Run full pipeline"
+    /// stepper already drives (see that module's own doc); this exposes
+    /// that existing interface to Godot for the first time, it isn't a
+    /// new one.
+    #[func]
+    pub fn get_available_patterns(&self) -> Array<Variant> {
+        let mut out = Array::<Variant>::new();
+        for op in street_smarts_patterns::registry::available_operators() {
+            let mut dict = Dictionary::new();
+            dict.insert("name", op.name.as_str());
+            dict.insert("description", op.description.as_str());
+            dict.insert("source_display", op.source.display.as_str());
+            dict.insert("source_url", op.source.url.clone().unwrap_or_default().as_str());
+            dict.insert("default_params_json", op.default_params.to_string().as_str());
+
+            let mut params = Array::<Variant>::new();
+            for p in &op.parameter_schema {
+                let mut pd = Dictionary::new();
+                pd.insert("name", p.name.as_str());
+                pd.insert("description", p.description.as_str());
+                pd.insert("min", p.min);
+                pd.insert("max", p.max);
+                pd.insert("default", p.default);
+                pd.insert("unit", p.unit.clone().unwrap_or_default().as_str());
+                pd.insert("integer", p.integer);
+                params.push(&pd.to_variant());
+            }
+            dict.insert("params", params);
+            out.push(&dict.to_variant());
+        }
+        out
+    }
+
+    /// Applies exactly one named real pattern operator to the currently
+    /// loaded neighborhood and merges the result in place -- the
+    /// interactive alternative to `run_pattern_pipeline`'s one-shot whole-
+    /// pipeline run, for a UI that wants to step through the pattern
+    /// language one real choice at a time instead of only seeing the
+    /// finished end state.
+    ///
+    /// `parcel_id` is the real target this operator runs on: `"*"` for
+    /// the large majority of operators, which only ever run whole-site
+    /// today (confirmed against every real call site in `pipeline.rs`),
+    /// or a specific block/parcel id for the few real exceptions (P95
+    /// Building Complex runs per real block; P37 House Cluster takes the
+    /// site's own top-level parcel id). An operator that doesn't accept
+    /// the given target returns a real error from its own `apply()`
+    /// (e.g. "only supports parcel_id \"*\""), surfaced here honestly,
+    /// not silently ignored or guessed around.
+    ///
+    /// `params_json` is a JSON object matching the operator's own
+    /// parameter schema (see `get_available_patterns`); pass `"{}"` to
+    /// use every real default. Rebuilds the 3D scene automatically on
+    /// success, so applying one pattern is immediately visible before
+    /// choosing the next -- the actual point of exposing this at all.
+    #[func]
+    pub fn apply_pattern(&mut self, operator_name: GString, parcel_id: GString, params_json: GString, seed: i64) -> Dictionary {
+        let mut result = Dictionary::new();
+        if self.neighborhood_json.is_empty() {
+            result.insert("success", false);
+            result.insert("error", "No NIR JSON loaded.");
+            return result;
+        }
+        let nbhd: Neighborhood = match serde_json::from_str(&self.neighborhood_json) {
+            Ok(n) => n,
+            Err(err) => {
+                result.insert("success", false);
+                result.insert("error", format!("Neighborhood JSON no longer parses: {err}").as_str());
+                return result;
+            }
+        };
+        let params_str = params_json.to_string();
+        let params_value: serde_json::Value = if params_str.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            match serde_json::from_str(&params_str) {
+                Ok(v) => v,
+                Err(err) => {
+                    result.insert("success", false);
+                    result.insert("error", format!("Invalid params JSON: {err}").as_str());
+                    return result;
+                }
+            }
+        };
+
+        let op_name = operator_name.to_string();
+        let target = parcel_id.to_string();
+        let sub = match street_smarts_patterns::registry::run_operator(&nbhd, &op_name, &target, &params_value, seed as u64) {
+            Ok(sub) => sub,
+            Err(err) => {
+                result.insert("success", false);
+                result.insert("error", err.as_str());
+                return result;
+            }
+        };
+
+        let updated = street_smarts_patterns::subdivision::apply_subdivision(&nbhd, &sub);
+        self.building_count = updated.buildings.len() as i32;
+        self.neighborhood_json = match serde_json::to_string(&updated) {
+            Ok(s) => s,
+            Err(err) => {
+                result.insert("success", false);
+                result.insert("error", format!("Applied pattern but failed to re-serialize: {err}").as_str());
+                return result;
+            }
+        };
+
+        result.insert("success", true);
+        result.insert("headline", sub.trace.headline.as_str());
+        let mut steps = Array::<Variant>::new();
+        for step in &sub.trace.steps {
+            steps.push(&step.as_str().to_variant());
+        }
+        result.insert("steps", steps);
+        result.insert("new_parcels", sub.new_parcels.len() as i32);
+        result.insert("new_buildings", sub.new_buildings.len() as i32);
+        result.insert("new_open_space", sub.new_open_space.len() as i32);
+        result.insert("new_streets", sub.new_streets.len() as i32);
+
+        self.rebuild_3d_mesh();
+        result
+    }
+
     /// Rebuilds the procedural 3D scene via constructive SDF + Surface
     /// Nets extraction: building massing (`building_mesh::BuildingSolid`,
     /// punched doors/windows), street ribbons and plazas/commons
@@ -478,6 +606,7 @@ impl NeighborhoodNode3D {
                         || name.starts_with("GeneratedOpenSpace_")
                         || name.starts_with("GeneratedStreet_")
                         || name.starts_with("GeneratedCanopy_")
+                        || name.starts_with("GeneratedParcel_")
                 })
                 .collect()
         };
@@ -543,6 +672,15 @@ impl NeighborhoodNode3D {
         let mut common_material = StandardMaterial3D::new_gd();
         common_material.set_albedo(Color::from_rgb(0.42, 0.58, 0.34));
         common_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
+        // Raw, not-yet-consumed Parcels -- the pre-building pad/block
+        // fabric an interactive pattern step (apply_pattern) hasn't built
+        // on yet. A flat, neutral tan distinct from every other ground
+        // material, since this is genuinely "nothing has happened here
+        // yet," not a plaza or a lawn.
+        let mut parcel_material = StandardMaterial3D::new_gd();
+        parcel_material.set_albedo(Color::from_rgb(0.72, 0.68, 0.55));
+        parcel_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
         // Street materials by real classification -- `path_network.rs`
         // already computes Arterial (asphalt) vs. Local/Pedestrian (grass
@@ -649,6 +787,21 @@ impl NeighborhoodNode3D {
             Some(pathfinding::NavGrid::build(&self.colliders, (min_x, min_z, max_x, max_z)))
         };
 
+        let mut parcel_meshed = 0i32;
+        for parcel in &nir.parcels {
+            let Some(pad) = ground_features::parcel_polygon(parcel, &origin) else {
+                continue;
+            };
+            let mesh = pad.to_mesh();
+            total_tris += mesh.triangles.len();
+            let name = format!("GeneratedParcel_{}", parcel.id);
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&parcel_material), None) else {
+                continue;
+            };
+            self.base_mut().add_child(&mesh_instance);
+            parcel_meshed += 1;
+        }
+
         for (idx, mesh) in &indexed_meshes {
             let building = prepared[*idx].0;
             total_tris += mesh.triangles.len();
@@ -719,17 +872,18 @@ impl NeighborhoodNode3D {
         }
 
         godot_print!(
-            "Rebuilt scene: {} of {} buildings (Surface Nets), {} of {} open spaces, {} street segments (ear-clipping) -- {} tris total in {:?} ({} buildings skipped: no height_m assigned).",
+            "Rebuilt scene: {} of {} buildings (Surface Nets), {} of {} open spaces, {} street segments (ear-clipping), {} raw parcels -- {} tris total in {:?} ({} buildings skipped: no height_m assigned).",
             meshed,
             nir.buildings.len(),
             open_space_meshed,
             nir.open_space.len(),
             street_meshed,
+            parcel_meshed,
             total_tris,
             rebuild_start.elapsed(),
             skipped_no_height
         );
-        meshed > 0 || open_space_meshed > 0 || street_meshed > 0
+        meshed > 0 || open_space_meshed > 0 || street_meshed > 0 || parcel_meshed > 0
     }
 }
 

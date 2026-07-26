@@ -16,7 +16,7 @@
 //! it needs a 2D triangulation, which is what this module actually does.
 
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{OpenSpace, Street};
+use street_smarts_core::nir::{OpenSpace, Parcel, Street};
 use street_smarts_core::sdf::Vec3;
 use street_smarts_core::Mesh;
 use street_smarts_patterns::planar::{lnglat_to_local, ring_to_local, Pt2};
@@ -57,6 +57,28 @@ impl FlatPolygon {
         let triangles = triangles_2d.iter().map(|t| [t[0] as u32, t[1] as u32, t[2] as u32]).collect();
         Mesh { positions, normals, triangles }
     }
+}
+
+/// Builds a flat polygon for one raw `Parcel` record -- the pre-building
+/// pad/block fabric a pattern operator hasn't consumed (subdivided into
+/// blocks, built on, or replaced) yet. Real gap this closes: once a
+/// pattern operator DOES consume a parcel, `apply_subdivision` removes it
+/// from `Neighborhood.parcels` (see `replaced_parcel_ids`), so a still-
+/// present parcel is, by construction, real ground nothing else has been
+/// generated on top of yet -- there is no double-rendering/z-fighting
+/// concern with `open_space_polygon`/building massing sharing the same
+/// footprint, because a parcel and whatever eventually replaces it are
+/// never both present at once. Without this, the interactive pattern-
+/// stepper UI (`apply_pattern`) had nothing to actually show for the
+/// early, pre-building pipeline stages (P29/P37/PathNetwork/P95 all run
+/// on raw parcels) -- the site would render as an empty void until the
+/// first building or open space appeared.
+pub fn parcel_polygon(parcel: &Parcel, origin: &LngLat) -> Option<FlatPolygon> {
+    let footprint = ring_to_local(&parcel.polygon.outer, origin);
+    if footprint.len() < 3 {
+        return None;
+    }
+    Some(FlatPolygon { footprint })
 }
 
 /// Builds a flat polygon for one `OpenSpace` record (plaza/common/etc),
@@ -262,6 +284,37 @@ mod tests {
         let ccw = [Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0)];
         let cw: Vec<Pt2> = ccw.iter().rev().cloned().collect();
         assert!((triangulated_area(&ccw) - triangulated_area(&cw)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn parcel_polygon_produces_a_mesh_covering_the_real_footprint_area() {
+        let origin = GeomLngLat::new(-76.1, 36.8);
+        let local = [Pt2::new(0.0, 0.0), Pt2::new(20.0, 0.0), Pt2::new(20.0, 10.0), Pt2::new(0.0, 10.0)];
+        let ring = local_to_ring(&local, &origin);
+        let parcel = Parcel {
+            id: "BLOCK_0".into(),
+            polygon: Polygon::from_ring(ring),
+            area_acres: 0.0,
+            use_category: None,
+            ownership: None,
+            is_eda: false,
+            spec: Some("BLOCK_0".into()),
+            density_tier: None,
+            target_stories: None,
+        };
+        let flat = parcel_polygon(&parcel, &origin).expect("valid quad footprint");
+        let mesh = flat.to_mesh();
+        assert_eq!(mesh.triangles.len(), 2, "a quad footprint should ear-clip into exactly 2 triangles");
+        let front_face_area: f64 = mesh.triangles
+            .iter()
+            .map(|t| {
+                let (a, b, c) = (mesh.positions[t[0] as usize], mesh.positions[t[1] as usize], mesh.positions[t[2] as usize]);
+                let e1 = (b.x - a.x, b.z - a.z);
+                let e2 = (c.x - a.x, c.z - a.z);
+                (e1.0 * e2.1 - e1.1 * e2.0).abs() / 2.0
+            })
+            .sum();
+        assert!((front_face_area - 200.0).abs() < 1e-6, "20x10 parcel should cover 200 sq m, got {front_face_area}");
     }
 
     #[test]

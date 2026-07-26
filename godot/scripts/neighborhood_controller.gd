@@ -3,6 +3,7 @@ extends Node
 @onready var neighborhood_node: Node3D = $"../NeighborhoodNode3D"
 @onready var camera: Camera3D = $"../Camera3D"
 @onready var minimap: Control = $"../UI/Minimap"
+@onready var pattern_lab: Control = get_node_or_null("../UI/PatternLab")
 
 ## Real 97.7-acre Military Circle site, the same parcel spec
 ## scripts/vibe-render.sh's clean_baseline scenario develops.
@@ -17,6 +18,18 @@ const REAL_PIPELINE_SEED := 42
 ## NeighborhoodNode3D::restrict_to_cluster's own doc.
 @export var cluster_anchor_building_id: String = ""
 @export var cluster_size: int = 9
+
+## False (default): unchanged behavior -- run_pattern_pipeline() runs the
+## real corrected pipeline end to end, same as always. True: skip it
+## entirely and leave the raw baseline's own parcels on screen (real
+## ground_features::parcel_polygon rendering, see that function's own
+## doc), for the PatternLab panel to step through by hand, one real
+## operator at a time, instead. See PatternLab's own doc for why this
+## exists: only P95 Building Complex/P37 House Cluster accept a specific
+## real target today, so this is honestly "watch the pipeline unfold
+## stage by stage" more than "edit one chosen building," at least until
+## more real operators grow their own per-target scope.
+@export var manual_pattern_stepping: bool = false
 
 func _ready():
     # Real Eastside Commons parcel data first: eastside-baseline.json is
@@ -44,7 +57,7 @@ func _ready():
         if neighborhood_node.has_method("load_nir_json") and neighborhood_node.load_nir_json(json_str):
             print("[StreetSmarts] Loaded NIR fixture into Godot 4 spatial engine!")
 
-            if needs_pipeline:
+            if needs_pipeline and not manual_pattern_stepping:
                 # Runs synchronously on the main thread -- on a real 35-building
                 # site this is a real, noticeable pause (desktop CPU: ~5s just
                 # for the pipeline, plus meshing on top). A loading indicator /
@@ -52,6 +65,8 @@ func _ready():
                 # attempted yet.
                 print("[StreetSmarts] Running pattern-language pipeline on parcel '%s'..." % REAL_PARCEL_ID)
                 neighborhood_node.run_pattern_pipeline(REAL_PARCEL_ID, REAL_PIPELINE_SEED)
+            elif manual_pattern_stepping:
+                print("[StreetSmarts] Manual pattern stepping: loaded the raw baseline only -- use PatternLab to apply real operators one at a time.")
 
             if cluster_anchor_building_id != "":
                 print("[StreetSmarts] Restricting to a %d-building cluster around '%s' for fast iteration..." % [cluster_size, cluster_anchor_building_id])
@@ -61,6 +76,7 @@ func _ready():
             camera.collider = neighborhood_node
             _frame_generated_massing()
             _setup_minimap()
+            _setup_pattern_lab()
     else:
         print("[StreetSmarts] NIR fixture file ready to be bound at runtime.")
 
@@ -85,6 +101,19 @@ func _frame_generated_massing() -> void:
                 have_any = true
             else:
                 combined = combined.merge(mesh_aabb)
+    # No real buildings yet (manual_pattern_stepping's early stages, before
+    # any building-producing operator has run) -- frame the raw parcel
+    # fabric instead of leaving the camera at whatever default it had, so
+    # there's something real to look at from the very first frame.
+    if not have_any:
+        for child in neighborhood_node.get_children():
+            if child is MeshInstance3D and child.name.begins_with("GeneratedParcel_"):
+                var mesh_aabb: AABB = child.get_aabb()
+                if not have_any:
+                    combined = mesh_aabb
+                    have_any = true
+                else:
+                    combined = combined.merge(mesh_aabb)
     if have_any:
         camera.frame_bounds(combined.get_center(), combined.size.length() * 0.5)
 
@@ -99,6 +128,27 @@ func _setup_minimap() -> void:
     minimap.set_buildings(neighborhood_node.get_building_footprints(), neighborhood_node.get_building_ids())
     if not minimap.waypoint_selected.is_connected(_walk_to_building):
         minimap.waypoint_selected.connect(_walk_to_building)
+
+## Wires PatternLab to the real neighborhood node and refreshes the minimap
+## + camera framing after every real pattern step, so newly-generated
+## buildings/parcels show up immediately without a manual reload.
+func _setup_pattern_lab() -> void:
+    if pattern_lab == null:
+        return
+    pattern_lab.neighborhood_node = neighborhood_node
+    # Deferred: Controller's own _ready() (this function) can run before
+    # PatternLab's sibling _ready() has built its own child controls
+    # (Godot's per-frame _ready() order across UI's children isn't
+    # guaranteed to have finished by the time Controller, an earlier
+    # sibling of UI under Main, runs its own) -- calling refresh_patterns
+    # directly here hit exactly that: _pattern_list was still null.
+    pattern_lab.call_deferred("refresh_patterns")
+    if not pattern_lab.pattern_applied.is_connected(_on_pattern_applied):
+        pattern_lab.pattern_applied.connect(_on_pattern_applied)
+
+func _on_pattern_applied() -> void:
+    _frame_generated_massing()
+    _setup_minimap()
 
 ## Real generated id (e.g. "p108_merged_9_building") -> walk mode, standing
 ## just outside it. Empty string is the "Site Overview" convention the old
