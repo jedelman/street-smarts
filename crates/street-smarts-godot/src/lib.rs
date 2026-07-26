@@ -16,6 +16,7 @@ use street_smarts_core::Mesh as SsMesh;
 use street_smarts_opinions::registry::evaluate_all;
 
 pub mod building_mesh;
+pub mod cluster;
 pub mod ground_features;
 use building_mesh::{BuildingSolid, FootprintCollider};
 
@@ -203,6 +204,57 @@ impl NeighborhoodNode3D {
             "Ran pattern pipeline on parcel '{}' (seed {}) in {:?}: {} parcels, {} buildings, {} streets, {} open_space.",
             parcel_id_str, seed, elapsed,
             result.parcels.len(), result.buildings.len(), result.streets.len(), result.open_space.len()
+        );
+        true
+    }
+
+    /// Restricts the currently-loaded neighborhood down to `anchor_building_id`
+    /// plus its `count - 1` real nearest other buildings, replacing it in
+    /// place -- a fast, still-real (every building came out of the actual
+    /// pipeline run, nothing synthetic) integration-test fixture. See
+    /// `cluster::nearest_building_cluster`'s own doc for why this exists:
+    /// the full real site is too slow to iterate on (a full offscreen
+    /// render pass took minutes and had to be killed), and a small real
+    /// cluster is the fast middle layer between `building_mesh.rs`'s
+    /// no-rendering unit tests and a full on-device site walkthrough.
+    /// Call after `run_pattern_pipeline()` (there must be real buildings to
+    /// restrict to) and before `rebuild_3d_mesh()`. Returns `false` (no
+    /// change made) if `anchor_building_id` doesn't name a real building in
+    /// the currently-loaded neighborhood, or nothing is loaded yet.
+    #[func]
+    pub fn restrict_to_cluster(&mut self, anchor_building_id: GString, count: i32) -> bool {
+        if self.neighborhood_json.is_empty() {
+            godot_warn!("Cannot restrict to cluster: no neighborhood loaded.");
+            return false;
+        }
+        let nir: Neighborhood = match serde_json::from_str(&self.neighborhood_json) {
+            Ok(n) => n,
+            Err(err) => {
+                godot_error!("Cannot restrict to cluster: neighborhood JSON no longer parses: {}", err);
+                return false;
+            }
+        };
+        let anchor_id_str = anchor_building_id.to_string();
+        let Some(cluster) = cluster::nearest_building_cluster(&nir, &anchor_id_str, count.max(0) as usize) else {
+            godot_error!(
+                "Cannot restrict to cluster: '{}' is not a real building id in the currently-loaded neighborhood (or count was 0).",
+                anchor_id_str
+            );
+            return false;
+        };
+
+        let cluster_ids: Vec<String> = cluster.buildings.iter().map(|b| b.id.clone()).collect();
+        self.building_count = cluster.buildings.len() as i32;
+        self.neighborhood_json = match serde_json::to_string(&cluster) {
+            Ok(s) => s,
+            Err(err) => {
+                godot_error!("Cluster-restricted neighborhood failed to re-serialize: {}", err);
+                return false;
+            }
+        };
+        godot_print!(
+            "Restricted to a {}-building cluster around '{}': {:?}",
+            cluster_ids.len(), anchor_id_str, cluster_ids
         );
         true
     }

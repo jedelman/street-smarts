@@ -12,6 +12,15 @@ extends Node
 const REAL_PARCEL_ID := "MILITARY_CIRCLE_ASSEMBLED"
 const REAL_PIPELINE_SEED := 42
 
+## Empty (default) -> the full real 35-building site, same as before.
+## Set to a real building id (e.g. from scenes/ClusterTest.tscn) to
+## restrict to that building's own nearest `cluster_size` real neighbors
+## instead -- a fast integration-test fixture for iterating on a single
+## feature without waiting on a full-site rebuild. See
+## NeighborhoodNode3D::restrict_to_cluster's own doc.
+@export var cluster_anchor_building_id: String = ""
+@export var cluster_size: int = 9
+
 func _ready():
     # Real Eastside Commons parcel data first: eastside-baseline.json is
     # parcels-only on disk (no generator has ever run against it before
@@ -46,6 +55,10 @@ func _ready():
                 # attempted yet.
                 print("[StreetSmarts] Running pattern-language pipeline on parcel '%s'..." % REAL_PARCEL_ID)
                 neighborhood_node.run_pattern_pipeline(REAL_PARCEL_ID, REAL_PIPELINE_SEED)
+
+            if cluster_anchor_building_id != "":
+                print("[StreetSmarts] Restricting to a %d-building cluster around '%s' for fast iteration..." % [cluster_size, cluster_anchor_building_id])
+                neighborhood_node.restrict_to_cluster(cluster_anchor_building_id, cluster_size)
 
             neighborhood_node.rebuild_3d_mesh()
             camera.collider = neighborhood_node

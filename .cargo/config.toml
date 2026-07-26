@@ -1,0 +1,25 @@
+# Android cross-compile toolchain for the Godot GDExtension target
+# (aarch64-linux-android, the real arm64 architecture street-smarts.gdextension
+# ships for -- see godot/street_smarts.gdextension).
+#
+# Without this, `cargo build --target aarch64-linux-android` fails at the
+# link step (no aarch64 linker on the host) unless CC_aarch64_linux_android /
+# CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER are exported by hand first --
+# real friction discovered by having to re-derive these paths from scratch
+# (via `find` + `nm`) partway through the Godot migration, since nothing in
+# the repo recorded them. Checked in so every future Android build is just
+# `cargo build --release -p street-smarts-godot --target aarch64-linux-android`.
+#
+# Assumes NDK 23.2.8568313 is installed at this exact path -- true in this
+# project's dev container today, NOT guaranteed on every machine. If this
+# path doesn't exist on yours, override per-invocation instead of editing
+# this file, e.g.:
+#   CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=/path/to/your/ndk/.../aarch64-linux-android21-clang \
+#     cargo build --target aarch64-linux-android
+[target.aarch64-linux-android]
+linker = "/home/user/android-sdk/ndk/23.2.8568313/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+ar = "/home/user/android-sdk/ndk/23.2.8568313/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+
+[env]
+CC_aarch64_linux_android = "/home/user/android-sdk/ndk/23.2.8568313/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+CXX_aarch64_linux_android = "/home/user/android-sdk/ndk/23.2.8568313/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++"
