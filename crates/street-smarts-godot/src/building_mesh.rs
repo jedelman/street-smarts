@@ -9,8 +9,20 @@
 //! as a notch at its actual `ring_index`/`t`/`width_m`/`sill_height_m`/
 //! `head_height_m`. It does NOT model `wall_thickness_m` as a hollow
 //! shell -- there's no interior cavity behind a punch, so this proves the
-//! aperture-cut mechanism, not a full walkable interior. `roof`,
-//! `roof_segments`, `canopies`, and `wall_niches` are not yet consumed.
+//! aperture-cut mechanism, not a full walkable interior. `roof` (both
+//! `Shed` and `Flat`, the only two shapes any real generator assigns
+//! today -- see `RoofExtrusion::height_at_z`) is now consumed: a Shed
+//! roof extends the solid's top surface as a sloped plane from
+//! `ridge_height_m` at the footprint's south edge down to `eave_height_m`
+//! at its north edge (P162's real "slopes down to true north"), and a
+//! Flat roof extends it as a flat plane at `ridge_height_m` (the field's
+//! own "highest edge" reading -- `p118_roof_garden` carries the old shed
+//! ridge/eave through unchanged when it overwrites a roof to `Flat`, so
+//! `eave_height_m` isn't a second, independent flat height to pick
+//! between). Modeled as solid volume all the way up, same as the walls
+//! below it (no hollow attic/loft cavity) -- consistent with this whole
+//! struct not modeling any interior voids yet. `roof_segments`,
+//! `canopies`, and `wall_niches` are still not consumed.
 //! Openings on a hole ring (`on_hole = true` -- a door/window facing INTO
 //! a courtyard) are still skipped, not approximated: only the courtyard
 //! VOID itself is real here, not its own interior-facing openings.
@@ -19,7 +31,7 @@
 //! to place them at.
 
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::Building;
+use street_smarts_core::nir::{Building, RoofShape};
 use street_smarts_core::sdf::{sdf_box, sdf_difference, Vec3};
 use street_smarts_core::{extract_surface_nets_bounds, Mesh};
 use street_smarts_patterns::planar::{ring_to_local, Pt2};
@@ -71,6 +83,53 @@ pub(crate) fn sdf_polygon_2d_with_edge(u: f64, v: f64, poly: &[Pt2]) -> (f64, us
         j = i;
     }
     (s * d2_min.sqrt(), nearest_edge)
+}
+
+/// A real roof extruded on top of `BuildingSolid`'s walls, carrying just
+/// enough of `RoofForm` to shape the solid's top surface: which shape,
+/// the ridge/eave heights, and the footprint's own north/south extent a
+/// Shed roof's slope runs across (computed once here, not re-scanned from
+/// `footprint` on every `sdf()` call).
+struct RoofExtrusion {
+    shape: RoofShape,
+    ridge_height_m: f64,
+    eave_height_m: f64,
+    /// Footprint bounding-box Z extent in local meters (increasing Z =
+    /// increasing latitude = north, this pipeline's own planar convention
+    /// -- see `ring_to_local`). `z_south` is the min (ridge/high side),
+    /// `z_north` is the max (eave/low side), matching P162's "slopes down
+    /// to true north".
+    z_south: f64,
+    z_north: f64,
+}
+
+impl RoofExtrusion {
+    /// The solid's top height at a given local Z. For `Flat`, constant at
+    /// `ridge_height_m` across the whole footprint. For `Shed` (and any
+    /// other/reserved shape, treated the same as an honest default rather
+    /// than silently falling back to a flat top), linearly interpolated
+    /// from `ridge_height_m` at `z_south` down to `eave_height_m` at
+    /// `z_north`, clamped so samples outside the footprint's own Z extent
+    /// (which can't happen for a point already inside the footprint SDF,
+    /// but keep the function total) don't extrapolate past either end.
+    fn height_at_z(&self, z: f64) -> f64 {
+        if self.shape == RoofShape::Flat {
+            return self.ridge_height_m;
+        }
+        let span = self.z_north - self.z_south;
+        if span < 1e-9 {
+            return self.eave_height_m;
+        }
+        let t = ((z - self.z_south) / span).clamp(0.0, 1.0);
+        self.ridge_height_m + (self.eave_height_m - self.ridge_height_m) * t
+    }
+
+    /// The highest point this roof ever reaches -- always `ridge_height_m`
+    /// (documented as the roof's own highest edge for every shape), used
+    /// to size the Surface Nets extraction grid so the roof isn't clipped.
+    fn max_height(&self) -> f64 {
+        self.ridge_height_m
+    }
 }
 
 struct OpeningCut {
@@ -129,6 +188,11 @@ pub struct BuildingSolid {
     /// that are genuinely closest to an opening on the adjoining wall)
     /// instead of every opening on the building -- see `sdf()`'s own doc.
     by_edge: Vec<Vec<usize>>,
+    /// `None` for a flat-topped box, same as every fixture predating roof
+    /// support (including every synthetic test in this module) -- keeps
+    /// the old flat-top behavior exactly for a building whose `roof` field
+    /// is unset, rather than fabricating a roof shape nothing assigned.
+    roof: Option<RoofExtrusion>,
 }
 
 impl BuildingSolid {
@@ -194,7 +258,23 @@ impl BuildingSolid {
             });
         }
 
-        Some(Self { footprint, holes, height, openings, by_edge })
+        let roof = building.roof.as_ref().map(|r| {
+            let mut z_south = f64::MAX;
+            let mut z_north = f64::MIN;
+            for p in &footprint {
+                z_south = z_south.min(p.y);
+                z_north = z_north.max(p.y);
+            }
+            RoofExtrusion {
+                shape: r.shape,
+                ridge_height_m: r.ridge_height_m,
+                eave_height_m: r.eave_height_m,
+                z_south,
+                z_north,
+            }
+        });
+
+        Some(Self { footprint, holes, height, openings, by_edge, roof })
     }
 
     /// The real signed distance at `p` (local meters, Y = height above
@@ -216,7 +296,8 @@ impl BuildingSolid {
             let (hole_d, _edge) = sdf_polygon_2d_with_edge(p.x, p.z, hole);
             footprint_d = sdf_difference(footprint_d, hole_d);
         }
-        let slab_d = (-p.y).max(p.y - self.height);
+        let top_height = self.roof.as_ref().map_or(self.height, |r| r.height_at_z(p.z));
+        let slab_d = (-p.y).max(p.y - top_height);
         let solid = footprint_d.max(slab_d);
         if self.openings.is_empty() {
             return solid;
@@ -248,7 +329,8 @@ impl BuildingSolid {
             min_w = min_w.min(p.y);
             max_w = max_w.max(p.y);
         }
-        (Vec3::new(min_u, 0.0, min_w), Vec3::new(max_u, self.height, max_w))
+        let max_y = self.roof.as_ref().map_or(self.height, |r| r.max_height());
+        (Vec3::new(min_u, 0.0, min_w), Vec3::new(max_u, max_y, max_w))
     }
 
     /// Extracts a triangle mesh at `voxel_size` meters per cell.
@@ -307,7 +389,7 @@ impl BuildingSolid {
 mod tests {
     use super::*;
     use street_smarts_core::geometry::Polygon;
-    use street_smarts_core::nir::{Opening, OpeningKind};
+    use street_smarts_core::nir::{Opening, OpeningKind, RoofForm, RoofShape};
 
     fn rect_building(width_m: f64, depth_m: f64, height_m: f64, origin: &LngLat) -> Building {
         // Build a rectangle directly in local meters, then project it BACK
@@ -373,6 +455,76 @@ mod tests {
             canopies: vec![],
             wall_niches: vec![],
         }
+    }
+
+    #[test]
+    fn shed_roof_slopes_down_from_south_ridge_to_north_eave() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let mut building = rect_building(10.0, 20.0, 5.0, &origin);
+        // eave_height_m == height_m always, per p117_sheltering_roof's real
+        // assignment; ridge is 3.0m above it here (the default is 2.0, an
+        // arbitrary-but-plausible value works just as well for this test).
+        building.roof = Some(RoofForm {
+            shape: RoofShape::Shed,
+            ridge_height_m: 8.0,
+            eave_height_m: 5.0,
+            slope_azimuth_deg: 0.0,
+            occupiable: false,
+        });
+        let solid = BuildingSolid::from_building(&building, &origin).expect("valid roofed building");
+
+        // Near the south edge (z=1, close to z_south=0, close to the
+        // ridge): a height between eave and ridge should still read solid.
+        let near_ridge = Vec3::new(5.0, 7.0, 1.0);
+        assert!(solid.sdf(near_ridge) < 0.0, "expected solid near the south ridge edge at y=7.0, got {}", solid.sdf(near_ridge));
+
+        // Same height, near the north edge (z=19, close to z_north=20,
+        // close to the eave, which sits at the building's own height_m of
+        // 5.0): should read OUTSIDE -- the roof has already sloped down
+        // below y=7.0 by here.
+        let near_eave = Vec3::new(5.0, 7.0, 19.0);
+        assert!(solid.sdf(near_eave) >= 0.0, "expected void near the north eave edge at y=7.0, got {}", solid.sdf(near_eave));
+
+        // The wall base stays solid everywhere regardless of the roof --
+        // the slope only affects the top surface.
+        let wall_base = Vec3::new(5.0, 1.0, 19.0);
+        assert!(solid.sdf(wall_base) < 0.0, "wall base should stay solid under a sloped roof, got {}", solid.sdf(wall_base));
+
+        // The extraction grid must reach the full ridge height, not just
+        // the building's own height_m, or the roof gets clipped.
+        let (_min, max) = solid.bounds();
+        assert!((max.y - 8.0).abs() < 1e-9, "bounds should extend to ridge_height_m (8.0), got {}", max.y);
+    }
+
+    #[test]
+    fn flat_roof_is_a_flat_plane_at_ridge_height_not_sloped() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let mut building = rect_building(10.0, 20.0, 5.0, &origin);
+        // Mirrors what p118_roof_garden actually does: overwrite a prior
+        // shed roof to Flat while carrying its ridge/eave numbers through
+        // unchanged, so ridge != eave even though the shape is Flat.
+        building.roof = Some(RoofForm {
+            shape: RoofShape::Flat,
+            ridge_height_m: 10.0,
+            eave_height_m: 8.0,
+            slope_azimuth_deg: 0.0,
+            occupiable: true,
+        });
+        let solid = BuildingSolid::from_building(&building, &origin).expect("valid roofed building");
+
+        // Unlike a shed roof, a flat roof holds the SAME height (the
+        // ridge value) at both the south and north edges -- no slope.
+        let south = Vec3::new(5.0, 9.5, 1.0);
+        let north = Vec3::new(5.0, 9.5, 19.0);
+        assert!(solid.sdf(south) < 0.0, "expected solid near the south edge under a flat roof, got {}", solid.sdf(south));
+        assert!(solid.sdf(north) < 0.0, "expected solid near the north edge under a flat roof too (flat, not sloped), got {}", solid.sdf(north));
+
+        // Above the ridge height, everywhere, should read outside.
+        let above = Vec3::new(5.0, 10.5, 10.0);
+        assert!(solid.sdf(above) >= 0.0, "expected void above ridge_height_m, got {}", solid.sdf(above));
+
+        let (_min, max) = solid.bounds();
+        assert!((max.y - 10.0).abs() < 1e-9, "flat roof bounds should extend to ridge_height_m (10.0), got {}", max.y);
     }
 
     #[test]
