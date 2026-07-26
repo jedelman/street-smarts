@@ -1096,6 +1096,10 @@ mod tests {
 /// anything needs real 3D contact (falling, stairs, thrown objects); it
 /// isn't the right tool for this.
 pub struct FootprintCollider {
+    /// The real building this footprint belongs to -- lets a caller (the
+    /// minimap) label or select a footprint by its own real id instead of
+    /// only by array position.
+    id: String,
     outer: Vec<Pt2>,
     holes: Vec<Vec<Pt2>>,
     min_x: f64,
@@ -1127,7 +1131,20 @@ impl FootprintCollider {
             min_z = min_z.min(p.y);
             max_z = max_z.max(p.y);
         }
-        Some(Self { outer, holes, min_x, max_x, min_z, max_z })
+        Some(Self { id: building.id.clone(), outer, holes, min_x, max_x, min_z, max_z })
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// This footprint's own real outer-ring points, local meters
+    /// (x, z) -- for a caller (the minimap) that needs the real polygon
+    /// SHAPE, not just the SDF `distance` this struct exists to answer.
+    /// Courtyard holes aren't included: a minimap silhouette doesn't need
+    /// them the way collision does.
+    pub fn outer_points(&self) -> &[Pt2] {
+        &self.outer
     }
 
     /// Signed distance to this building's footprint in the ground plane:

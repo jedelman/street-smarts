@@ -2,10 +2,7 @@ extends Node
 
 @onready var neighborhood_node: Node3D = $"../NeighborhoodNode3D"
 @onready var camera: Camera3D = $"../Camera3D"
-@onready var geometric_label: Label = $"../UI/Panel/VBox/GeometricChorusLabel"
-@onready var activist_label: Label = $"../UI/Panel/VBox/ActivistChorusLabel"
-@onready var prompt_label: Label = $"../UI/Panel/VBox/HumanPromptLabel"
-@onready var waypoint_dropdown: OptionButton = $"../UI/Panel/VBox/WaypointDropdown"
+@onready var minimap: Control = $"../UI/Minimap"
 
 ## Real 97.7-acre Military Circle site, the same parcel spec
 ## scripts/vibe-render.sh's clean_baseline scenario develops.
@@ -63,15 +60,7 @@ func _ready():
             neighborhood_node.rebuild_3d_mesh()
             camera.collider = neighborhood_node
             _frame_generated_massing()
-            _populate_waypoints()
-
-            var metrics = neighborhood_node.evaluate_opinions()
-            if metrics.has("geometric_headline"):
-                geometric_label.text = "Geometric Chorus: " + str(metrics["geometric_headline"])
-            if metrics.has("activist_headline"):
-                activist_label.text = "Activist Chorus: " + str(metrics["activist_headline"])
-            if metrics.has("question_count"):
-                prompt_label.text = "Human Disagreement Prompts (" + str(metrics["question_count"]) + " surfaced)"
+            _setup_minimap()
     else:
         print("[StreetSmarts] NIR fixture file ready to be bound at runtime.")
 
@@ -99,56 +88,49 @@ func _frame_generated_massing() -> void:
     if have_any:
         camera.frame_bounds(combined.get_center(), combined.size.length() * 0.5)
 
-## Fills the dropdown with "Site Overview" (index 0, back to orbit mode)
-## plus one entry per real generated building, labeled with its real
-## generated id (e.g. "p108 merged 9 building") -- not a curated or
-## invented human name, since there isn't one to give it; the pattern
-## pipeline doesn't produce anything more readable than that. Selecting a
-## building entry switches to walk mode, standing just outside it.
-func _populate_waypoints() -> void:
-    if camera == null or not camera.has_method("set_mode_walk"):
+## Feeds the minimap the real building footprint polygons/ids (see
+## NeighborhoodNode3D::get_building_footprints) and wires its
+## waypoint_selected signal to _walk_to_building -- the minimap's own
+## tappable markers replace the old waypoint dropdown entirely.
+func _setup_minimap() -> void:
+    if minimap == null or not neighborhood_node.has_method("get_building_footprints"):
         return
-    if waypoint_dropdown.item_selected.is_connected(_on_waypoint_selected):
-        waypoint_dropdown.item_selected.disconnect(_on_waypoint_selected)
-    waypoint_dropdown.clear()
-    waypoint_dropdown.add_item("Site Overview")
-    waypoint_dropdown.set_item_metadata(0, null)
+    minimap.camera = camera
+    minimap.set_buildings(neighborhood_node.get_building_footprints(), neighborhood_node.get_building_ids())
+    if not minimap.waypoint_selected.is_connected(_walk_to_building):
+        minimap.waypoint_selected.connect(_walk_to_building)
 
-    var overall_center := Vector3.ZERO
-    var have_overall := false
-    var entries := []
-    for child in neighborhood_node.get_children():
-        if child is MeshInstance3D and child.name.begins_with("GeneratedMassing_"):
-            var mesh_aabb: AABB = child.get_aabb()
-            var center := mesh_aabb.get_center()
-            entries.append({
-                "label": child.name.trim_prefix("GeneratedMassing_").replace("_", " "),
-                "center": center,
-                "size": mesh_aabb.size,
-            })
-            overall_center += center
-            have_overall = true
-    if have_overall:
-        overall_center /= entries.size()
-
-    for entry in entries:
-        var idx := waypoint_dropdown.item_count
-        waypoint_dropdown.add_item(entry["label"])
-        entry["overall_center"] = overall_center
-        waypoint_dropdown.set_item_metadata(idx, entry)
-
-    waypoint_dropdown.item_selected.connect(_on_waypoint_selected)
-
-func _on_waypoint_selected(index: int) -> void:
-    var meta = waypoint_dropdown.get_item_metadata(index)
-    if meta == null:
+## Real generated id (e.g. "p108_merged_9_building") -> walk mode, standing
+## just outside it. Empty string is the "Site Overview" convention the old
+## waypoint dropdown's own null-metadata entry used -- back to orbit mode,
+## reframed on the whole real site.
+func _walk_to_building(building_id: String) -> void:
+    if building_id == "":
         camera.set_mode_orbit()
         _frame_generated_massing()
         return
+    if not camera.has_method("set_mode_walk"):
+        return
 
-    var building_center: Vector3 = meta["center"]
-    var building_size: Vector3 = meta["size"]
-    var overall_center: Vector3 = meta["overall_center"]
+    var target_child: MeshInstance3D = null
+    var overall_center := Vector3.ZERO
+    var have_overall := false
+    var building_count := 0
+    for child in neighborhood_node.get_children():
+        if child is MeshInstance3D and child.name.begins_with("GeneratedMassing_"):
+            overall_center += child.get_aabb().get_center()
+            have_overall = true
+            building_count += 1
+            if child.name == "GeneratedMassing_" + building_id:
+                target_child = child
+    if target_child == null:
+        return
+    if have_overall:
+        overall_center /= building_count
+
+    var mesh_aabb: AABB = target_child.get_aabb()
+    var building_center: Vector3 = mesh_aabb.get_center()
+    var building_size: Vector3 = mesh_aabb.size
 
     # Stand between the site's overall center and this building, facing
     # inward -- a real, deterministic vantage point computed from the

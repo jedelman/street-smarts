@@ -333,6 +333,30 @@ impl NeighborhoodNode3D {
         PackedVector3Array::from(points.as_slice())
     }
 
+    /// Real building footprint outlines (site-local meters, ground plane
+    /// x/z), for a 2D minimap to draw real building SHAPES instead of
+    /// approximating them from mesh AABBs. One polygon per real building
+    /// with an assigned height (the same set `resolve_move`/`find_path`
+    /// already route around), outer ring only -- a minimap silhouette
+    /// doesn't need a courtyard's own hole the way collision does. Paired
+    /// 1:1, same order, with `get_building_ids()`.
+    #[func]
+    pub fn get_building_footprints(&self) -> Array<PackedVector2Array> {
+        let mut out = Array::new();
+        for c in &self.colliders {
+            let ring: Vec<Vector2> = c.outer_points().iter().map(|p| Vector2::new(p.x as real, p.y as real)).collect();
+            out.push(&PackedVector2Array::from(ring.as_slice()));
+        }
+        out
+    }
+
+    /// Real building ids, same order as `get_building_footprints()`.
+    #[func]
+    pub fn get_building_ids(&self) -> PackedStringArray {
+        let ids: Vec<GString> = self.colliders.iter().map(|c| GString::from(c.id())).collect();
+        PackedStringArray::from(ids.as_slice())
+    }
+
     /// Resolves a walk-mode move against real building footprints, so a
     /// walker stops at walls instead of ghosting through them. Returns the
     /// position actually reachable this step: `to` when it's clear, a
