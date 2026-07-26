@@ -21,8 +21,21 @@
 //! `eave_height_m` isn't a second, independent flat height to pick
 //! between). Modeled as solid volume all the way up, same as the walls
 //! below it (no hollow attic/loft cavity) -- consistent with this whole
-//! struct not modeling any interior voids yet. `roof_segments`,
-//! `canopies`, and `wall_niches` are still not consumed.
+//! struct not modeling any interior voids yet. `wall_niches` (P160
+//! Building Edge) are now consumed too: each is a real local outward
+//! bulge unioned directly into the footprint distance (not a separate
+//! extruded box), so a niche automatically follows whatever roof profile
+//! already applies at its own wall location instead of needing its own
+//! height parameter (the schema doesn't carry one -- see `WallBulge`'s
+//! own doc). `canopies` (P119 Arcades) are now consumed too, but NOT as
+//! part of this solid's own CSG -- see `canopy_mesh`'s own doc for why a
+//! thin covered-walkway roof is built as a direct flat quad instead, the
+//! same choice `ground_features.rs` made for open-space/street pads.
+//! `roof_segments` (P116 Cascade of Roofs) is consumed too: when a
+//! building has them, `top_height_at` prefers whichever real segment's
+//! own sub-footprint contains a given sample over the whole-building
+//! `roof`, so a deeper/less-public wing's real lower ridge actually
+//! shows up as a real step down instead of every wing sharing one slope.
 //! Openings on a hole ring (`on_hole = true` -- a door/window facing INTO
 //! a courtyard) are still skipped, not approximated: only the courtyard
 //! VOID itself is real here, not its own interior-facing openings.
@@ -104,6 +117,28 @@ struct RoofExtrusion {
 }
 
 impl RoofExtrusion {
+    /// Builds a `RoofExtrusion` from a real `RoofForm` and the real ring
+    /// (footprint or roof-segment sub-footprint) its slope should run
+    /// across -- shared by the whole-building `roof` and each real P116
+    /// `RoofSegment`, so a segment's own cascade uses ITS OWN sub-footprint's
+    /// Z extent rather than the whole building's (see `RoofSegmentGeom`'s
+    /// own doc for why that's the honest reading of "cascade").
+    fn from_form_and_ring(form: &street_smarts_core::nir::RoofForm, ring: &[Pt2]) -> Self {
+        let mut z_south = f64::MAX;
+        let mut z_north = f64::MIN;
+        for p in ring {
+            z_south = z_south.min(p.y);
+            z_north = z_north.max(p.y);
+        }
+        Self {
+            shape: form.shape,
+            ridge_height_m: form.ridge_height_m,
+            eave_height_m: form.eave_height_m,
+            z_south,
+            z_north,
+        }
+    }
+
     /// The solid's top height at a given local Z. For `Flat`, constant at
     /// `ridge_height_m` across the whole footprint. For `Shed` (and any
     /// other/reserved shape, treated the same as an honest default rather
@@ -129,6 +164,74 @@ impl RoofExtrusion {
     /// to size the Surface Nets extraction grid so the roof isn't clipped.
     fn max_height(&self) -> f64 {
         self.ridge_height_m
+    }
+}
+
+/// One real `RoofSegment` (P116 Cascade of Roofs): its own real sub-polygon
+/// of the building's footprint (an interior cell's own depth band or ring
+/// bay -- see `p116_cascade_of_roofs`' own doc), with its own `RoofExtrusion`
+/// computed from THAT sub-footprint's own Z extent, not the whole
+/// building's -- a real cascade still slopes down to true north within
+/// each wing's own real span, it just starts from a lower ridge the
+/// deeper (more private) that wing is. `min_u`/`max_u`/`min_w`/`max_w` are
+/// a cheap bounding-box reject so `BuildingSolid::top_height_at` doesn't
+/// run a full point-in-polygon test against every segment (a real building
+/// can carry 30+, one per interior cell) for every sample outside a given
+/// segment's own footprint entirely.
+struct RoofSegmentGeom {
+    footprint: Vec<Pt2>,
+    roof: RoofExtrusion,
+    min_u: f64,
+    max_u: f64,
+    min_w: f64,
+    max_w: f64,
+}
+
+/// A real local outward bulge of the footprint -- Alexander's P160
+/// Building Edge ("deep enough to contain seats, bookshelves, bay
+/// windows"). Unioned directly into the 2D footprint distance (see
+/// `sdf_2d`) rather than modeled as its own extruded 3D box the way
+/// `OpeningCut` is: `WallNiche` carries no height field of its own (only
+/// `ring_index`/`t_start`/`t_end`/`extra_depth_m`), and the honest reading
+/// of that is that a niche is real depth added to the wall itself, not an
+/// independent volume with its own vertical extent -- so it should follow
+/// whatever top height (flat, sloped shed, or per-segment cascade) already
+/// applies at its own wall location, automatically, the same way the rest
+/// of that wall does.
+struct WallBulge {
+    center_u: f64,
+    center_w: f64,
+    tangent: (f64, f64),
+    normal: (f64, f64),
+    half_width: f64,
+    /// Full outward extension from the wall face, in meters
+    /// (`WallNiche.extra_depth_m`) -- the bulge spans `[0, depth_m]` along
+    /// the outward normal, not centered on the wall face, since it's an
+    /// addition beyond the existing footprint edge, not a box straddling it.
+    depth_m: f64,
+}
+
+impl WallBulge {
+    /// 2D signed distance to this bulge's own footprint, same convention
+    /// as `sdf_polygon_2d_with_edge`: negative inside, positive outside.
+    fn sdf_2d(&self, u: f64, w: f64) -> f64 {
+        let rel_u = u - self.center_u;
+        let rel_w = w - self.center_w;
+        let local_u = rel_u * self.tangent.0 + rel_w * self.tangent.1;
+        let local_w = rel_u * self.normal.0 + rel_w * self.normal.1;
+        // Standard 2D box SDF, with the box's own local origin shifted so
+        // it spans local_w in [-depth_m, 0] instead of being centered on
+        // the wall face. `normal` (see `from_building`) is built the same
+        // way `OpeningCut`'s is -- a left-of-tangent rotation, which for
+        // this crate's CCW footprint winding points INTO the polygon, not
+        // outward -- confirmed empirically (a test at +depth outward
+        // failed; -depth is the real outward direction).
+        let half_depth = self.depth_m / 2.0;
+        let dx = local_u.abs() - self.half_width;
+        let dz = (local_w + half_depth).abs() - half_depth;
+        let ax = dx.max(0.0);
+        let az = dz.max(0.0);
+        (ax * ax + az * az).sqrt() + dx.max(dz).min(0.0)
     }
 }
 
@@ -193,6 +296,20 @@ pub struct BuildingSolid {
     /// the old flat-top behavior exactly for a building whose `roof` field
     /// is unset, rather than fabricating a roof shape nothing assigned.
     roof: Option<RoofExtrusion>,
+    /// Real P116 per-wing roof cascade, additive to `roof` above (empty on
+    /// every building with 0-1 interior cells -- "nothing to cascade," see
+    /// `p116_cascade_of_roofs`' own doc). When non-empty, `top_height_at`
+    /// prefers whichever segment's own real sub-footprint contains the
+    /// sample point over the whole-building `roof`, which stays the exact
+    /// fallback for any point no segment covers.
+    roof_segments: Vec<RoofSegmentGeom>,
+    /// Real P160 wall niches. Bucketed by edge the same way `openings` is
+    /// (see `niche_by_edge`) -- a real building can carry a niche next to
+    /// every real door (that's exactly how `p160_building_edge` places
+    /// them), so the same nearest-edge-plus-neighbors scan `sdf()` already
+    /// does for openings avoids an O(all niches) scan per sample here too.
+    niches: Vec<WallBulge>,
+    niche_by_edge: Vec<Vec<usize>>,
 }
 
 impl BuildingSolid {
@@ -258,23 +375,88 @@ impl BuildingSolid {
             });
         }
 
-        let roof = building.roof.as_ref().map(|r| {
-            let mut z_south = f64::MAX;
-            let mut z_north = f64::MIN;
-            for p in &footprint {
-                z_south = z_south.min(p.y);
-                z_north = z_north.max(p.y);
+        let mut niches = Vec::new();
+        let mut niche_by_edge: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for niche in &building.wall_niches {
+            // Same precedent as openings: a niche facing INTO a courtyard
+            // (on_hole) is skipped, not approximated -- only the courtyard
+            // void itself is real geometry here.
+            if niche.on_hole || niche.ring_index >= n {
+                continue;
             }
-            RoofExtrusion {
-                shape: r.shape,
-                ridge_height_m: r.ridge_height_m,
-                eave_height_m: r.eave_height_m,
-                z_south,
-                z_north,
+            let a = footprint[niche.ring_index];
+            let b = footprint[(niche.ring_index + 1) % n];
+            let ex = b.x - a.x;
+            let ey = b.y - a.y;
+            let len = (ex * ex + ey * ey).sqrt();
+            if len < 1e-9 {
+                continue;
             }
-        });
+            let tangent = (ex / len, ey / len);
+            let normal = (-tangent.1, tangent.0);
+            let t_start = niche.t_start.clamp(0.0, 1.0);
+            let t_end = niche.t_end.clamp(0.0, 1.0).max(t_start);
+            let t_mid = (t_start + t_end) / 2.0;
+            let center_u = a.x + ex * t_mid;
+            let center_w = a.y + ey * t_mid;
+            let half_width = ((t_end - t_start) * len / 2.0).max(0.01);
 
-        Some(Self { footprint, holes, height, openings, by_edge, roof })
+            niche_by_edge[niche.ring_index].push(niches.len());
+            niches.push(WallBulge {
+                center_u,
+                center_w,
+                tangent,
+                normal,
+                half_width,
+                depth_m: niche.extra_depth_m.max(0.01),
+            });
+        }
+
+        let roof = building.roof.as_ref().map(|r| RoofExtrusion::from_form_and_ring(r, &footprint));
+
+        let roof_segments: Vec<RoofSegmentGeom> = building
+            .roof_segments
+            .iter()
+            .filter_map(|seg| {
+                let seg_footprint = ring_to_local(&seg.footprint.outer, origin);
+                if seg_footprint.len() < 3 {
+                    return None;
+                }
+                let mut min_u = f64::MAX;
+                let mut max_u = f64::MIN;
+                let mut min_w = f64::MAX;
+                let mut max_w = f64::MIN;
+                for p in &seg_footprint {
+                    min_u = min_u.min(p.x);
+                    max_u = max_u.max(p.x);
+                    min_w = min_w.min(p.y);
+                    max_w = max_w.max(p.y);
+                }
+                let roof = RoofExtrusion::from_form_and_ring(&seg.form, &seg_footprint);
+                Some(RoofSegmentGeom { footprint: seg_footprint, roof, min_u, max_u, min_w, max_w })
+            })
+            .collect();
+
+        Some(Self { footprint, holes, height, openings, by_edge, roof, roof_segments, niches, niche_by_edge })
+    }
+
+    /// The solid's real top height at a given (local-meter) horizontal
+    /// position: whichever real P116 `RoofSegment` contains it (cheap
+    /// bounding-box reject first, see `RoofSegmentGeom`'s own doc), falling
+    /// back to the whole-building `roof` (or flat `self.height`) for any
+    /// point no segment covers -- which is every point, on the (majority
+    /// of) buildings with 0-1 interior cells that never got a cascade.
+    fn top_height_at(&self, u: f64, w: f64) -> f64 {
+        for seg in &self.roof_segments {
+            if u < seg.min_u || u > seg.max_u || w < seg.min_w || w > seg.max_w {
+                continue;
+            }
+            let (d, _edge) = sdf_polygon_2d_with_edge(u, w, &seg.footprint);
+            if d < 0.0 {
+                return seg.roof.height_at_z(w);
+            }
+        }
+        self.roof.as_ref().map_or(self.height, |r| r.height_at_z(w))
     }
 
     /// The real signed distance at `p` (local meters, Y = height above
@@ -296,7 +478,17 @@ impl BuildingSolid {
             let (hole_d, _edge) = sdf_polygon_2d_with_edge(p.x, p.z, hole);
             footprint_d = sdf_difference(footprint_d, hole_d);
         }
-        let top_height = self.roof.as_ref().map_or(self.height, |r| r.height_at_z(p.z));
+        if !self.niches.is_empty() {
+            let n_edges = self.niche_by_edge.len();
+            let prev_edge = (nearest_edge + n_edges - 1) % n_edges;
+            let next_edge = (nearest_edge + 1) % n_edges;
+            for &edge in &[prev_edge, nearest_edge, next_edge] {
+                for &idx in &self.niche_by_edge[edge] {
+                    footprint_d = footprint_d.min(self.niches[idx].sdf_2d(p.x, p.z));
+                }
+            }
+        }
+        let top_height = self.top_height_at(p.x, p.z);
         let slab_d = (-p.y).max(p.y - top_height);
         let solid = footprint_d.max(slab_d);
         if self.openings.is_empty() {
@@ -385,11 +577,93 @@ impl BuildingSolid {
     }
 }
 
+/// Builds a real mesh of every real ground-floor `Canopy` this building
+/// carries (ceiling clearance-plane over a wall span, P119 Arcades) --
+/// separate from `BuildingSolid`'s own CSG on purpose. A canopy is thin by
+/// definition (a "covered walkway," not a volume), and this project
+/// already learned that lesson the hard way once: `ground_features.rs`'s
+/// own doc records that voxelizing a thin flat pad at a voxel size sized
+/// for a whole building's footprint produced ZERO triangles (the solid
+/// region fit inside a single cell with no interior sample point). A
+/// canopy has the exact same shape problem, at an even smaller scale, so
+/// this builds it the same way `ground_features.rs` builds a plaza pad: a
+/// direct flat quad, no SDF, no Surface Nets. Single winding (normal
+/// pointing up) -- the caller applies `CULL_DISABLED`, same as every other
+/// ground-feature-style mesh in this codebase, so it's visible from
+/// underneath too (walking under an arcade is the whole point of one).
+///
+/// Only ground-floor (`floor == 0`) canopies are built, and only those NOT
+/// on a hole ring -- same two carve-outs `BuildingSolid::from_building`
+/// already makes for openings and niches, for the same reason: no real
+/// floor-to-floor height exists in this schema to place a higher one at,
+/// and a courtyard-facing canopy isn't modeled here either. Returns `None`
+/// if the building has no footprint or no real canopy survives those
+/// filters, never an empty-but-`Some` mesh.
+pub fn canopy_mesh(building: &Building, origin: &LngLat) -> Option<Mesh> {
+    let footprint = ring_to_local(&building.polygon.outer, origin);
+    let n = footprint.len();
+    if n < 3 {
+        return None;
+    }
+
+    let mut positions: Vec<Vec3> = Vec::new();
+    let mut normals: Vec<Vec3> = Vec::new();
+    let mut triangles: Vec<[u32; 3]> = Vec::new();
+    let up = Vec3::new(0.0, 1.0, 0.0);
+
+    for canopy in &building.canopies {
+        if canopy.on_hole || canopy.floor != 0 || canopy.ring_index >= n {
+            continue;
+        }
+        let a = footprint[canopy.ring_index];
+        let b = footprint[(canopy.ring_index + 1) % n];
+        let ex = b.x - a.x;
+        let ey = b.y - a.y;
+        let len = (ex * ex + ey * ey).sqrt();
+        if len < 1e-9 {
+            continue;
+        }
+        let tangent = (ex / len, ey / len);
+        // Same left-of-tangent rotation `OpeningCut`/`WallBulge` use,
+        // which points INTO the polygon for this crate's CCW winding (see
+        // `WallBulge`'s own doc) -- negate it to project the canopy
+        // outward, away from the building, over the real public path it
+        // shelters.
+        let inward = (-tangent.1, tangent.0);
+        let outward = (-inward.0, -inward.1);
+
+        let t_start = canopy.t_start.clamp(0.0, 1.0);
+        let t_end = canopy.t_end.clamp(0.0, 1.0).max(t_start);
+        let inner_start = (a.x + ex * t_start, a.y + ey * t_start);
+        let inner_end = (a.x + ex * t_end, a.y + ey * t_end);
+        let depth = canopy.depth_m.max(0.05);
+        let outer_start = (inner_start.0 + outward.0 * depth, inner_start.1 + outward.1 * depth);
+        let outer_end = (inner_end.0 + outward.0 * depth, inner_end.1 + outward.1 * depth);
+
+        let y = canopy.height_m;
+        let v0 = Vec3::new(inner_start.0, y, inner_start.1);
+        let v1 = Vec3::new(inner_end.0, y, inner_end.1);
+        let v2 = Vec3::new(outer_end.0, y, outer_end.1);
+        let v3 = Vec3::new(outer_start.0, y, outer_start.1);
+
+        let base = positions.len() as u32;
+        positions.extend_from_slice(&[v0, v1, v2, v3]);
+        normals.extend_from_slice(&[up, up, up, up]);
+        triangles.push([base, base + 1, base + 2]);
+        triangles.push([base, base + 2, base + 3]);
+    }
+
+    if triangles.is_empty() {
+        return None;
+    }
+    Some(Mesh { positions, normals, triangles })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use street_smarts_core::geometry::Polygon;
-    use street_smarts_core::nir::{Opening, OpeningKind, RoofForm, RoofShape};
+    use street_smarts_core::nir::{Canopy, CanopyKind, Opening, OpeningKind, RoofForm, RoofShape, WallNiche};
 
     fn rect_building(width_m: f64, depth_m: f64, height_m: f64, origin: &LngLat) -> Building {
         // Build a rectangle directly in local meters, then project it BACK
@@ -455,6 +729,58 @@ mod tests {
             canopies: vec![],
             wall_niches: vec![],
         }
+    }
+
+    #[test]
+    fn roof_segments_cascade_independently_of_the_whole_building_slope() {
+        use street_smarts_core::nir::RoofSegment;
+        use street_smarts_patterns::planar::local_to_ring;
+
+        let origin = LngLat::new(-76.1, 36.8);
+        let mut building = rect_building(10.0, 20.0, 5.0, &origin);
+        building.roof = Some(RoofForm {
+            shape: RoofShape::Shed,
+            ridge_height_m: 8.0,
+            eave_height_m: 5.0,
+            slope_azimuth_deg: 0.0,
+            occupiable: false,
+        });
+        // Segment A: the shallow/public half (z 0..10), same real ridge as
+        // the whole building -- the "full roof.ridge_height_m at depth 0"
+        // case p116_cascade_of_roofs' own doc describes.
+        let seg_a_local = [Pt2::new(0.0, 0.0), Pt2::new(10.0, 0.0), Pt2::new(10.0, 10.0), Pt2::new(0.0, 10.0)];
+        // Segment B: the deeper/private half (z 10..20), a real reduced
+        // ridge -- the cascade actually stepping down.
+        let seg_b_local = [Pt2::new(0.0, 10.0), Pt2::new(10.0, 10.0), Pt2::new(10.0, 20.0), Pt2::new(0.0, 20.0)];
+        building.roof_segments = vec![
+            RoofSegment {
+                footprint: Polygon::from_ring(local_to_ring(&seg_a_local, &origin)),
+                form: RoofForm { shape: RoofShape::Shed, ridge_height_m: 8.0, eave_height_m: 5.0, slope_azimuth_deg: 0.0, occupiable: false },
+            },
+            RoofSegment {
+                footprint: Polygon::from_ring(local_to_ring(&seg_b_local, &origin)),
+                form: RoofForm { shape: RoofShape::Shed, ridge_height_m: 6.0, eave_height_m: 5.0, slope_azimuth_deg: 0.0, occupiable: false },
+            },
+        ];
+        let solid = BuildingSolid::from_building(&building, &origin).expect("valid cascaded building");
+
+        // At z=15 (segment B's own midpoint), segment B's own extrusion
+        // gives top_height = 6.0 - 1.0*0.5 = 5.5. The WHOLE-BUILDING
+        // slope alone (ignoring segments) would instead give
+        // 8.0 - 3.0*(15/20) = 5.75 -- different enough that this sample
+        // point distinguishes "segments consumed" from "segments ignored."
+        let above_segment_b_ridge = Vec3::new(5.0, 5.6, 15.0);
+        assert!(
+            solid.sdf(above_segment_b_ridge) >= 0.0,
+            "expected void at y=5.6 under segment B's own real (lower) cascade ridge, got {} -- roof_segments may not be getting consulted",
+            solid.sdf(above_segment_b_ridge)
+        );
+        let below_segment_b_ridge = Vec3::new(5.0, 5.4, 15.0);
+        assert!(
+            solid.sdf(below_segment_b_ridge) < 0.0,
+            "expected solid at y=5.4, still under segment B's own cascade ridge of 5.5, got {}",
+            solid.sdf(below_segment_b_ridge)
+        );
     }
 
     #[test]
@@ -656,6 +982,101 @@ mod tests {
         assert!(
             v_with_door < v_blank - 0.1,
             "expected the door to carve out measurable volume: with_door={v_with_door}, blank={v_blank}"
+        );
+    }
+
+    fn triangle_area(mesh: &Mesh, tri: &[u32; 3]) -> f64 {
+        let p0 = mesh.positions[tri[0] as usize];
+        let p1 = mesh.positions[tri[1] as usize];
+        let p2 = mesh.positions[tri[2] as usize];
+        let e1 = (p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+        let e2 = (p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
+        let cx = e1.1 * e2.2 - e1.2 * e2.1;
+        let cy = e1.2 * e2.0 - e1.0 * e2.2;
+        let cz = e1.0 * e2.1 - e1.1 * e2.0;
+        0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
+    }
+
+    #[test]
+    fn a_real_p119_canopy_builds_a_flat_quad_of_the_right_area() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let mut building = rect_building(10.0, 6.0, 3.0, &origin);
+        // Ground-floor arcade on edge 0, spanning the middle 60% of a 10m
+        // wall (6m), projecting 2m outward: 6m x 2m = 12 sq m.
+        building.canopies.push(Canopy {
+            kind: CanopyKind::Arcade,
+            ring_index: 0,
+            on_hole: false,
+            t_start: 0.2,
+            t_end: 0.8,
+            depth_m: 2.0,
+            height_m: 2.5,
+            floor: 0,
+        });
+        // Should be skipped: no real floor-to-floor height to place it at.
+        building.canopies.push(Canopy {
+            kind: CanopyKind::Gallery,
+            ring_index: 0,
+            on_hole: false,
+            t_start: 0.0,
+            t_end: 0.2,
+            depth_m: 2.0,
+            height_m: 5.5,
+            floor: 1,
+        });
+
+        let mesh = canopy_mesh(&building, &origin).expect("one real ground-floor canopy survives the filters");
+        assert_eq!(mesh.triangles.len(), 2, "one quad = two triangles, the floor-1 canopy should be skipped");
+        let total_area: f64 = mesh.triangles.iter().map(|t| triangle_area(&mesh, t)).sum();
+        assert!((total_area - 12.0).abs() < 1e-6, "expected a 6m x 2m = 12 sq m canopy quad, got {total_area}");
+
+        // Every vertex should sit at the canopy's own real clearance height.
+        for p in &mesh.positions {
+            assert!((p.y - 2.5).abs() < 1e-9, "expected every canopy vertex at height_m=2.5, got y={}", p.y);
+        }
+    }
+
+    #[test]
+    fn a_building_with_no_canopies_produces_no_canopy_mesh() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let building = rect_building(10.0, 6.0, 3.0, &origin);
+        assert!(canopy_mesh(&building, &origin).is_none());
+    }
+
+    #[test]
+    fn a_real_p160_wall_niche_bulges_the_footprint_locally() {
+        let origin = LngLat::new(-76.1, 36.8);
+        let mut building = rect_building(10.0, 6.0, 3.0, &origin);
+        // Niche on ring edge 0 ((0,0)->(10,0)), spanning t=0.4..0.6 (the
+        // middle 2m of a 10m wall), bulging 1.0m beyond the wall face.
+        building.wall_niches.push(WallNiche {
+            ring_index: 0,
+            on_hole: false,
+            t_start: 0.4,
+            t_end: 0.6,
+            extra_depth_m: 1.0,
+        });
+        let solid = BuildingSolid::from_building(&building, &origin).expect("valid niched building");
+
+        // 0.5m beyond the original wall face (z=0, outward is -z for this
+        // rect's edge 0), at the niche's own span: should read SOLID now,
+        // where a plain wall would read outside.
+        let in_the_niche = Vec3::new(5.0, 1.0, -0.5);
+        assert!(solid.sdf(in_the_niche) < 0.0, "expected the niche to bulge the wall outward here, got {}", solid.sdf(in_the_niche));
+
+        // Same outward offset, well away from the niche's span: should
+        // still read OUTSIDE -- the bulge is local, not a wall-wide effect.
+        let away_from_niche = Vec3::new(1.0, 1.0, -0.5);
+        assert!(solid.sdf(away_from_niche) >= 0.0, "expected no bulge away from the niche's own span, got {}", solid.sdf(away_from_niche));
+
+        // The niche should measurably ADD volume vs. a niche-less twin.
+        let blank = rect_building(10.0, 6.0, 3.0, &origin);
+        let blank_solid = BuildingSolid::from_building(&blank, &origin).unwrap();
+        let v_with_niche = solid.to_mesh(0.15).signed_volume();
+        let v_blank = blank_solid.to_mesh(0.15).signed_volume();
+        assert!(
+            v_with_niche > v_blank + 0.1,
+            "expected the niche to add measurable volume: with_niche={v_with_niche}, blank={v_blank}"
         );
     }
 }

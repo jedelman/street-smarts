@@ -18,7 +18,7 @@ use street_smarts_opinions::registry::evaluate_all;
 pub mod building_mesh;
 pub mod cluster;
 pub mod ground_features;
-use building_mesh::{BuildingSolid, FootprintCollider};
+use building_mesh::{canopy_mesh, BuildingSolid, FootprintCollider};
 
 /// A face counts as "roof" (rather than wall) once its normal points at
 /// least this far upward. `0.5` is `cos(60°)`, deliberately far from both
@@ -424,6 +424,7 @@ impl NeighborhoodNode3D {
                     name.starts_with("GeneratedMassing_")
                         || name.starts_with("GeneratedOpenSpace_")
                         || name.starts_with("GeneratedStreet_")
+                        || name.starts_with("GeneratedCanopy_")
                 })
                 .collect()
         };
@@ -466,12 +467,46 @@ impl NeighborhoodNode3D {
         flat_garden_roof_material.set_albedo(Color::from_rgb(0.30, 0.52, 0.24));
         flat_garden_roof_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
-        let mut open_space_material = StandardMaterial3D::new_gd();
-        open_space_material.set_albedo(Color::from_rgb(0.35, 0.55, 0.32));
-        open_space_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
-        let mut street_material = StandardMaterial3D::new_gd();
-        street_material.set_albedo(Color::from_rgb(0.27, 0.27, 0.29));
-        street_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        // P119 Arcades canopies: a warm wood/awning tone, distinct from
+        // both roof colors and the plain wall material -- see
+        // canopy_mesh's own doc for why these are separate flat quads
+        // rather than part of the main building solid.
+        let mut canopy_material = StandardMaterial3D::new_gd();
+        canopy_material.set_albedo(Color::from_rgb(0.45, 0.33, 0.20));
+        canopy_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
+        // OpenSpaceKind materials -- real data on the Military Circle site
+        // is a mix of Plaza (P61's own intentional public square, a
+        // hardscape claim) and Common (P37's informal, soft cluster-scale
+        // shared land); every other kind gets the same plaza-like default
+        // rather than inventing a color for a kind that's never actually
+        // been produced yet. Previously ALL open space rendered as one
+        // uniform green regardless of kind -- a plaza reading as grass is
+        // exactly the kind of "reads as warehouse" flattening this pass is
+        // fixing.
+        let mut plaza_material = StandardMaterial3D::new_gd();
+        plaza_material.set_albedo(Color::from_rgb(0.62, 0.60, 0.54));
+        plaza_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut common_material = StandardMaterial3D::new_gd();
+        common_material.set_albedo(Color::from_rgb(0.42, 0.58, 0.34));
+        common_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
+        // Street materials by real classification -- `path_network.rs`
+        // already computes Arterial (asphalt) vs. Local/Pedestrian (grass
+        // pavers), but every segment used to render with one uniform grey
+        // regardless. Pedestrian gets its own tone even though it shares
+        // Local's exact surface value today, so a foot path already reads
+        // differently on screen ahead of also getting its own real
+        // (narrower) width.
+        let mut arterial_material = StandardMaterial3D::new_gd();
+        arterial_material.set_albedo(Color::from_rgb(0.27, 0.27, 0.29));
+        arterial_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut local_street_material = StandardMaterial3D::new_gd();
+        local_street_material.set_albedo(Color::from_rgb(0.45, 0.50, 0.34));
+        local_street_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut pedestrian_material = StandardMaterial3D::new_gd();
+        pedestrian_material.set_albedo(Color::from_rgb(0.58, 0.52, 0.40));
+        pedestrian_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
         let rebuild_start = std::time::Instant::now();
         let mut meshed = 0i32;
@@ -551,6 +586,13 @@ impl NeighborhoodNode3D {
             };
             self.base_mut().add_child(&mesh_instance);
             meshed += 1;
+
+            if let Some(canopy) = canopy_mesh(building, &origin) {
+                total_tris += canopy.triangles.len();
+                if let Some(canopy_instance) = mesh_to_instance(&canopy, format!("GeneratedCanopy_{}", building.id), Some(&canopy_material), None) {
+                    self.base_mut().add_child(&canopy_instance);
+                }
+            }
         }
 
         let mut open_space_meshed = 0i32;
@@ -561,7 +603,18 @@ impl NeighborhoodNode3D {
             let mesh = pad.to_mesh();
             total_tris += mesh.triangles.len();
             let name = format!("GeneratedOpenSpace_{}", open_space.id);
-            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&open_space_material), None) else {
+            // Hardscape-family kinds (an intentional public square, or a
+            // real bay attached to one) read as plaza; soft/informal kinds
+            // read as common. Nothing in the real Military Circle site
+            // produces Park/Vacant/Sponge/Parking/Other/Undecided today,
+            // so this default is a reasonable, not a verified, choice.
+            use street_smarts_core::nir::OpenSpaceKind;
+            let open_space_material = match open_space.kind {
+                OpenSpaceKind::Plaza | OpenSpaceKind::Pocket => &plaza_material,
+                OpenSpaceKind::Common | OpenSpaceKind::Park | OpenSpaceKind::Sponge => &common_material,
+                OpenSpaceKind::Vacant | OpenSpaceKind::Parking | OpenSpaceKind::Other | OpenSpaceKind::Undecided => &plaza_material,
+            };
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(open_space_material), None) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -570,11 +623,19 @@ impl NeighborhoodNode3D {
 
         let mut street_meshed = 0i32;
         for street in &nir.streets {
+            // Real classification from path_network.rs's MST + loop-budget
+            // split; unclassified (older fixtures) keeps the original
+            // uniform grey rather than guessing.
+            let street_material = match street.classification.as_deref() {
+                Some("pedestrian") => &pedestrian_material,
+                Some("local") => &local_street_material,
+                _ => &arterial_material,
+            };
             for (seg_idx, pad) in ground_features::street_ribbon_segments(street, &origin).into_iter().enumerate() {
                 let mesh = pad.to_mesh();
                 total_tris += mesh.triangles.len();
                 let name = format!("GeneratedStreet_{}_seg{}", street.id, seg_idx);
-                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&street_material), None) else {
+                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(street_material), None) else {
                     continue;
                 };
                 self.base_mut().add_child(&mesh_instance);
