@@ -21,6 +21,11 @@ use crate::p118_roof_garden::P118RoofGarden;
 use crate::p119_arcades::P119Arcades;
 use crate::p133_staircase_as_a_stage::P133StaircaseAsAStage;
 use crate::p160_building_edge::P160BuildingEdge;
+use crate::p100_pedestrian_street::P100PedestrianStreet;
+use crate::p161_sunny_place::P161SunnyPlace;
+use crate::p164_street_windows::P164StreetWindows;
+use crate::p165_opening_to_the_street::P165OpeningToTheStreet;
+use crate::p192_windows_overlooking_life::P192WindowsOverlookingLife;
 use crate::p197_thick_walls::P197ThickWalls;
 use crate::p221_natural_doors_and_windows::P221NaturalDoorsAndWindows;
 use crate::p61_small_public_squares::P61SmallPublicSquares;
@@ -63,7 +68,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// The full ordering rationale used to be duplicated here AND in
 /// `pipeline.rs`'s module doc -- two files' worth of prose describing the
-/// same 23-step sequence, exactly the "read instead of look up" cost
+/// same 28-step sequence, exactly the "read instead of look up" cost
 /// PATTERN_LANGUAGE_SIMULATION.md §3.4 named. It now lives in ONE place,
 /// queryable instead of read-and-infer: `language_graph::LANGUAGE`, whose
 /// `requires`/`why` fields are checked by `validate_order` against the
@@ -81,7 +86,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// for the real, tested sequence, and the web UI's "Run full pipeline"
 /// button for the same orchestration client-side.
 ///
-/// `crate::pipeline::run_corrected_pipeline` runs all twenty-three steps end to end
+/// `crate::pipeline::run_corrected_pipeline` runs all twenty-eight steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -119,7 +124,12 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P131TheFlowThroughRooms),
         Box::new(P133StaircaseAsAStage),
         Box::new(P221NaturalDoorsAndWindows),
+        Box::new(P192WindowsOverlookingLife),
+        Box::new(P164StreetWindows),
+        Box::new(P165OpeningToTheStreet),
+        Box::new(P100PedestrianStreet),
         Box::new(P160BuildingEdge),
+        Box::new(P161SunnyPlace),
     ]
 }
 

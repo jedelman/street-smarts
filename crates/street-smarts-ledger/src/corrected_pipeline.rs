@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 23-stage pipeline and risking
+//! each independently computing the same 28-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 23
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 28
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -32,8 +32,13 @@ use street_smarts_patterns::p127_intimacy_gradient::{P127IntimacyGradient, P127P
 use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTheHeart, P129Params};
 use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
 use street_smarts_patterns::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
+use street_smarts_patterns::p100_pedestrian_street::{P100Params, P100PedestrianStreet};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
+use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
+use street_smarts_patterns::p164_street_windows::{P164Params, P164StreetWindows};
+use street_smarts_patterns::p165_opening_to_the_street::{P165OpeningToTheStreet, P165Params};
+use street_smarts_patterns::p192_windows_overlooking_life::{P192Params, P192WindowsOverlookingLife};
 use street_smarts_patterns::p197_thick_walls::{P197Params, P197ThickWalls};
 use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
@@ -69,7 +74,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 23-stage corrected pipeline against `root` via
+/// Runs the real 28-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -167,7 +172,25 @@ pub fn run_corrected_pipeline_via_ledger(
     // (131 < 133). See pipeline.rs's own step 19 doc.
     try_run(store, &P133StaircaseAsAStage, "*", &P133Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P221NaturalDoorsAndWindows, "*", &P221Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Relocates a real window P221 just placed if it fails a real
+    // proximity check. See pipeline.rs's own step 23 doc.
+    try_run(store, &P192WindowsOverlookingLife, "*", &P192Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Adds a real window to a street-adjacent building P221/P192 left
+    // blind. See pipeline.rs's own step 24 doc.
+    try_run(store, &P164StreetWindows, "*", &P164Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Adds real windows along a building's own door wall until opening
+    // coverage meets target. See pipeline.rs's own step 25 doc.
+    try_run(store, &P165OpeningToTheStreet, "*", &P165Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Adds a real door to a doorless building near a Pedestrian street
+    // until entrance density meets target. See pipeline.rs's own step 26
+    // doc (including the real P110 Main Entrance tension this creates).
+    try_run(store, &P100PedestrianStreet, "*", &P100Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P160BuildingEdge, "*", &P160Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Adds a small real south-facing open space next to a building that
+    // lacks one. Runs LAST -- see pipeline.rs's own step 28 doc for why
+    // (and the real P60 Accessible Green cross-pattern regression this
+    // creates).
+    try_run(store, &P161SunnyPlace, "*", &P161Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     (cur, commits)
 }

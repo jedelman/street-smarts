@@ -197,13 +197,59 @@
 //!      nearest street/open space. No randomness. See
 //!      `p221_natural_doors_and_windows`'s own module doc for the pattern
 //!      graph this closes (P107 -> P159 -> P221).
-//!   23. P160 Building Edge (once, site-scale): places a real wall niche
+//!   23. P192 Windows Overlooking Life (once, site-scale): relocates a
+//!      real ground-floor outer window P221 already placed to a different
+//!      real wall edge when its current position fails a real proximity
+//!      check (no street/open space within view_threshold_m, or blocked by
+//!      a nearby building within blocked_threshold_m). Never adds or
+//!      removes a window, only moves one that's already there. Needs
+//!      P221's real openings to exist first. See
+//!      p192_windows_overlooking_life's own module doc for the exact same
+//!      proxy its own opinion already checks.
+//!   24. P164 Street Windows (once, site-scale): adds a real ground-floor
+//!      window to a street-adjacent building that P221 left blind (no
+//!      window near a Local/Pedestrian street). Runs after P192 so windows
+//!      it relocates away from a blind wall aren't immediately
+//!      "un-blinded" by this step reading stale state, and before P165/
+//!      P100 below since those also add openings to the same walls. See
+//!      p164_street_windows's own module doc.
+//!   25. P165 Opening to the Street (once, site-scale): adds real
+//!      ground-floor windows along a building's own door wall edge until
+//!      real opening-width coverage on that edge reaches
+//!      `target_coverage`. Needs P221's real door placement to know which
+//!      edge is the street-facing one. See p165_opening_to_the_street's
+//!      own module doc.
+//!   26. P100 Pedestrian Street (once, site-scale): adds a real
+//!      ground-floor door to a doorless building near a Pedestrian-
+//!      classified street until real entrance density along that street
+//!      reaches `min_entrances_per_100m`. Never gives a second door to a
+//!      building that already has one (see p100_pedestrian_street's own
+//!      module doc for the real P110 Main Entrance tension this creates:
+//!      P110 scores `1.0 / door_count` per building, so a future version
+//!      of this operator that added second doors would lower P110's
+//!      score -- this one never does). Runs after P165 so the coverage
+//!      target above is computed before new doors change which edge
+//!      qualifies as the "door wall."
+//!   27. P160 Building Edge (once, site-scale): places a real wall niche
 //!      flanking every real door P221 already placed, on the same wall
 //!      edge. Runs after P221 for the real door data to flank -- a
 //!      genuine Class C dependency (PATTERN_ORDERING_AUDIT.md §4.8), not a
 //!      free reorder like the others above. Not fatal if no door has room
 //!      for a niche on either side. See p160_building_edge's own module
 //!      doc.
+//!   28. P161 Sunny Place (once, site-scale): adds a small, real,
+//!      south-facing OpenSpace (reusing `OpenSpaceKind::Common` -- no
+//!      dedicated "Sunny" variant exists, see p161_sunny_place's own
+//!      module doc for why that's an honest reuse, not a perfect fit) next
+//!      to a building that doesn't already have one, rejecting any
+//!      candidate that would overlap a real building footprint. Runs
+//!      LAST, after every other stage: earlier placement would change
+//!      what P221 (long since run by now) reads as "real life" near a
+//!      wall, perturbing every downstream stage and test expectation for
+//!      zero real benefit. Also flags a real cross-pattern regression:
+//!      these small spaces will lower `p60_accessible_green`'s own
+//!      qualifying-size sub-score, since nothing about the site's actual
+//!      large greens changed.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -225,8 +271,13 @@ use crate::p124_activity_pockets::{P124ActivityPockets, P124Params};
 use crate::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use crate::p118_roof_garden::{P118Params, P118RoofGarden};
 use crate::p119_arcades::{P119Arcades, P119Params};
+use crate::p100_pedestrian_street::{P100Params, P100PedestrianStreet};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p160_building_edge::{P160BuildingEdge, P160Params};
+use crate::p161_sunny_place::{P161Params, P161SunnyPlace};
+use crate::p164_street_windows::{P164Params, P164StreetWindows};
+use crate::p165_opening_to_the_street::{P165OpeningToTheStreet, P165Params};
+use crate::p192_windows_overlooking_life::{P192Params, P192WindowsOverlookingLife};
 use crate::p197_thick_walls::{P197Params, P197ThickWalls};
 use crate::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use crate::p29_density_rings::{P29DensityRings, P29Params};
@@ -606,12 +657,54 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P221NaturalDoorsAndWindows.name());
     }
 
+    // P192 Windows Overlooking Life (once, site-scale): relocates a real
+    // ground-floor window P221 just placed if it fails a real proximity
+    // check. Needs P221's real openings. See pipeline.rs's own step 23 doc.
+    if let Ok(sub192) = P192WindowsOverlookingLife.apply(&nbhd, "*", &P192Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub192);
+        trace.push(P192WindowsOverlookingLife.name());
+    }
+
+    // P164 Street Windows (once, site-scale): adds a real window to a
+    // street-adjacent building P221/P192 left blind. See pipeline.rs's
+    // own step 24 doc.
+    if let Ok(sub164) = P164StreetWindows.apply(&nbhd, "*", &P164Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub164);
+        trace.push(P164StreetWindows.name());
+    }
+
+    // P165 Opening to the Street (once, site-scale): adds real windows
+    // along a building's own door wall until opening coverage meets
+    // target. See pipeline.rs's own step 25 doc.
+    if let Ok(sub165) = P165OpeningToTheStreet.apply(&nbhd, "*", &P165Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub165);
+        trace.push(P165OpeningToTheStreet.name());
+    }
+
+    // P100 Pedestrian Street (once, site-scale): adds a real door to a
+    // doorless building near a Pedestrian street until entrance density
+    // meets target. See pipeline.rs's own step 26 doc (including the real
+    // P110 Main Entrance tension this creates).
+    if let Ok(sub100) = P100PedestrianStreet.apply(&nbhd, "*", &P100Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub100);
+        trace.push(P100PedestrianStreet.name());
+    }
+
     // P160 Building Edge (once, site-scale): places a real wall niche
     // flanking every real door P221 already placed. Needs real Opening
     // data, so runs after P221. Not fatal if no door has room for one.
     if let Ok(sub160) = P160BuildingEdge.apply(&nbhd, "*", &P160Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub160);
         trace.push(P160BuildingEdge.name());
+    }
+
+    // P161 Sunny Place (once, site-scale): adds a small real south-facing
+    // open space next to a building that lacks one. Runs LAST -- see
+    // pipeline.rs's own step 28 doc for why (and the real P60 Accessible
+    // Green cross-pattern regression this creates).
+    if let Ok(sub161) = P161SunnyPlace.apply(&nbhd, "*", &P161Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub161);
+        trace.push(P161SunnyPlace.name());
     }
 
     (nbhd, trace)
