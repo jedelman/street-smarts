@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 28-stage pipeline and risking
+//! each independently computing the same 31-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 28
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 31
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -33,6 +33,9 @@ use street_smarts_patterns::p129_common_areas_at_the_heart::{P129CommonAreasAtTh
 use street_smarts_patterns::p130_entrance_room::{P130EntranceRoom, P130Params};
 use street_smarts_patterns::p131_the_flow_through_rooms::{P131Params, P131TheFlowThroughRooms};
 use street_smarts_patterns::p100_pedestrian_street::{P100Params, P100PedestrianStreet};
+use street_smarts_patterns::p102_family_of_entrances::{P102FamilyOfEntrances, P102Params};
+use street_smarts_patterns::p110_main_entrance::{P110MainEntrance, P110Params};
+use street_smarts_patterns::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
 use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
@@ -74,7 +77,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 28-stage corrected pipeline against `root` via
+/// Runs the real 31-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -185,12 +188,25 @@ pub fn run_corrected_pipeline_via_ledger(
     // until entrance density meets target. See pipeline.rs's own step 26
     // doc (including the real P110 Main Entrance tension this creates).
     try_run(store, &P100PedestrianStreet, "*", &P100Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Relocates a building's first qualifying door to whichever outer-ring
+    // edge sits closest to a real street. Runs after P100 so a building
+    // P100 just gave its first door to is already final. See pipeline.rs's
+    // own step 27 doc.
+    try_run(store, &P110MainEntrance, "*", &P110Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Nudges outlier door widths into a tolerance band around the
+    // neighborhood mean. Runs right after P110 so the mean reflects final
+    // entrance positions. See pipeline.rs's own step 28 doc.
+    try_run(store, &P102FamilyOfEntrances, "*", &P102Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P160BuildingEdge, "*", &P160Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Adds a small real south-facing open space next to a building that
-    // lacks one. Runs LAST -- see pipeline.rs's own step 28 doc for why
-    // (and the real P60 Accessible Green cross-pattern regression this
-    // creates).
+    // lacks one. Runs after every other stage except P126 -- see
+    // pipeline.rs's own step 30 doc for why (and the real P60 Accessible
+    // Green cross-pattern regression this creates).
     try_run(store, &P161SunnyPlace, "*", &P161Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Places a generic Civic activity marker near any real Plaza that
+    // doesn't already have one nearby. Runs LAST. See pipeline.rs's own
+    // step 31 doc.
+    try_run(store, &P126SomethingRoughlyInTheMiddle, "*", &P126Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     (cur, commits)
 }

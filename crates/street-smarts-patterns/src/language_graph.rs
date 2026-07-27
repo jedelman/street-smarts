@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 28-step sequence -- exactly the "read-and-infer" cost
+//! same 31-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 28-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 31-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -197,6 +197,18 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "adds a real ground-floor door to a doorless building near a Pedestrian-classified street until real entrance density meets target; needs path_network's real street classifications. Never gives a second door to a building that already has one -- see this operator's own module doc for the real P110 Main Entrance tension this creates (P110 scores 1.0/door_count per building)",
     },
     PatternNode {
+        id: "p110_main_entrance", alexander_number: Some(110),
+        requires: &["p221_natural_doors_and_windows", "path_network"],
+        completes: &[],
+        why: "relocates a building's first qualifying ground-floor door to whichever outer-ring edge sits closest to a real street, when its current position is too far; needs P221's real door placement and path_network's real streets. Runs after p100_pedestrian_street so a building that just got its first door from P100 is already in its final door-count state before this stage reads it. Must run BEFORE p102_family_of_entrances, which measures the same doors' final positions",
+    },
+    PatternNode {
+        id: "p102_family_of_entrances", alexander_number: Some(102),
+        requires: &["p110_main_entrance"],
+        completes: &[],
+        why: "nudges outlier door widths into a tolerance band around the neighborhood-wide mean; needs p110_main_entrance's real final door positions so the mean it computes isn't stale. Doesn't strictly require p100_pedestrian_street (a real but skippable step -- allowed_absent on this fixture, already satisfied by P221) -- just needs to run after it if it did, which pipeline.rs's own real call order already guarantees. Never addresses clustering -- see this operator's own module doc",
+    },
+    PatternNode {
         id: "p160_building_edge", alexander_number: Some(160),
         requires: &["p221_natural_doors_and_windows"],
         completes: &[],
@@ -206,7 +218,13 @@ pub const LANGUAGE: &[PatternNode] = &[
         id: "p161_sunny_place", alexander_number: Some(161),
         requires: &["p107_wings_of_light"],
         completes: &[],
-        why: "adds a small real south-facing open space (reusing OpenSpaceKind::Common -- no dedicated Sunny variant exists) next to a building that doesn't already have one, rejecting any candidate that would overlap a real building footprint. Runs LAST, after every other stage: earlier placement would change what p221_natural_doors_and_windows (long since run by now) reads as real life near a wall, perturbing every downstream stage for zero real benefit. Also creates a real cross-pattern regression with p60_accessible_green's own qualifying-size sub-score -- see this operator's own module doc",
+        why: "adds a small real south-facing open space (reusing OpenSpaceKind::Common -- no dedicated Sunny variant exists) next to a building that doesn't already have one, rejecting any candidate that would overlap a real building footprint. Runs after every other stage except p126_something_roughly_in_the_middle: earlier placement would change what p221_natural_doors_and_windows (long since run by now) reads as real life near a wall, perturbing every downstream stage for zero real benefit. Also creates a real cross-pattern regression with p60_accessible_green's own qualifying-size sub-score -- see this operator's own module doc",
+    },
+    PatternNode {
+        id: "p126_something_roughly_in_the_middle", alexander_number: Some(126),
+        requires: &["p61_small_public_squares"],
+        completes: &[],
+        why: "places a generic Civic activity marker, jittered off-center, near any real Plaza that doesn't already have a real ActivityNode nearby from p61_small_public_squares/p124_activity_pockets/p53_main_gateways. Runs LAST so it sees the final, complete set of Plazas and ActivityNodes from every earlier stage and doesn't stack a redundant node on a plaza another generator already served. Doesn't strictly require p124_activity_pockets/p53_main_gateways (real but skippable steps -- see their own nodes), only checks whatever activity_nodes exist by the time it runs, which pipeline.rs's own real call order already guarantees is everything",
     },
 ];
 

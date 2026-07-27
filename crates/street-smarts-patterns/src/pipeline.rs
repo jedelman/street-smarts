@@ -230,26 +230,57 @@
 //!      score -- this one never does). Runs after P165 so the coverage
 //!      target above is computed before new doors change which edge
 //!      qualifies as the "door wall."
-//!   27. P160 Building Edge (once, site-scale): places a real wall niche
+//!   27. P110 Main Entrance (once, site-scale): relocates a building's
+//!      first qualifying ground-floor door to whichever outer-ring edge
+//!      sits closest to a real street, when its current position is
+//!      farther than `visible_threshold_m` from any street. Needs P221's
+//!      real door placement to have something to relocate; runs after
+//!      P100 (above) so a building P100 just gave its first door to is
+//!      already in its final entrance-count state before this stage reads
+//!      it. Never touches multi-entrance singularity (deleting extra
+//!      doors would regress P100/P112/P115/P165's own door-count-dependent
+//!      scores) -- see p110_main_entrance's own module doc.
+//!   28. P102 Family of Entrances (once, site-scale): nudges outlier door
+//!      widths back into a tolerance band around the neighborhood-wide
+//!      mean, closing the `similarity` half of the opinion. Runs right
+//!      after P110 -- P110 may relocate (but never resizes) the very
+//!      doors this operator measures, and P100 (further above) may have
+//!      just added new ones, so this stage needs the FINAL entrance set
+//!      and positions to compute a mean that won't go stale. Never
+//!      addresses `clustering` (would require repositioning buildings,
+//!      out of scope) -- see p102_family_of_entrances's own module doc.
+//!   29. P160 Building Edge (once, site-scale): places a real wall niche
 //!      flanking every real door P221 already placed, on the same wall
 //!      edge. Runs after P221 for the real door data to flank -- a
 //!      genuine Class C dependency (PATTERN_ORDERING_AUDIT.md §4.8), not a
 //!      free reorder like the others above. Not fatal if no door has room
 //!      for a niche on either side. See p160_building_edge's own module
 //!      doc.
-//!   28. P161 Sunny Place (once, site-scale): adds a small, real,
+//!   30. P161 Sunny Place (once, site-scale): adds a small, real,
 //!      south-facing OpenSpace (reusing `OpenSpaceKind::Common` -- no
 //!      dedicated "Sunny" variant exists, see p161_sunny_place's own
 //!      module doc for why that's an honest reuse, not a perfect fit) next
 //!      to a building that doesn't already have one, rejecting any
 //!      candidate that would overlap a real building footprint. Runs
-//!      LAST, after every other stage: earlier placement would change
-//!      what P221 (long since run by now) reads as "real life" near a
-//!      wall, perturbing every downstream stage and test expectation for
-//!      zero real benefit. Also flags a real cross-pattern regression:
-//!      these small spaces will lower `p60_accessible_green`'s own
-//!      qualifying-size sub-score, since nothing about the site's actual
-//!      large greens changed.
+//!      after every other stage except P126 (below): earlier placement
+//!      would change what P221 (long since run by now) reads as "real
+//!      life" near a wall, perturbing every downstream stage and test
+//!      expectation for zero real benefit. Also flags a real cross-pattern
+//!      regression: these small spaces will lower
+//!      `p60_accessible_green`'s own qualifying-size sub-score, since
+//!      nothing about the site's actual large greens changed.
+//!   31. P126 Something Roughly in the Middle (once, site-scale): places a
+//!      generic `ActivityKind::Civic` marker, jittered off-center, near
+//!      any real `Plaza`'s centroid that doesn't already have a real
+//!      `ActivityNode` nearby (from P61/P124/P53 above). Runs LAST,
+//!      strictly after P161 (which can add new small `OpenSpace` -- not
+//!      Plaza-kind, so it doesn't create new candidates for this stage --
+//!      but running last still means this stage sees the final, complete
+//!      set of Plazas and ActivityNodes from every earlier stage, with
+//!      nothing left to place after it that could add a Plaza this stage
+//!      would otherwise miss). Idempotent: a Plaza that already has a
+//!      nearby node from an earlier stage is skipped, not double-served.
+//!      See p126_something_roughly_in_the_middle's own module doc.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -272,6 +303,9 @@ use crate::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use crate::p118_roof_garden::{P118Params, P118RoofGarden};
 use crate::p119_arcades::{P119Arcades, P119Params};
 use crate::p100_pedestrian_street::{P100Params, P100PedestrianStreet};
+use crate::p102_family_of_entrances::{P102FamilyOfEntrances, P102Params};
+use crate::p110_main_entrance::{P110MainEntrance, P110Params};
+use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p160_building_edge::{P160BuildingEdge, P160Params};
 use crate::p161_sunny_place::{P161Params, P161SunnyPlace};
@@ -690,6 +724,25 @@ pub fn run_corrected_pipeline_with_p37_traced(
         trace.push(P100PedestrianStreet.name());
     }
 
+    // P110 Main Entrance (once, site-scale): relocates a building's first
+    // qualifying door to the outer-ring edge closest to a real street, when
+    // it's currently farther than visible_threshold_m from any. Runs after
+    // P100 so a building P100 just gave its first door to is already in its
+    // final door-count state. See pipeline.rs's own step 27 doc.
+    if let Ok(sub110) = P110MainEntrance.apply(&nbhd, "*", &P110Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub110);
+        trace.push(P110MainEntrance.name());
+    }
+
+    // P102 Family of Entrances (once, site-scale): nudges outlier door
+    // widths into a tolerance band around the neighborhood mean. Runs right
+    // after P110 so the mean is computed against final entrance positions,
+    // not stale ones. See pipeline.rs's own step 28 doc.
+    if let Ok(sub102) = P102FamilyOfEntrances.apply(&nbhd, "*", &P102Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub102);
+        trace.push(P102FamilyOfEntrances.name());
+    }
+
     // P160 Building Edge (once, site-scale): places a real wall niche
     // flanking every real door P221 already placed. Needs real Opening
     // data, so runs after P221. Not fatal if no door has room for one.
@@ -705,6 +758,16 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub161) = P161SunnyPlace.apply(&nbhd, "*", &P161Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub161);
         trace.push(P161SunnyPlace.name());
+    }
+
+    // P126 Something Roughly in the Middle (once, site-scale): places a
+    // generic Civic activity marker, jittered off-center, near any real
+    // Plaza that doesn't already have a real ActivityNode nearby. Runs
+    // LAST so it sees the final, complete set of Plazas and ActivityNodes
+    // from every earlier stage. See pipeline.rs's own step 31 doc.
+    if let Ok(sub126) = P126SomethingRoughlyInTheMiddle.apply(&nbhd, "*", &P126Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub126);
+        trace.push(P126SomethingRoughlyInTheMiddle.name());
     }
 
     (nbhd, trace)

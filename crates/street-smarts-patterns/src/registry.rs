@@ -8,13 +8,16 @@ use crate::p37_house_cluster::P37HouseCluster;
 use crate::p53_main_gateways::P53MainGateways;
 use crate::p95_building_complex::P95BuildingComplex;
 use crate::p96_number_of_stories::P96NumberOfStories;
+use crate::p102_family_of_entrances::P102FamilyOfEntrances;
 use crate::p107_wings_of_light::P107WingsOfLight;
 use crate::p108_connected_buildings::P108ConnectedBuildings;
+use crate::p110_main_entrance::P110MainEntrance;
 use crate::p127_intimacy_gradient::P127IntimacyGradient;
 use crate::p129_common_areas_at_the_heart::P129CommonAreasAtTheHeart;
 use crate::p130_entrance_room::P130EntranceRoom;
 use crate::p131_the_flow_through_rooms::P131TheFlowThroughRooms;
 use crate::p124_activity_pockets::P124ActivityPockets;
+use crate::p126_something_roughly_in_the_middle::P126SomethingRoughlyInTheMiddle;
 use crate::p116_cascade_of_roofs::P116CascadeOfRoofs;
 use crate::p117_sheltering_roof::P117ShelteringRoof;
 use crate::p118_roof_garden::P118RoofGarden;
@@ -68,7 +71,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// The full ordering rationale used to be duplicated here AND in
 /// `pipeline.rs`'s module doc -- two files' worth of prose describing the
-/// same 28-step sequence, exactly the "read instead of look up" cost
+/// same 31-step sequence, exactly the "read instead of look up" cost
 /// PATTERN_LANGUAGE_SIMULATION.md §3.4 named. It now lives in ONE place,
 /// queryable instead of read-and-infer: `language_graph::LANGUAGE`, whose
 /// `requires`/`why` fields are checked by `validate_order` against the
@@ -98,6 +101,11 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// grouping its pads into blocks afterward) -- not used by the corrected
 /// pipeline, which doesn't need to re-derive blocks after the fact because
 /// P37 already provides them up front.
+/// `crate::pipeline::run_corrected_pipeline` runs all thirty-one steps end to end
+/// for callers that just want the final neighborhood -- see that module's own
+/// doc for the up-to-date list; this doc comment used to duplicate the count
+/// inline here too, but that's exactly the two-places-to-update trap the
+/// module doc above already explains, so it isn't repeated a third time.
 pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
     vec![
         Box::new(P29DensityRings),
@@ -128,8 +136,11 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P164StreetWindows),
         Box::new(P165OpeningToTheStreet),
         Box::new(P100PedestrianStreet),
+        Box::new(P110MainEntrance),
+        Box::new(P102FamilyOfEntrances),
         Box::new(P160BuildingEdge),
         Box::new(P161SunnyPlace),
+        Box::new(P126SomethingRoughlyInTheMiddle),
     ]
 }
 
