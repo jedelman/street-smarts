@@ -47,7 +47,7 @@
 use crate::parameters::{ParamSpec, Parameters};
 use crate::subdivision::{PatternOperator, Subdivision, SubdivisionTrace};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use street_smarts_core::geometry::{haversine_m, point_to_polyline_m, LngLat};
 use street_smarts_core::nir::{Building, Neighborhood, Opening, OpeningKind};
 use street_smarts_core::opinion::SourceCitation;
@@ -187,19 +187,47 @@ impl PatternOperator for P100PedestrianStreet {
             );
         }
 
-        // Compute street lengths and find streets that are below the target.
-        let mut streets_to_improve: Vec<_> = Vec::new();
+        // Compute street lengths and identify streets that need improvement.
+        let mut streets_needing_improvement: Vec<(&street_smarts_core::nir::Street, f64)> = Vec::new();
+        let mut any_street_has_positive_length = false;
+
         for s in &ped_streets {
             let street_len: f64 = s.centerline.windows(2).map(|w| haversine_m(&w[0], &w[1])).sum();
             if street_len <= 0.0 {
                 continue;
             }
-            streets_to_improve.push((*s, street_len));
+            any_street_has_positive_length = true;
+
+            // Compute current entrance count (opinion logic: first door per building).
+            let mut current_entrance_count = 0usize;
+            for b in &nbhd.buildings {
+                if let Some(_door) = b.openings.iter().find(|o| {
+                    o.kind == OpeningKind::Door && !o.on_hole && o.floor == 0
+                }) {
+                    let door_pt = self.opening_to_point(b, _door)?;
+                    if point_to_polyline_m(&door_pt, &s.centerline)
+                        <= params.adjacency_threshold_m
+                    {
+                        current_entrance_count += 1;
+                    }
+                }
+            }
+
+            let min_needed = (params.min_entrances_per_100m * street_len / 100.0).ceil() as usize;
+            if current_entrance_count < min_needed {
+                streets_needing_improvement.push((s, street_len));
+            }
         }
 
-        if streets_to_improve.is_empty() {
+        if !any_street_has_positive_length {
             return Err(
                 "p100_pedestrian_street: no pedestrian street had positive real length to measure.".into(),
+            );
+        }
+
+        if streets_needing_improvement.is_empty() {
+            return Err(
+                "p100_pedestrian_street: every pedestrian street already meets the density target -- nothing to add.".into(),
             );
         }
 
@@ -216,7 +244,7 @@ impl PatternOperator for P100PedestrianStreet {
 
         if doorless_buildings.is_empty() {
             return Err(
-                "p100_pedestrian_street: every building already has a ground-floor outer-wall entrance -- nothing to add.".into(),
+                "p100_pedestrian_street: no doorless adjacent building exists -- every building already has a ground-floor outer-wall entrance.".into(),
             );
         }
 
@@ -229,8 +257,8 @@ impl PatternOperator for P100PedestrianStreet {
         let mut total_doors_added = 0usize;
         let mut streets_improved: Vec<String> = Vec::new();
 
-        // For each pedestrian street that is below target...
-        for (street, street_len) in streets_to_improve {
+        // For each pedestrian street that needs improvement...
+        for (street, street_len) in streets_needing_improvement {
             // Compute current entrance count (opinion logic: first door per building).
             let mut current_entrance_count = 0usize;
             for b in &nbhd.buildings {
@@ -247,11 +275,6 @@ impl PatternOperator for P100PedestrianStreet {
             }
 
             let min_needed = (params.min_entrances_per_100m * street_len / 100.0).ceil() as usize;
-            if current_entrance_count >= min_needed {
-                // Street already meets target.
-                continue;
-            }
-
             let mut doors_needed = min_needed - current_entrance_count;
 
             // Find candidate buildings (doorless + adjacent to this street).
@@ -343,7 +366,7 @@ impl PatternOperator for P100PedestrianStreet {
 
         if new_buildings.is_empty() {
             return Err(
-                "p100_pedestrian_street: no pedestrian street had adjacent doorless buildings within the threshold -- nothing to add.".into(),
+                "p100_pedestrian_street: no doorless adjacent building exists to give a door to -- nothing to add.".into(),
             );
         }
 
@@ -558,19 +581,21 @@ mod tests {
         let n = nbhd(buildings, vec![ped_street("PED1", 100.0)]);
         let err = P100PedestrianStreet.apply(&n, "*", &P100Params::defaults(), 0).unwrap_err();
         assert!(
-            err.contains("already meets"),
+            err.contains("already meets the density target"),
             "expected 'street already meets target' error, got: {err}"
         );
     }
 
     #[test]
     fn no_doorless_adjacent_buildings_is_an_error() {
-        // A pedestrian street with no buildings nearby at all.
-        let n = nbhd(vec![], vec![ped_street("PED1", 100.0)]);
+        // A pedestrian street with doorless buildings but they're not adjacent.
+        // Create a street at y=0 and a doorless building far away at y=100m.
+        let buildings = vec![building_without_door("B1", 0.0, 100.0, 10.0)];
+        let n = nbhd(buildings, vec![ped_street("PED1", 100.0)]);
         let err = P100PedestrianStreet.apply(&n, "*", &P100Params::defaults(), 0).unwrap_err();
         assert!(
-            err.contains("no pedestrian street had adjacent doorless buildings"),
-            "expected 'no adjacent buildings' error, got: {err}"
+            err.contains("no doorless adjacent building exists"),
+            "expected 'no adjacent doorless buildings' error, got: {err}"
         );
     }
 

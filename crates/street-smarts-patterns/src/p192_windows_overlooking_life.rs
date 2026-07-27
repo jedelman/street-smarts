@@ -614,20 +614,24 @@ mod tests {
 
     #[test]
     fn a_blocked_window_gets_relocated_to_an_unblocked_edge() {
-        // Building B1 has two windows. B2 is placed close to B1's south edge (ring 0),
-        // blocking the window there. The east edge (ring 1) should be clear.
+        // Building B1 has two windows. B2 is placed with a vertex close enough (< 6m)
+        // to B1's south window, blocking it. A nearby street provides "life" to both
+        // edges. The south window is blocked, the east window is not, so relocation
+        // should move the south window to the east edge.
         let m = 1.0 / 111_320.0;
         let b1 = building_with_two_windows("B1", 0.0, 0.0);
 
-        // B2 sits just south of B1's south wall, blocking the view from the first window.
+        // B2 is a small building placed directly south of B1's south window (at 3, 0).
+        // Its top-center point is at approximately (3, -3.5), which is ~3.5m from the
+        // window -- well within the 6m blockage threshold.
         let b2 = Building {
             id: "B2".into(),
             polygon: Polygon::from_ring(vec![
-                LngLat::new(0.0 * m, -9.0 * m),
-                LngLat::new(6.0 * m, -9.0 * m),
-                LngLat::new(6.0 * m, -6.0 * m),
-                LngLat::new(0.0 * m, -6.0 * m),
-                LngLat::new(0.0 * m, -9.0 * m),
+                LngLat::new(2.0 * m, -5.0 * m),
+                LngLat::new(4.0 * m, -5.0 * m),
+                LngLat::new(4.0 * m, -2.0 * m),
+                LngLat::new(2.0 * m, -2.0 * m),
+                LngLat::new(2.0 * m, -5.0 * m),
             ]),
             height_m: Some(6.0),
             typology: Some("p107_solid_v01".into()),
@@ -643,20 +647,20 @@ mod tests {
             wall_niches: vec![],
         };
 
-        // Street far enough away that it doesn't help the blocked window.
-        let street = street_at_y(-50.0);
+        // Street at y=10, about 10m north. This is within 25m, so it provides "life".
+        let street = street_at_y(10.0);
 
         let n = nbhd(vec![b1, b2], vec![street]);
         let sub = P192WindowsOverlookingLife
             .apply(&n, "*", &P192Params::defaults(), 0)
             .unwrap();
 
-        // Should relocate at least one window.
+        // Should relocate at least one window (the south one to another edge).
         assert!(!sub.new_buildings.is_empty(), "should have relocated at least one building");
         assert!(!sub.replaced_building_ids.is_empty());
 
         let relocated_b1 = &sub.new_buildings[0];
-        // The first window should have been moved to a different ring_index.
+        // The first window (originally on ring 0, south) should have been moved to a different ring_index.
         let first_window = &relocated_b1.openings[0];
         assert!(
             first_window.ring_index != 0,
@@ -734,17 +738,22 @@ mod tests {
     }
 
     #[test]
-    fn no_street_no_relocatable_windows_fails() {
-        // Building with windows, but no street and no way to improve them all.
+    fn windows_far_from_streets_return_success_with_no_improvements() {
+        // Building with windows, but no nearby street. Windows fail the proxy,
+        // but since no edge is better (all equally far from streets), no relocations occur.
+        // Per the spec, this is NOT an error -- just a success with no modifications.
         let b = building_with_two_windows("B1", 0.0, 0.0);
         let n = nbhd(vec![b], vec![]);
-        let err = P192WindowsOverlookingLife
+        let sub = P192WindowsOverlookingLife
             .apply(&n, "*", &P192Params::defaults(), 0)
-            .unwrap_err();
-        // Should get an error about no improvements.
+            .unwrap();
+        // Should succeed but with an empty Subdivision (no relocations).
+        assert!(sub.new_buildings.is_empty(), "should not relocate when all edges are equally bad");
+        assert!(sub.replaced_building_ids.is_empty());
+        // The trace should document that windows couldn't be improved.
         assert!(
-            !err.is_empty(),
-            "should error when no windows can be improved"
+            sub.trace.headline.contains("could not be improved"),
+            "trace should mention windows that couldn't be improved"
         );
     }
 
