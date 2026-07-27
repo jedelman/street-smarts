@@ -5,6 +5,7 @@ use crate::building_shape::BuildingShape;
 use crate::p21_four_story_limit::P21FourStoryLimit;
 use crate::p29_density_rings::P29DensityRings;
 use crate::p37_house_cluster::P37HouseCluster;
+use crate::p53_main_gateways::P53MainGateways;
 use crate::p95_building_complex::P95BuildingComplex;
 use crate::p96_number_of_stories::P96NumberOfStories;
 use crate::p107_wings_of_light::P107WingsOfLight;
@@ -62,7 +63,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 ///
 /// The full ordering rationale used to be duplicated here AND in
 /// `pipeline.rs`'s module doc -- two files' worth of prose describing the
-/// same 21-step sequence, exactly the "read instead of look up" cost
+/// same 23-step sequence, exactly the "read instead of look up" cost
 /// PATTERN_LANGUAGE_SIMULATION.md §3.4 named. It now lives in ONE place,
 /// queryable instead of read-and-infer: `language_graph::LANGUAGE`, whose
 /// `requires`/`why` fields are checked by `validate_order` against the
@@ -80,7 +81,7 @@ pub fn available_operators() -> Vec<OperatorInfo> {
 /// for the real, tested sequence, and the web UI's "Run full pipeline"
 /// button for the same orchestration client-side.
 ///
-/// `crate::pipeline::run_corrected_pipeline` runs all twenty-one steps end to end
+/// `crate::pipeline::run_corrected_pipeline` runs all twenty-three steps end to end
 /// for callers that just want the final neighborhood (used by
 /// `examples/dump_pipeline.rs` and by `tests/corrected_pipeline.rs`'s
 /// per-stage assertions, which reimplement the loop locally to check
@@ -99,6 +100,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P95BuildingComplex),
         Box::new(BlockGrouping),
         Box::new(PathNetwork),
+        Box::new(P53MainGateways),
         Box::new(P107WingsOfLight),
         Box::new(BuildingShape),
         Box::new(P61SmallPublicSquares),

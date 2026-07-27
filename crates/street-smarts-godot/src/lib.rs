@@ -893,6 +893,14 @@ impl NeighborhoodNode3D {
         let mut activity_other_material = StandardMaterial3D::new_gd();
         activity_other_material.set_albedo(Color::from_rgb(0.55, 0.55, 0.55));
         activity_other_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        // P53 Main Gateways: a bright, unmissable red-orange -- a real
+        // threshold marker, deliberately the most visually assertive of
+        // every ActivityKind color, matching Alexander's own "great
+        // gateways" language (these mark entering the site itself, not an
+        // interior focal point the way every other kind here does).
+        let mut activity_gateway_material = StandardMaterial3D::new_gd();
+        activity_gateway_material.set_albedo(Color::from_rgb(0.90, 0.25, 0.10));
+        activity_gateway_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
         let rebuild_start = std::time::Instant::now();
         let mut meshed = 0i32;
@@ -1079,6 +1087,7 @@ impl NeighborhoodNode3D {
                 ActivityKind::School => &activity_school_material,
                 ActivityKind::Worship => &activity_worship_material,
                 ActivityKind::Health => &activity_health_material,
+                ActivityKind::Gateway => &activity_gateway_material,
                 ActivityKind::Other => &activity_other_material,
             };
             let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(material), None, None) else {

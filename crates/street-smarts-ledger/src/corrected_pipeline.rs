@@ -7,14 +7,14 @@
 //! This is the single source of truth `examples/dump_pipeline.rs` (which
 //! only needs the final state) and `examples/dump_lineage_animation.rs`
 //! (which needs every intermediate commit) both build on now, instead of
-//! each independently computing the same 22-stage pipeline and risking
+//! each independently computing the same 23-stage pipeline and risking
 //! the two silently drifting apart -- exactly the kind of duplicated-
 //! source-of-truth bug this codebase has caught and fixed before (see
 //! `language_graph.rs`'s own self-verifying test against this same
 //! pipeline's real trace, and P29's `from_label`/`from_ring` dual-path
 //! property test).
 //!
-//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 22
+//! Mirrors `run_corrected_pipeline_with_p37_traced` exactly: same 23
 //! stages, same targets, same per-block P61 area-budget split, same
 //! skip-tolerance (`if let Ok`, not an abort).
 
@@ -38,6 +38,7 @@ use street_smarts_patterns::p197_thick_walls::{P197Params, P197ThickWalls};
 use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
 use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
+use street_smarts_patterns::p53_main_gateways::{P53MainGateways, P53Params};
 use street_smarts_patterns::p61_small_public_squares::{P61Params, P61SmallPublicSquares};
 use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
 use street_smarts_patterns::p96_number_of_stories::{P96NumberOfStories, P96Params};
@@ -68,7 +69,7 @@ fn try_run(
     }
 }
 
-/// Runs the real 22-stage corrected pipeline against `root` via
+/// Runs the real 23-stage corrected pipeline against `root` via
 /// `store.get_or_compute`, returning the final commit id plus every real
 /// commit that succeeded, in order (empty list entries are never
 /// inserted -- a skipped stage just doesn't appear).
@@ -89,6 +90,10 @@ pub fn run_corrected_pipeline_via_ledger(
     try_run(store, &P29DensityRings, parcel_id, &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P37HouseCluster, parcel_id, &P37Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &PathNetwork, "*", &PathNetworkParams::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Marks the site's own real perimeter boundary (just populated above)
+    // with a real Gateway node at its nearest crossing street endpoint.
+    // See pipeline.rs's own step 4 doc.
+    try_run(store, &P53MainGateways, "*", &P53Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     // Site-scale square budget split across blocks by area -- same
     // computation `pipeline.rs` itself uses, via its own real `pub fn`

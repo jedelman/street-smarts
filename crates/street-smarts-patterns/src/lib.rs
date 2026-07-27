@@ -33,6 +33,7 @@ pub mod p130_entrance_room;
 pub mod p131_the_flow_through_rooms;
 pub mod p133_staircase_as_a_stage;
 pub mod p221_natural_doors_and_windows;
+pub mod p53_main_gateways;
 pub mod p61_small_public_squares;
 pub mod p197_thick_walls;
 pub mod p124_activity_pockets;

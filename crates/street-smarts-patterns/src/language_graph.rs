@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 21-step sequence -- exactly the "read-and-infer" cost
+//! same 23-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 21-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 23-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -75,6 +75,10 @@ pub const LANGUAGE: &[PatternNode] = &[
     PatternNode {
         id: "path_network", alexander_number: Some(52), requires: &["p37_house_cluster"], completes: &[],
         why: "connects P37's blocks to each other; needs real BLOCK_n parcels to route between",
+    },
+    PatternNode {
+        id: "p53_main_gateways", alexander_number: Some(53), requires: &["path_network"], completes: &[],
+        why: "marks the site's own real perimeter boundary with a real Gateway node at its nearest crossing street endpoint; needs path_network to have populated both Neighborhood.boundaries and .streets first. No real dependency on p61_small_public_squares/p95_building_complex either direction -- doesn't touch parcels/blocks at all, so its position relative to them is a free reorder, placed here to match Alexander's own ascending numbering (52 < 53 < 61) at zero cost",
     },
     PatternNode {
         id: "p61_small_public_squares", alexander_number: Some(61), requires: &["p37_house_cluster"], completes: &[],

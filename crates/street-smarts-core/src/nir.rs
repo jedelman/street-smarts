@@ -591,6 +591,15 @@ pub enum ActivityKind {
     School,
     Worship,
     Health,
+    /// A real threshold marker where a major path crosses a real site
+    /// `Boundary` -- P53 Main Gateways' own real proxy for "a great
+    /// gateway," not a generic activity concentration the way every other
+    /// variant here is. Fits `ActivityNode`'s own documented scope (see
+    /// `Subdivision.new_activity_nodes`'s doc: "a real focal point --
+    /// fountain, marker, concentration of use") without inventing a
+    /// separate schema type for what's still fundamentally a real point
+    /// with real human significance.
+    Gateway,
     Other,
 }
 
