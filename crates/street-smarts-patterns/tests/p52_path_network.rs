@@ -408,6 +408,7 @@ fn params_roundtrip() {
         path_width_m: 6.0,
         arterial_count: 2.0,
         arterial_width_m: 24.0,
+        pedestrian_width_m: 2.5,
     };
     let v = p.as_vector();
     let back = PathNetworkParams::from_vector(&v);
@@ -416,6 +417,7 @@ fn params_roundtrip() {
     assert_eq!(back.path_width_m, 6.0);
     assert_eq!(back.arterial_count, 2.0);
     assert_eq!(back.arterial_width_m, 24.0);
+    assert_eq!(back.pedestrian_width_m, 2.5);
 }
 
 #[test]

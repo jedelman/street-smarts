@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 21-step sequence -- exactly the "read-and-infer" cost
+//! same 31-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 21-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 31-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -75,6 +75,10 @@ pub const LANGUAGE: &[PatternNode] = &[
     PatternNode {
         id: "path_network", alexander_number: Some(52), requires: &["p37_house_cluster"], completes: &[],
         why: "connects P37's blocks to each other; needs real BLOCK_n parcels to route between",
+    },
+    PatternNode {
+        id: "p53_main_gateways", alexander_number: Some(53), requires: &["path_network"], completes: &[],
+        why: "marks the site's own real perimeter boundary with a real Gateway node at its nearest crossing street endpoint; needs path_network to have populated both Neighborhood.boundaries and .streets first. No real dependency on p61_small_public_squares/p95_building_complex either direction -- doesn't touch parcels/blocks at all, so its position relative to them is a free reorder, placed here to match Alexander's own ascending numbering (52 < 53 < 61) at zero cost",
     },
     PatternNode {
         id: "p61_small_public_squares", alexander_number: Some(61), requires: &["p37_house_cluster"], completes: &[],
@@ -169,10 +173,58 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "places real window/door openings using P107's building geometry; reads (not writes) the real Building.floors P107 already derived, for its own per-floor window-shrinking rule",
     },
     PatternNode {
+        id: "p192_windows_overlooking_life", alexander_number: Some(192),
+        requires: &["p221_natural_doors_and_windows"],
+        completes: &[],
+        why: "relocates a real ground-floor window P221 already placed to a different real wall edge when its current position fails a real proximity check (no street/open space nearby, or blocked by another building); needs P221's real openings to exist first. Runs before p164_street_windows so windows it relocates away from a blind wall aren't immediately un-blinded by that step reading stale state",
+    },
+    PatternNode {
+        id: "p164_street_windows", alexander_number: Some(164),
+        requires: &["p221_natural_doors_and_windows", "path_network"],
+        completes: &[],
+        why: "adds a real ground-floor window to a street-adjacent building P221/P192 left blind (no window near a Local/Pedestrian street); needs path_network's real street classifications and P221's real openings",
+    },
+    PatternNode {
+        id: "p165_opening_to_the_street", alexander_number: Some(165),
+        requires: &["p221_natural_doors_and_windows"],
+        completes: &[],
+        why: "adds real windows along a building's own door wall edge until real opening-width coverage on that edge reaches a target fraction; needs P221's real door placement to know which edge is the street-facing one",
+    },
+    PatternNode {
+        id: "p100_pedestrian_street", alexander_number: Some(100),
+        requires: &["p221_natural_doors_and_windows", "path_network"],
+        completes: &[],
+        why: "adds a real ground-floor door to a doorless building near a Pedestrian-classified street until real entrance density meets target; needs path_network's real street classifications. Never gives a second door to a building that already has one -- see this operator's own module doc for the real P110 Main Entrance tension this creates (P110 scores 1.0/door_count per building)",
+    },
+    PatternNode {
+        id: "p110_main_entrance", alexander_number: Some(110),
+        requires: &["p221_natural_doors_and_windows", "path_network"],
+        completes: &[],
+        why: "relocates a building's first qualifying ground-floor door to whichever outer-ring edge sits closest to a real street, when its current position is too far; needs P221's real door placement and path_network's real streets. Runs after p100_pedestrian_street so a building that just got its first door from P100 is already in its final door-count state before this stage reads it. Must run BEFORE p102_family_of_entrances, which measures the same doors' final positions",
+    },
+    PatternNode {
+        id: "p102_family_of_entrances", alexander_number: Some(102),
+        requires: &["p110_main_entrance"],
+        completes: &[],
+        why: "nudges outlier door widths into a tolerance band around the neighborhood-wide mean; needs p110_main_entrance's real final door positions so the mean it computes isn't stale. Doesn't strictly require p100_pedestrian_street (a real but skippable step -- allowed_absent on this fixture, already satisfied by P221) -- just needs to run after it if it did, which pipeline.rs's own real call order already guarantees. Never addresses clustering -- see this operator's own module doc",
+    },
+    PatternNode {
         id: "p160_building_edge", alexander_number: Some(160),
         requires: &["p221_natural_doors_and_windows"],
         completes: &[],
         why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank -- a genuine, non-free dependency (PATTERN_ORDERING_AUDIT.md §4.8), unlike P118/P119/P133 above",
+    },
+    PatternNode {
+        id: "p161_sunny_place", alexander_number: Some(161),
+        requires: &["p107_wings_of_light"],
+        completes: &[],
+        why: "adds a small real south-facing open space (reusing OpenSpaceKind::Common -- no dedicated Sunny variant exists) next to a building that doesn't already have one, rejecting any candidate that would overlap a real building footprint. Runs after every other stage except p126_something_roughly_in_the_middle: earlier placement would change what p221_natural_doors_and_windows (long since run by now) reads as real life near a wall, perturbing every downstream stage for zero real benefit. Also creates a real cross-pattern regression with p60_accessible_green's own qualifying-size sub-score -- see this operator's own module doc",
+    },
+    PatternNode {
+        id: "p126_something_roughly_in_the_middle", alexander_number: Some(126),
+        requires: &["p61_small_public_squares"],
+        completes: &[],
+        why: "places a generic Civic activity marker, jittered off-center, near any real Plaza that doesn't already have a real ActivityNode nearby from p61_small_public_squares/p124_activity_pockets/p53_main_gateways. Runs LAST so it sees the final, complete set of Plazas and ActivityNodes from every earlier stage and doesn't stack a redundant node on a plaza another generator already served. Doesn't strictly require p124_activity_pockets/p53_main_gateways (real but skippable steps -- see their own nodes), only checks whatever activity_nodes exist by the time it runs, which pipeline.rs's own real call order already guarantees is everything",
     },
 ];
 
@@ -316,7 +368,27 @@ mod tests {
         // see p124_activity_pockets's own module doc and
         // cascade_contracts.rs's note on why it has no self-pair contract
         // right now.
-        let allowed_absent: std::collections::HashSet<&str> = ["p124_activity_pockets"].into_iter().collect();
+        // p164_street_windows and p100_pedestrian_street are two more real,
+        // deliberate exceptions, same class as p124_activity_pockets
+        // above: confirmed via a direct probe (running each operator
+        // against this exact fixture's own post-pipeline output) that
+        // their own real precondition errors are, respectively, "all 14
+        // street-adjacent building(s) already have a street window" and
+        // "every building already has a ground-floor outer-wall entrance."
+        // P221 (which runs earlier) already places a real ground-floor
+        // window AND door on each building's street-facing wall as part
+        // of its own placement, so on THIS fixture there's genuinely
+        // nothing left for either operator to fix -- not a stale LANGUAGE
+        // entry or a broken generator. (p165_opening_to_the_street,
+        // p192_windows_overlooking_life, and p161_sunny_place all DO
+        // produce real changes on this fixture and need no exception.)
+        let allowed_absent: std::collections::HashSet<&str> = [
+            "p124_activity_pockets",
+            "p164_street_windows",
+            "p100_pedestrian_street",
+        ]
+        .into_iter()
+        .collect();
         for node in LANGUAGE {
             if allowed_absent.contains(node.id) {
                 continue;

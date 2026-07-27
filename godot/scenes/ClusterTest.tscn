@@ -1,0 +1,52 @@
+[gd_scene load_steps=7 format=3 uid="uid://dq8h4k2m1n3p"]
+
+[ext_resource type="Script" path="res://scripts/neighborhood_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scripts/orbit_camera.gd" id="2_orbit_camera"]
+[ext_resource type="Script" path="res://scripts/minimap.gd" id="3_minimap"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_top_color = Color(0.384, 0.525, 0.725, 1)
+sky_horizon_color = Color(0.686, 0.741, 0.812, 1)
+ground_bottom_color = Color(0.2, 0.2, 0.2, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 50, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 60.0
+script = ExtResource("2_orbit_camera")
+
+[node name="NeighborhoodNode3D" type="NeighborhoodNode3D" parent="."]
+
+[node name="Controller" type="Node" parent="."]
+script = ExtResource("1_controller")
+cluster_anchor_building_id = "p108_merged_9_building"
+cluster_size = 9
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Minimap" type="Control" parent="UI"]
+layout_mode = 1
+script = ExtResource("3_minimap")

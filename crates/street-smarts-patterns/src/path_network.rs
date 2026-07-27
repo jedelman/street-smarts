@@ -157,6 +157,17 @@ pub struct PathNetworkParams {
     /// placeholder, not a real code-minimum lookup (same category as
     /// `p95_building_complex`'s `pad_inset_m`).
     pub arterial_width_m: f64,
+    /// Right-of-way width for a Pedestrian-classified (loop-budget) edge.
+    /// Before this field existed, every Pedestrian street shared
+    /// `path_width_m` -- the SAME right-of-way as a real Local (car)
+    /// street -- even though `loop_edges`' own doc already describes them
+    /// as "supplementary shortcuts... on foot," a real, different claim
+    /// from a local road wide enough for a car. Narrower than
+    /// `path_width_m`, a plausible real foot/shared-use path figure (same
+    /// category as `path_width_m`/`arterial_width_m` themselves -- not
+    /// Alexander's own literal number, which this file's own module doc
+    /// notes P52/P98/P120 don't give for a path this specific).
+    pub pedestrian_width_m: f64,
 }
 
 impl Parameters for PathNetworkParams {
@@ -187,6 +198,11 @@ impl Parameters for PathNetworkParams {
                 "Right-of-way width for an Arterial-classified edge.",
                 12.0, 30.0, 18.0,
             ).with_unit("m"),
+            ParamSpec::float(
+                "pedestrian_width_m",
+                "Right-of-way width for a Pedestrian-classified (loop-budget) edge -- narrower than a Local car street.",
+                1.0, 6.0, 3.0,
+            ).with_unit("m"),
         ]
     }
     fn defaults() -> Self {
@@ -196,10 +212,18 @@ impl Parameters for PathNetworkParams {
             path_width_m: 5.5,
             arterial_count: 1.0,
             arterial_width_m: 18.0,
+            pedestrian_width_m: 3.0,
         }
     }
     fn as_vector(&self) -> Vec<f64> {
-        vec![self.loop_budget, self.local_loop_budget, self.path_width_m, self.arterial_count, self.arterial_width_m]
+        vec![
+            self.loop_budget,
+            self.local_loop_budget,
+            self.path_width_m,
+            self.arterial_count,
+            self.arterial_width_m,
+            self.pedestrian_width_m,
+        ]
     }
     fn from_vector(v: &[f64]) -> Self {
         let schema = Self::schema();
@@ -209,6 +233,7 @@ impl Parameters for PathNetworkParams {
         if let (Some(s), Some(x)) = (schema.get(2), v.get(2)) { p.path_width_m = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(3), v.get(3)) { p.arterial_count = s.clamp(*x); }
         if let (Some(s), Some(x)) = (schema.get(4), v.get(4)) { p.arterial_width_m = s.clamp(*x); }
+        if let (Some(s), Some(x)) = (schema.get(5), v.get(5)) { p.pedestrian_width_m = s.clamp(*x); }
         p
     }
 }
@@ -470,9 +495,9 @@ impl PathNetwork {
             let id = format!("loop_{}_to_{}", block_ids[i], block_ids[j]);
             streets.push(Street {
                 id: id.clone(),
-                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.path_width_m, &mut prng),
+                centerline: bulge_centerline(centers_wgs[i], centers_wgs[j], &origin, params.pedestrian_width_m, &mut prng),
                 classification: Some(StreetClassification::Pedestrian.to_label().into()),
-                row_width_m: Some(params.path_width_m),
+                row_width_m: Some(params.pedestrian_width_m),
                 surface: Some("grass_pavers".into()),
             });
             classification_assignments.push((id, StreetClassification::Pedestrian));

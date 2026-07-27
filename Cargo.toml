@@ -22,6 +22,7 @@ members = [
     "crates/street-smarts-patterns",
     "crates/street-smarts-patterns-derive",
     "crates/street-smarts-web",
+    "crates/street-smarts-godot",
 ]
 
 [workspace.package]
@@ -43,6 +44,7 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 blake3 = "1"
+godot = "0.2"
 
 # Internal
 street-smarts-core = { path = "crates/street-smarts-core" }
@@ -52,6 +54,7 @@ street-smarts-ledger = { path = "crates/street-smarts-ledger" }
 street-smarts-generator = { path = "crates/street-smarts-generator" }
 street-smarts-patterns = { path = "crates/street-smarts-patterns" }
 street-smarts-patterns-derive = { path = "crates/street-smarts-patterns-derive" }
+street-smarts-godot = { path = "crates/street-smarts-godot" }
 
 [profile.release]
 opt-level = "z"     # optimize for size, WASM bundle constraint

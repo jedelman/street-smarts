@@ -1,0 +1,21 @@
+; gdext 0.2.4 exports `gdext_rust_init`, not `gdextension_entry` -- verified
+; via `nm -D` against the actual compiled library. The original value here
+; silently broke every class registration (Godot loads the library, calls a
+; symbol that doesn't exist, and just... doesn't register anything -- no
+; error, just "Cannot get class 'NeighborhoodNode3D'" at scene-instantiate
+; time, which is easy to misread as an unrelated problem).
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = "4.1"
+
+[libraries]
+macos.debug = "res://bin/libstreet_smarts_godot.dylib"
+macos.release = "res://bin/libstreet_smarts_godot.dylib"
+windows.debug.x86_64 = "res://bin/street_smarts_godot.dll"
+windows.release.x86_64 = "res://bin/street_smarts_godot.dll"
+linux.debug.x86_64 = "res://bin/libstreet_smarts_godot.so"
+linux.release.x86_64 = "res://bin/libstreet_smarts_godot.so"
+web.debug.wasm32 = "res://bin/street_smarts_godot.wasm"
+web.release.wasm32 = "res://bin/street_smarts_godot.wasm"
+android.debug.arm64 = "res://bin/android/libstreet_smarts_godot.so"
+android.release.arm64 = "res://bin/android/libstreet_smarts_godot.so"

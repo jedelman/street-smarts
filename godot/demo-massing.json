@@ -1,0 +1,180 @@
+{
+  "id": "godot-demo-massing",
+  "bbox_wgs84": [
+    -76.21399,
+    36.84737,
+    -76.19775,
+    36.86183
+  ],
+  "parcels": [],
+  "buildings": [
+    {
+      "id": "B_DEMO_1",
+      "polygon": {
+        "outer": [
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.854518581508955
+          },
+          {
+            "lng": -76.20587,
+            "lat": 36.854518581508955
+          },
+          {
+            "lng": -76.20587,
+            "lat": 36.854590953500995
+          },
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.854590953500995
+          },
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.854518581508955
+          }
+        ],
+        "holes": [],
+        "parts": []
+      },
+      "height_m": 9.0,
+      "typology": "SYNTHETIC_DEMO",
+      "year_built": null,
+      "parcel_id": null,
+      "floors": null,
+      "openings": [
+        {
+          "kind": "door",
+          "ring_index": 0,
+          "on_hole": false,
+          "t": 0.5,
+          "width_m": 1.0,
+          "sill_height_m": 0.0,
+          "head_height_m": 2.1,
+          "floor": 0
+        }
+      ],
+      "interior_cells": [],
+      "wall_thickness_m": 0.3,
+      "roof": null,
+      "roof_segments": [],
+      "canopies": [],
+      "wall_niches": []
+    },
+    {
+      "id": "B_DEMO_2",
+      "polygon": {
+        "outer": [
+          {
+            "lng": -76.205825093432,
+            "lat": 36.854518581508955
+          },
+          {
+            "lng": -76.205735280296,
+            "lat": 36.854518581508955
+          },
+          {
+            "lng": -76.205735280296,
+            "lat": 36.854590953500995
+          },
+          {
+            "lng": -76.205825093432,
+            "lat": 36.854590953500995
+          },
+          {
+            "lng": -76.205825093432,
+            "lat": 36.854518581508955
+          }
+        ],
+        "holes": [],
+        "parts": []
+      },
+      "height_m": 15.0,
+      "typology": "SYNTHETIC_DEMO",
+      "year_built": null,
+      "parcel_id": null,
+      "floors": null,
+      "openings": [
+        {
+          "kind": "door",
+          "ring_index": 0,
+          "on_hole": false,
+          "t": 0.5,
+          "width_m": 1.0,
+          "sill_height_m": 0.0,
+          "head_height_m": 2.1,
+          "floor": 0
+        }
+      ],
+      "interior_cells": [],
+      "wall_thickness_m": 0.3,
+      "roof": null,
+      "roof_segments": [],
+      "canopies": [],
+      "wall_niches": []
+    },
+    {
+      "id": "B_DEMO_3",
+      "polygon": {
+        "outer": [
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.85462713949701
+          },
+          {
+            "lng": -76.205780186864,
+            "lat": 36.85462713949701
+          },
+          {
+            "lng": -76.205780186864,
+            "lat": 36.85468141849104
+          },
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.85468141849104
+          },
+          {
+            "lng": -76.20600471970401,
+            "lat": 36.85462713949701
+          }
+        ],
+        "holes": [],
+        "parts": []
+      },
+      "height_m": 6.0,
+      "typology": "SYNTHETIC_DEMO",
+      "year_built": null,
+      "parcel_id": null,
+      "floors": null,
+      "openings": [
+        {
+          "kind": "door",
+          "ring_index": 0,
+          "on_hole": false,
+          "t": 0.5,
+          "width_m": 1.4,
+          "sill_height_m": 0.0,
+          "head_height_m": 2.1,
+          "floor": 0
+        }
+      ],
+      "interior_cells": [],
+      "wall_thickness_m": 0.3,
+      "roof": null,
+      "roof_segments": [],
+      "canopies": [],
+      "wall_niches": []
+    }
+  ],
+  "streets": [],
+  "open_space": [],
+  "boundaries": [],
+  "activity_nodes": [],
+  "pattern_fields": [],
+  "metadata": {
+    "source": "synthetic",
+    "fetched_at": "2026-07-24",
+    "license": "N/A -- synthetic test fixture, not derived from any real site",
+    "layer_provenance": {},
+    "label": "SYNTHETIC Godot-viewport demo massing -- NOT Eastside Commons design data. Three placeholder rectangular buildings (varying height, one door each) used only to visually verify the SDF + Surface Nets rendering pipeline (GODOT_PORT_SPEC.md Phase 2). Positioned inside the real Eastside Commons bbox for scene continuity, but the buildings themselves are not a design proposal."
+  }
+}
