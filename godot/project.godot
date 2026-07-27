@@ -4,8 +4,12 @@ config_version=5
 
 config/name="Street Smarts - Christopher Alexander Provocation Engine"
 config/description="Rust + Godot 4 spatial engine for Alexander pattern language, Salingaros geometry, and activist provocation."
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
+
+[autoload]
+
+GameState="*res://scripts/game_state.gd"
 
 [input_devices]
 

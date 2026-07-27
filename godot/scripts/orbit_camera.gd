@@ -53,6 +53,16 @@ func cancel_picking() -> void:
 
 enum Mode { ORBIT, WALK }
 
+## GameState's own real "look sensitivity"/"walk speed" settings (see
+## apply_settings() below) scale these base values rather than duplicating
+## them as separate constants over there -- this file owns what "1.0x"
+## means, GameState just owns the chosen scale factor.
+const BASE_ORBIT_SENSITIVITY := 0.006
+const BASE_MOUSE_ORBIT_SENSITIVITY := 0.008
+const BASE_WALK_LOOK_SENSITIVITY := 0.006
+const BASE_WALK_SPEED_MPS := 9.0
+const BASE_WALK_MAX_SPEED_MPS := 75.0
+
 @export var target: Vector3 = Vector3(0.0, 5.0, 0.0)
 @export var distance: float = 72.0
 @export var min_distance: float = 8.0
@@ -63,8 +73,8 @@ enum Mode { ORBIT, WALK }
 @export var pitch: float = deg_to_rad(33.7)
 @export var min_pitch: float = deg_to_rad(10.0)
 @export var max_pitch: float = deg_to_rad(80.0)
-@export var orbit_sensitivity: float = 0.006
-@export var mouse_orbit_sensitivity: float = 0.008
+@export var orbit_sensitivity: float = BASE_ORBIT_SENSITIVITY
+@export var mouse_orbit_sensitivity: float = BASE_MOUSE_ORBIT_SENSITIVITY
 @export var mouse_zoom_step: float = 0.1
 
 @export var walk_height_m: float = 1.7
@@ -73,15 +83,15 @@ enum Mode { ORBIT, WALK }
 ## across a plaza and a 300m cross-site trip shouldn't take the same
 ## per-meter time. This is the walking pace for a short hop; distance
 ## scales it up toward walk_max_speed_mps for longer trips.
-@export var walk_speed_mps: float = 9.0
-@export var walk_max_speed_mps: float = 75.0
+@export var walk_speed_mps: float = BASE_WALK_SPEED_MPS
+@export var walk_max_speed_mps: float = BASE_WALK_MAX_SPEED_MPS
 ## Roughly how long a trip should take regardless of its distance --
 ## speed = clamp(distance / walk_target_trip_seconds, walk_speed_mps,
 ## walk_max_speed_mps). Fixed per trip at tap time, not recomputed as the
 ## remaining distance shrinks -- a speed that keeps dropping as you
 ## approach would make the last few meters crawl instead of arrive.
 @export var walk_target_trip_seconds: float = 4.0
-@export var walk_look_sensitivity: float = 0.006
+@export var walk_look_sensitivity: float = BASE_WALK_LOOK_SENSITIVITY
 @export var walk_min_pitch: float = deg_to_rad(-80.0)
 @export var walk_max_pitch: float = deg_to_rad(80.0)
 ## A touch that moves less than this many pixels between press and release
@@ -142,6 +152,19 @@ func set_mode_walk(start_position: Vector3, facing_yaw: float) -> void:
 	walk_pitch = 0.0
 	_clear_walk_path()
 	_apply_walk_transform()
+
+## Called by neighborhood_controller.gd right after this camera is ready,
+## with GameState's own real, persisted settings -- see GameState.gd's own
+## doc for why the base values live here instead of being duplicated
+## there. `look_scale`/`speed_scale` are plain multipliers (1.0 = the
+## BASE_* defaults above), not absolute values, so a settings slider never
+## has to know this file's own numbers.
+func apply_settings(look_scale: float, speed_scale: float) -> void:
+	orbit_sensitivity = BASE_ORBIT_SENSITIVITY * look_scale
+	mouse_orbit_sensitivity = BASE_MOUSE_ORBIT_SENSITIVITY * look_scale
+	walk_look_sensitivity = BASE_WALK_LOOK_SENSITIVITY * look_scale
+	walk_speed_mps = BASE_WALK_SPEED_MPS * speed_scale
+	walk_max_speed_mps = BASE_WALK_MAX_SPEED_MPS * speed_scale
 
 func frame_bounds(bounds_center: Vector3, bounds_radius: float) -> void:
 	target = bounds_center

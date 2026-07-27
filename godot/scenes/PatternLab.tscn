@@ -37,6 +37,7 @@ script = ExtResource("2_orbit_camera")
 [node name="Controller" type="Node" parent="."]
 script = ExtResource("1_controller")
 manual_pattern_stepping = true
+scene_path = "res://scenes/PatternLab.tscn"
 
 [node name="UI" type="Control" parent="."]
 layout_mode = 3

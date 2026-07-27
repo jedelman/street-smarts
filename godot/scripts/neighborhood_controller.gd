@@ -5,10 +5,21 @@ extends Node
 @onready var minimap: Control = $"../UI/Minimap"
 @onready var pattern_lab: Control = get_node_or_null("../UI/PatternLab")
 
+var pause_menu: Control = null
+
 ## Real 97.7-acre Military Circle site, the same parcel spec
 ## scripts/vibe-render.sh's clean_baseline scenario develops.
 const REAL_PARCEL_ID := "MILITARY_CIRCLE_ASSEMBLED"
 const REAL_PIPELINE_SEED := 42
+
+## This scene's own real path -- set per-scene (Main.tscn / PatternLab.tscn)
+## in the editor. Used two ways: tagging a save so MainMenu's "Continue"
+## reloads the SAME scene the save came from (not Node's own
+## scene_file_path, which is only ever set on a packed scene's root node --
+## Controller is a child of it, not the root), and matching a save against
+## this scene on load so a Site Tour save doesn't get restored into
+## Pattern Lab or vice versa.
+@export var scene_path: String = "res://scenes/Main.tscn"
 
 ## Empty (default) -> the full real 35-building site, same as before.
 ## Set to a real building id (e.g. from scenes/ClusterTest.tscn) to
@@ -32,15 +43,31 @@ const REAL_PIPELINE_SEED := 42
 @export var manual_pattern_stepping: bool = false
 
 func _ready():
-    # Real Eastside Commons parcel data first: eastside-baseline.json is
-    # parcels-only on disk (no generator has ever run against it before
-    # now), so run_pattern_pipeline() runs the actual Alexander
-    # pattern-language pipeline (P96/P107/P221/etc, the SAME
-    # street_smarts_patterns::pipeline::run_corrected_pipeline the
-    # production gallery's offline renders come from) right here, on
-    # whatever device this is running on, to populate real buildings
-    # before rebuild_3d_mesh() has anything to mesh. Falls back to the
-    # synthetic demo fixture only if the real one isn't staged.
+    GameState.apply_settings_to_camera(camera)
+    _setup_pause_menu()
+
+    # MainMenu's "Continue" queues real save data before changing scene --
+    # see GameState.gd's own doc. Only honored if it's actually for THIS
+    # scene (a Site Tour save reloaded into Pattern Lab, or vice versa,
+    # would restore the wrong controller's expectations entirely).
+    var pending := GameState.consume_pending_save()
+    if not pending.is_empty() and String(pending.get("scene_path", "")) == scene_path:
+        _restore_from_save(pending)
+        return
+
+    _load_fresh_baseline()
+
+## The original (pre-save/continue) boot path: real Eastside Commons
+## parcel data first: eastside-baseline.json is parcels-only on disk (no
+## generator has ever run against it before now), so run_pattern_pipeline()
+## runs the actual Alexander pattern-language pipeline (P96/P107/P221/etc,
+## the SAME street_smarts_patterns::pipeline::run_corrected_pipeline the
+## production gallery's offline renders come from) right here, on
+## whatever device this is running on, to populate real buildings before
+## rebuild_3d_mesh() has anything to mesh. Falls back to the synthetic
+## demo fixture only if the real one isn't staged. Also the fallback when
+## a queued save turns out to be missing/corrupt (see _restore_from_save).
+func _load_fresh_baseline() -> void:
     var real_path = "res://eastside-baseline.json"
     if not FileAccess.file_exists(real_path):
         real_path = "res://data/eastside-baseline.json"
@@ -79,6 +106,75 @@ func _ready():
             _setup_pattern_lab()
     else:
         print("[StreetSmarts] NIR fixture file ready to be bound at runtime.")
+
+## Restores a real, previously-saved neighborhood (possibly already
+## pattern-edited in Pattern Lab) instead of the raw baseline, plus the
+## real camera state it was saved with. Falls back to _load_fresh_baseline()
+## if the save's own JSON no longer parses -- a stale/corrupt save
+## shouldn't strand the player on a blank scene.
+func _restore_from_save(data: Dictionary) -> void:
+    var json_str := String(data.get("neighborhood_json", ""))
+    if json_str == "" or not neighborhood_node.has_method("load_nir_json") or not neighborhood_node.load_nir_json(json_str):
+        print("[StreetSmarts] Saved neighborhood JSON missing or no longer parses -- falling back to a fresh baseline.")
+        _load_fresh_baseline()
+        return
+
+    print("[StreetSmarts] Restored a saved neighborhood (%d buildings)." % neighborhood_node.get_building_count())
+    neighborhood_node.rebuild_3d_mesh()
+    camera.collider = neighborhood_node
+    _restore_camera_from_save(data)
+    _setup_minimap()
+    _setup_pattern_lab()
+
+func _restore_camera_from_save(data: Dictionary) -> void:
+    if String(data.get("camera_mode", "orbit")) == "walk" and camera.has_method("set_mode_walk"):
+        var wp: Array = data.get("walk_position", [0.0, 0.0, 0.0])
+        camera.set_mode_walk(Vector3(wp[0], wp[1], wp[2]), float(data.get("walk_yaw", 0.0)))
+    else:
+        var t: Array = data.get("target", [camera.target.x, camera.target.y, camera.target.z])
+        camera.target = Vector3(t[0], t[1], t[2])
+        camera.distance = float(data.get("distance", camera.distance))
+        camera.yaw = float(data.get("yaw", camera.yaw))
+        camera.pitch = float(data.get("pitch", camera.pitch))
+        camera.set_mode_orbit()
+
+## Instances the pause overlay (see pause_menu.gd's own doc for why it's
+## the one way back to the main menu once a game scene has started) and
+## wires its two real actions -- this controller is the only thing that
+## knows how to build real save data or where "the main menu" is.
+func _setup_pause_menu() -> void:
+    pause_menu = preload("res://scripts/pause_menu.gd").new()
+    get_node("../UI").add_child(pause_menu)
+    pause_menu.save_requested.connect(_on_save_requested)
+    pause_menu.quit_to_menu_requested.connect(_on_quit_to_menu_requested)
+
+func _on_save_requested() -> void:
+    GameState.write_save(_build_save_data())
+    if pause_menu != null:
+        pause_menu.show_saved_confirmation()
+
+func _on_quit_to_menu_requested() -> void:
+    get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+
+## Everything MainMenu's "Continue" needs to put a player back exactly
+## where they left off: which scene, the real (possibly pattern-edited)
+## neighborhood, and where the camera/walker was standing.
+func _build_save_data() -> Dictionary:
+    var data := {
+        "scene_path": scene_path,
+        "neighborhood_json": neighborhood_node.get_neighborhood_json(),
+    }
+    if camera.mode == camera.Mode.WALK:
+        data["camera_mode"] = "walk"
+        data["walk_position"] = [camera.walk_position.x, camera.walk_position.y, camera.walk_position.z]
+        data["walk_yaw"] = camera.walk_yaw
+    else:
+        data["camera_mode"] = "orbit"
+        data["target"] = [camera.target.x, camera.target.y, camera.target.z]
+        data["distance"] = camera.distance
+        data["yaw"] = camera.yaw
+        data["pitch"] = camera.pitch
+    return data
 
 ## Points the orbit camera at the real combined bounding box of whatever
 ## rebuild_3d_mesh() actually generated, instead of trusting orbit_camera.gd's

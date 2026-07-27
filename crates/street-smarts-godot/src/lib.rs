@@ -209,6 +209,17 @@ impl NeighborhoodNode3D {
         self.building_count
     }
 
+    /// The currently-loaded neighborhood's own real NIR JSON, exactly as
+    /// `run_pattern_pipeline`/`apply_pattern` last left it -- for real
+    /// save/continue (see GameState.gd and neighborhood_controller.gd's
+    /// `_build_save_data`), which needs to persist whatever a Pattern Lab
+    /// session has already built, not just the raw baseline `load_nir_json`
+    /// started from.
+    #[func]
+    pub fn get_neighborhood_json(&self) -> GString {
+        GString::from(&self.neighborhood_json)
+    }
+
     /// Runs the real Alexander pattern-language pipeline (the same
     /// `street_smarts_patterns::pipeline::run_corrected_pipeline` the
     /// production web build's static gallery renders are generated from
