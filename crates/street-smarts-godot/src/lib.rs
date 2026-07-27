@@ -757,6 +757,7 @@ impl NeighborhoodNode3D {
                         || name.starts_with("GeneratedStreet_")
                         || name.starts_with("GeneratedCanopy_")
                         || name.starts_with("GeneratedParcel_")
+                        || name.starts_with("GeneratedActivityNode_")
                 })
                 .collect()
         };
@@ -859,6 +860,39 @@ impl NeighborhoodNode3D {
         let mut pedestrian_material = StandardMaterial3D::new_gd();
         pedestrian_material.set_albedo(Color::from_rgb(0.58, 0.52, 0.40));
         pedestrian_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+
+        // ActivityNode beacons, one color per real ActivityKind -- real
+        // data P61 (plaza centroids) and P124 (activity pockets) have
+        // populated since those operators first shipped, but never once
+        // rendered until now (see ground_features::activity_node_marker's
+        // own doc). Every real ActivityKind variant gets a distinct color
+        // even though only Civic is produced by any real generator today
+        // (same "cover the whole enum honestly" choice OpenSpaceKind's own
+        // material match above already makes for kinds nothing produces
+        // yet), so a future generator's Commerce/Transit/etc. node doesn't
+        // silently fall back to some other kind's color.
+        use street_smarts_core::nir::ActivityKind;
+        let mut activity_commerce_material = StandardMaterial3D::new_gd();
+        activity_commerce_material.set_albedo(Color::from_rgb(0.85, 0.55, 0.15));
+        activity_commerce_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_civic_material = StandardMaterial3D::new_gd();
+        activity_civic_material.set_albedo(Color::from_rgb(0.25, 0.45, 0.75));
+        activity_civic_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_transit_material = StandardMaterial3D::new_gd();
+        activity_transit_material.set_albedo(Color::from_rgb(0.85, 0.75, 0.15));
+        activity_transit_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_school_material = StandardMaterial3D::new_gd();
+        activity_school_material.set_albedo(Color::from_rgb(0.55, 0.35, 0.65));
+        activity_school_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_worship_material = StandardMaterial3D::new_gd();
+        activity_worship_material.set_albedo(Color::from_rgb(0.85, 0.82, 0.70));
+        activity_worship_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_health_material = StandardMaterial3D::new_gd();
+        activity_health_material.set_albedo(Color::from_rgb(0.80, 0.25, 0.30));
+        activity_health_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        let mut activity_other_material = StandardMaterial3D::new_gd();
+        activity_other_material.set_albedo(Color::from_rgb(0.55, 0.55, 0.55));
+        activity_other_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
 
         let rebuild_start = std::time::Instant::now();
         let mut meshed = 0i32;
@@ -1033,19 +1067,41 @@ impl NeighborhoodNode3D {
             }
         }
 
+        let mut activity_node_meshed = 0i32;
+        for node in &nir.activity_nodes {
+            let mesh = ground_features::activity_node_marker(node, &origin);
+            total_tris += mesh.triangles.len();
+            let name = format!("GeneratedActivityNode_{}", node.id);
+            let material = match node.kind {
+                ActivityKind::Commerce => &activity_commerce_material,
+                ActivityKind::Civic => &activity_civic_material,
+                ActivityKind::Transit => &activity_transit_material,
+                ActivityKind::School => &activity_school_material,
+                ActivityKind::Worship => &activity_worship_material,
+                ActivityKind::Health => &activity_health_material,
+                ActivityKind::Other => &activity_other_material,
+            };
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(material), None, None) else {
+                continue;
+            };
+            self.base_mut().add_child(&mesh_instance);
+            activity_node_meshed += 1;
+        }
+
         godot_print!(
-            "Rebuilt scene: {} of {} buildings (Surface Nets), {} of {} open spaces, {} street segments (ear-clipping), {} raw parcels -- {} tris total in {:?} ({} buildings skipped: no height_m assigned).",
+            "Rebuilt scene: {} of {} buildings (Surface Nets), {} of {} open spaces, {} street segments (ear-clipping), {} raw parcels, {} activity nodes -- {} tris total in {:?} ({} buildings skipped: no height_m assigned).",
             meshed,
             nir.buildings.len(),
             open_space_meshed,
             nir.open_space.len(),
             street_meshed,
             parcel_meshed,
+            activity_node_meshed,
             total_tris,
             rebuild_start.elapsed(),
             skipped_no_height
         );
-        meshed > 0 || open_space_meshed > 0 || street_meshed > 0 || parcel_meshed > 0
+        meshed > 0 || open_space_meshed > 0 || street_meshed > 0 || parcel_meshed > 0 || activity_node_meshed > 0
     }
 }
 

@@ -16,7 +16,7 @@
 //! it needs a 2D triangulation, which is what this module actually does.
 
 use street_smarts_core::geometry::LngLat;
-use street_smarts_core::nir::{OpenSpace, Parcel, Street};
+use street_smarts_core::nir::{ActivityNode, OpenSpace, Parcel, Street};
 use street_smarts_core::sdf::Vec3;
 use street_smarts_core::Mesh;
 use street_smarts_patterns::planar::{lnglat_to_local, ring_to_local, Pt2};
@@ -197,6 +197,107 @@ fn signed_area2(poly: &[Pt2]) -> f64 {
     sum
 }
 
+/// Half-width of the marker's own slim vertical pole, in meters -- thin
+/// enough to read as a beacon, not a real structure.
+const ACTIVITY_MARKER_HALF_WIDTH_M: f64 = 0.2;
+/// Pole height before the cap -- tall enough to spot across a real plaza
+/// (P61's own squares run up to `max_dimension_m`, tens of meters across)
+/// without competing with real building massing nearby.
+const ACTIVITY_MARKER_POLE_HEIGHT_M: f64 = 3.0;
+/// Extra rise from the pole's own top to the cap's apex.
+const ACTIVITY_MARKER_CAP_HEIGHT_M: f64 = 0.9;
+
+/// A small hand-authored "beacon" for one real `ActivityNode` (P61's own
+/// plaza centroid, P124's activity pocket) -- real, already-computed data
+/// that nothing rendered before this (see this crate's own git history:
+/// `Neighborhood.activity_nodes` populated by two real generators, never
+/// once read by the Godot renderer). `ActivityNode` is a bare point in the
+/// NIR (`location: LngLat`, no footprint of its own), unlike every other
+/// ground feature this module builds -- there's no polygon to extrude, so
+/// this is hand-authored geometry the same way `canopy_mesh` is (a thin
+/// vertical marker doesn't voxelize any better than a thin canopy slab
+/// does -- see that function's own doc and `ground_features.rs`'s own
+/// module doc for why Surface Nets is the wrong tool here too).
+///
+/// Two pieces: a slim vertical pole (4 side quads, no top/bottom -- hidden
+/// by the cap above and the ground below, same "don't bother with unseen
+/// faces" economy `canopy_mesh` already applies) topped by a 4-sided
+/// pyramid cap, so the marker reads as a real "here" pin from a walking
+/// vantage AND from directly above (the minimap's own real building
+/// footprints already use this same local-meter frame; a future minimap
+/// pass could plot these same points without any new projection work).
+/// Color is left to the caller (`rebuild_3d_mesh`'s own per-`ActivityKind`
+/// material, same convention `OpenSpaceKind`/street classification
+/// already use), not baked in here.
+pub fn activity_node_marker(node: &ActivityNode, origin: &LngLat) -> Mesh {
+    let center = lnglat_to_local(&node.location, origin);
+    let hw = ACTIVITY_MARKER_HALF_WIDTH_M;
+    let pole_top = ACTIVITY_MARKER_POLE_HEIGHT_M;
+    let apex_y = pole_top + ACTIVITY_MARKER_CAP_HEIGHT_M;
+
+    let corners = [
+        Pt2::new(center.x - hw, center.y - hw),
+        Pt2::new(center.x + hw, center.y - hw),
+        Pt2::new(center.x + hw, center.y + hw),
+        Pt2::new(center.x - hw, center.y + hw),
+    ];
+
+    let mut positions: Vec<Vec3> = Vec::new();
+    let mut normals: Vec<Vec3> = Vec::new();
+    let mut triangles: Vec<[u32; 3]> = Vec::new();
+
+    // Pole: one outward-facing quad per side, base to pole_top.
+    for i in 0..4 {
+        let a = corners[i];
+        let b = corners[(i + 1) % 4];
+        let ex = b.x - a.x;
+        let ey = b.y - a.y;
+        let len = (ex * ex + ey * ey).sqrt().max(1e-9);
+        // Same left-of-tangent convention `WallBulge`/`OpeningCut` use,
+        // negated to point away from the pole's own center (outward).
+        let outward = Vec3::new(ey / len, 0.0, -ex / len);
+
+        let v0 = Vec3::new(a.x, 0.0, a.y);
+        let v1 = Vec3::new(b.x, 0.0, b.y);
+        let v2 = Vec3::new(b.x, pole_top, b.y);
+        let v3 = Vec3::new(a.x, pole_top, a.y);
+
+        let base = positions.len() as u32;
+        positions.extend_from_slice(&[v0, v1, v2, v3]);
+        normals.extend_from_slice(&[outward, outward, outward, outward]);
+        triangles.push([base, base + 1, base + 2]);
+        triangles.push([base, base + 2, base + 3]);
+    }
+
+    // Cap: a 4-sided pyramid from the pole's own top ring up to one apex.
+    let apex = Vec3::new(center.x, apex_y, center.y);
+    for i in 0..4 {
+        let a = corners[i];
+        let b = corners[(i + 1) % 4];
+        let v0 = Vec3::new(a.x, pole_top, a.y);
+        let v1 = Vec3::new(b.x, pole_top, b.y);
+        let e1 = (v1.x - v0.x, v1.y - v0.y, v1.z - v0.z);
+        let e2 = (apex.x - v0.x, apex.y - v0.y, apex.z - v0.z);
+        let (mut nx, mut ny, mut nz) = (
+            e1.1 * e2.2 - e1.2 * e2.1,
+            e1.2 * e2.0 - e1.0 * e2.2,
+            e1.0 * e2.1 - e1.1 * e2.0,
+        );
+        let nlen = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-9);
+        nx /= nlen;
+        ny /= nlen;
+        nz /= nlen;
+        let n = Vec3::new(nx, ny, nz);
+
+        let base = positions.len() as u32;
+        positions.extend_from_slice(&[v0, v1, apex]);
+        normals.extend_from_slice(&[n, n, n]);
+        triangles.push([base, base + 1, base + 2]);
+    }
+
+    Mesh { positions, normals, triangles }
+}
+
 fn is_convex_ccw(prev: Pt2, cur: Pt2, next: Pt2) -> bool {
     cross_z(prev, cur, next) > 1e-12
 }
@@ -358,6 +459,46 @@ mod tests {
         for ribbon in &ribbons {
             let mesh = ribbon.to_mesh();
             assert_eq!(mesh.triangles.len(), 2, "each rectangular segment should ear-clip into 2 triangles");
+        }
+    }
+
+    #[test]
+    fn activity_node_marker_builds_a_real_beacon_at_the_real_location() {
+        let origin = GeomLngLat::new(-76.1, 36.8);
+        let node_local = Pt2::new(12.0, 5.0);
+        let node = ActivityNode {
+            id: "A1".into(),
+            location: local_to_lnglat(node_local, &origin),
+            kind: street_smarts_core::nir::ActivityKind::Civic,
+            intensity: None,
+            label: None,
+            activity_fit: Default::default(),
+            publicness: None,
+        };
+        let mesh = activity_node_marker(&node, &origin);
+        // 4 pole quads (2 tris each) + 4 cap triangles.
+        assert_eq!(mesh.triangles.len(), 12, "pole (4 quads) + pyramid cap (4 tris)");
+
+        let max_y = mesh.positions.iter().fold(0.0_f64, |acc, p| acc.max(p.y));
+        assert!(
+            (max_y - (ACTIVITY_MARKER_POLE_HEIGHT_M + ACTIVITY_MARKER_CAP_HEIGHT_M)).abs() < 1e-9,
+            "the cap's own apex should be the tallest real point, got max_y={max_y}"
+        );
+
+        // Every vertex should sit within the pole's own diagonal half-
+        // width of the real node location in the ground plane (the apex
+        // sits exactly ON it; the 4 corner columns sit at the square
+        // pole's own corner radius, half_width*sqrt(2)) -- this is a
+        // beacon AT that point, not offset from it.
+        let max_radius = ACTIVITY_MARKER_HALF_WIDTH_M * std::f64::consts::SQRT_2;
+        for p in &mesh.positions {
+            let dx = p.x - node_local.x;
+            let dz = p.z - node_local.y;
+            assert!(
+                (dx * dx + dz * dz).sqrt() <= max_radius + 1e-6,
+                "vertex ({}, {}) strayed too far from the real node location ({}, {})",
+                p.x, p.z, node_local.x, node_local.y
+            );
         }
     }
 }
