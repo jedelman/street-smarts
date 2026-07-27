@@ -51,11 +51,30 @@ const ROOF_NORMAL_Y_THRESHOLD: f32 = 0.5;
 /// that opinions/pattern data downstream actually reads. `None` keeps the
 /// exact single-surface behavior this function always had (open space and
 /// street ribbons don't have a roof to distinguish).
+///
+/// The roof surface also gets a per-vertex height-contour tint (see
+/// `roof_contour_tint`) driving `vertex_color_use_as_albedo` on the roof
+/// materials (set once in `rebuild_3d_mesh`): real ridge-height variation
+/// across a roof -- a P116 cascade's real per-wing step, or a plain shed's
+/// own slope -- gets contrast-stretched to `roof_height_range`, so even a
+/// genuinely tiny real step (a real P116 cascade on a merged block
+/// measured at under 5cm between neighboring segments -- real, but
+/// invisible as geometry at any normal viewing distance) still shows up as
+/// a visible gradient. Same "shade the real data, don't fabricate a bigger
+/// version of it" choice `ROOF_NORMAL_Y_THRESHOLD`'s own split already made
+/// for the shed slope itself. `roof_height_range` is the real
+/// `(eave_height_m, ridge_height_m)` from the building's own roof data --
+/// deliberately NOT read back from the extracted mesh's own vertex Y
+/// values (see `roof_contour_tint`'s own doc for why that was tried first
+/// and abandoned: Surface Nets residual sliver triangles at sharp
+/// composite corners pollute the range badly enough to erase the real
+/// signal).
 fn mesh_to_instance(
     mesh: &SsMesh,
     name: String,
     material: Option<&Gd<StandardMaterial3D>>,
     roof_material: Option<&Gd<StandardMaterial3D>>,
+    roof_height_range: Option<(f32, f32)>,
 ) -> Option<Gd<MeshInstance3D>> {
     if mesh.triangles.is_empty() {
         return None;
@@ -109,9 +128,10 @@ fn mesh_to_instance(
     }
 
     let mut array_mesh = ArrayMesh::new_gd();
-    add_surface(&mut array_mesh, &wall_positions, &wall_normals, material);
+    add_surface(&mut array_mesh, &wall_positions, &wall_normals, None, material);
     if let Some(roof_mat) = roof_material {
-        add_surface(&mut array_mesh, &roof_positions, &roof_normals, Some(roof_mat));
+        let roof_colors = roof_contour_tint(&roof_positions, roof_height_range);
+        add_surface(&mut array_mesh, &roof_positions, &roof_normals, Some(&roof_colors), Some(roof_mat));
     }
     if array_mesh.get_surface_count() == 0 {
         return None;
@@ -123,10 +143,66 @@ fn mesh_to_instance(
     Some(mesh_instance)
 }
 
-/// Appends one surface to `array_mesh` from flat position/normal arrays.
-/// No-op on an empty pair (a building with no roof-facing triangles, e.g.
-/// a degenerate sliver, shouldn't get an empty second surface).
-fn add_surface(array_mesh: &mut Gd<ArrayMesh>, positions: &[Vector3], normals: &[Vector3], material: Option<&Gd<StandardMaterial3D>>) {
+/// A real per-vertex albedo multiplier from each roof vertex's own height:
+/// full brightness (`Color(1,1,1)`, the material's own true color) at
+/// `height_range`'s own ridge, darkening toward `MIN_TINT` at its eave --
+/// contrast-stretched to the building's own real `(eave_height_m,
+/// ridge_height_m)`, not a fixed absolute scale, so a real cascade step of
+/// any size (a dramatic P118 flat-vs-shed swap or a few centimeters
+/// between two P116 segments on a merged block) still produces a visible
+/// gradient. Brighter-is-higher deliberately matches Alexander's own P116
+/// framing ("the largest and highest roofs over the most significant
+/// areas") -- the tint is reading real significance, not just decorating.
+///
+/// Deliberately reads `height_range` from the building's own real roof
+/// data (the caller's `RoofForm.eave_height_m`/`ridge_height_m`), NOT back
+/// from `positions`' own extracted Y values -- that was the first attempt,
+/// and it doesn't work: Surface Nets can emit a handful of degenerate
+/// near-vertical sliver triangles at a building's sharp composite corners
+/// (a known, already-accepted residual -- see `rebuild_3d_mesh`'s own doc
+/// on inverted-winding triangles and why CULL_DISABLED exists), whose
+/// accidental near-upward normal gets them classified as roof even though
+/// their real vertices sit near the wall base. Confirmed against the real
+/// Military Circle site: several buildings' naive min Y came back as
+/// exactly 0.0 (ground level) against a real ~16m ridge, even though the
+/// roof's OWN real height variation is under 1.5m end to end -- even a
+/// 98th-percentile clip still left some buildings with a badly polluted
+/// range (a few had MORE than 2% of their roof vertices as ground-level
+/// outliers). Going straight to the source data sidesteps the extraction
+/// artifact entirely instead of trying to statistically filter around it.
+/// `None` (a flat-topped box with no real `roof` field at all) gets
+/// uniform full brightness -- there's no real roof data to shade by.
+fn roof_contour_tint(positions: &[Vector3], height_range: Option<(f32, f32)>) -> Vec<Color> {
+    const MIN_TINT: f32 = 0.4;
+    let full_bright = || vec![Color::from_rgb(1.0, 1.0, 1.0); positions.len()];
+    let Some((lo, hi)) = height_range else {
+        return full_bright();
+    };
+    let span = hi - lo;
+    if span <= 1e-4 {
+        return full_bright();
+    }
+    positions
+        .iter()
+        .map(|p| {
+            let t = ((p.y - lo) / span).clamp(0.0, 1.0);
+            let shade = MIN_TINT + (1.0 - MIN_TINT) * t;
+            Color::from_rgb(shade, shade, shade)
+        })
+        .collect()
+}
+
+/// Appends one surface to `array_mesh` from flat position/normal (and
+/// optionally per-vertex color) arrays. No-op on an empty pair (a building
+/// with no roof-facing triangles, e.g. a degenerate sliver, shouldn't get
+/// an empty second surface).
+fn add_surface(
+    array_mesh: &mut Gd<ArrayMesh>,
+    positions: &[Vector3],
+    normals: &[Vector3],
+    colors: Option<&[Color]>,
+    material: Option<&Gd<StandardMaterial3D>>,
+) {
     if positions.is_empty() {
         return;
     }
@@ -134,6 +210,9 @@ fn add_surface(array_mesh: &mut Gd<ArrayMesh>, positions: &[Vector3], normals: &
     arrays.resize(ArrayType::MAX.ord() as usize, &Variant::nil());
     arrays.set(ArrayType::VERTEX.ord() as usize, &PackedVector3Array::from(positions).to_variant());
     arrays.set(ArrayType::NORMAL.ord() as usize, &PackedVector3Array::from(normals).to_variant());
+    if let Some(colors) = colors {
+        arrays.set(ArrayType::COLOR.ord() as usize, &PackedColorArray::from(colors).to_variant());
+    }
     let surface_idx = array_mesh.get_surface_count();
     array_mesh.add_surface_from_arrays(PrimitiveType::TRIANGLES, &arrays);
     if let Some(mat) = material {
@@ -713,12 +792,23 @@ impl NeighborhoodNode3D {
         // terracotta/clay-tile tone; the tallest buildings' flat, occupiable
         // P118 garden roofs get a distinct green, since they're a real,
         // different thing (a walkable garden plane, not a shed).
+        //
+        // ALBEDO_FROM_VERTEX_COLOR: multiplies this base color by
+        // mesh_to_instance's own per-vertex roof_contour_tint -- a real
+        // P116 cascade step can be under 5cm on a merged block (confirmed
+        // against the real Military Circle site: 66 segments spanning a
+        // 1.3m total ridge-height range), completely invisible as geometry
+        // at any normal viewing distance. The tint shades by real height
+        // instead of exaggerating it, same "color, not geometry" choice
+        // this whole roof-material split already made for the shed slope.
         let mut shed_roof_material = StandardMaterial3D::new_gd();
         shed_roof_material.set_albedo(Color::from_rgb(0.62, 0.30, 0.20));
         shed_roof_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        shed_roof_material.set_flag(godot::classes::base_material_3d::Flags::ALBEDO_FROM_VERTEX_COLOR, true);
         let mut flat_garden_roof_material = StandardMaterial3D::new_gd();
         flat_garden_roof_material.set_albedo(Color::from_rgb(0.30, 0.52, 0.24));
         flat_garden_roof_material.set_cull_mode(godot::classes::base_material_3d::CullMode::DISABLED);
+        flat_garden_roof_material.set_flag(godot::classes::base_material_3d::Flags::ALBEDO_FROM_VERTEX_COLOR, true);
 
         // P119 Arcades canopies: a warm wood/awning tone, distinct from
         // both roof colors and the plain wall material -- see
@@ -866,7 +956,7 @@ impl NeighborhoodNode3D {
             let mesh = pad.to_mesh();
             total_tris += mesh.triangles.len();
             let name = format!("GeneratedParcel_{}", parcel.id);
-            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&parcel_material), None) else {
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(&parcel_material), None, None) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -880,7 +970,8 @@ impl NeighborhoodNode3D {
                 Some(street_smarts_core::nir::RoofShape::Flat) => &flat_garden_roof_material,
                 _ => &shed_roof_material,
             };
-            let Some(mesh_instance) = mesh_to_instance(mesh, format!("GeneratedMassing_{}", building.id), Some(&building_material), Some(roof_material)) else {
+            let roof_height_range = building.roof.as_ref().map(|r| (r.eave_height_m as f32, r.ridge_height_m as f32));
+            let Some(mesh_instance) = mesh_to_instance(mesh, format!("GeneratedMassing_{}", building.id), Some(&building_material), Some(roof_material), roof_height_range) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -888,7 +979,7 @@ impl NeighborhoodNode3D {
 
             if let Some(canopy) = canopy_mesh(building, &origin) {
                 total_tris += canopy.triangles.len();
-                if let Some(canopy_instance) = mesh_to_instance(&canopy, format!("GeneratedCanopy_{}", building.id), Some(&canopy_material), None) {
+                if let Some(canopy_instance) = mesh_to_instance(&canopy, format!("GeneratedCanopy_{}", building.id), Some(&canopy_material), None, None) {
                     self.base_mut().add_child(&canopy_instance);
                 }
             }
@@ -913,7 +1004,7 @@ impl NeighborhoodNode3D {
                 OpenSpaceKind::Common | OpenSpaceKind::Park | OpenSpaceKind::Sponge => &common_material,
                 OpenSpaceKind::Vacant | OpenSpaceKind::Parking | OpenSpaceKind::Other | OpenSpaceKind::Undecided => &plaza_material,
             };
-            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(open_space_material), None) else {
+            let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(open_space_material), None, None) else {
                 continue;
             };
             self.base_mut().add_child(&mesh_instance);
@@ -934,7 +1025,7 @@ impl NeighborhoodNode3D {
                 let mesh = pad.to_mesh();
                 total_tris += mesh.triangles.len();
                 let name = format!("GeneratedStreet_{}_seg{}", street.id, seg_idx);
-                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(street_material), None) else {
+                let Some(mesh_instance) = mesh_to_instance(&mesh, name, Some(street_material), None, None) else {
                     continue;
                 };
                 self.base_mut().add_child(&mesh_instance);
@@ -1003,5 +1094,67 @@ impl OpinionEvaluatorNode {
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A perfectly flat roof (no real `roof` field at all -- `height_range`
+    /// is `None`) gets uniform full brightness, not an arbitrary shade --
+    /// there's no real height data to contrast-stretch against.
+    #[test]
+    fn no_height_range_is_uniform_full_brightness() {
+        let positions = vec![Vector3::new(0.0, 3.0, 0.0), Vector3::new(1.0, 9.0, 1.0)];
+        let colors = roof_contour_tint(&positions, None);
+        assert_eq!(colors.len(), 2);
+        for c in colors {
+            assert_eq!((c.r, c.g, c.b), (1.0, 1.0, 1.0));
+        }
+    }
+
+    /// A degenerate range (eave == ridge, e.g. a data glitch) doesn't
+    /// divide by ~zero into a blown-out or NaN color -- same uniform
+    /// full-brightness fallback as no real range at all.
+    #[test]
+    fn degenerate_zero_span_range_is_uniform_full_brightness() {
+        let positions = vec![Vector3::new(0.0, 5.0, 0.0)];
+        let colors = roof_contour_tint(&positions, Some((5.0, 5.0)));
+        assert_eq!((colors[0].r, colors[0].g, colors[0].b), (1.0, 1.0, 1.0));
+    }
+
+    /// The real, load-bearing case: a genuine (even tiny) eave/ridge span
+    /// produces a strictly brighter color at the ridge than at the eave --
+    /// this is the whole fix for the real P116 cascade this function
+    /// exists for (confirmed against the real Military Circle site: a
+    /// merged block with 66 roof segments spanning just 1.3m of real
+    /// ridge-height variation, invisible as geometry, needed this to be
+    /// visible at all).
+    #[test]
+    fn a_real_height_span_shades_the_eave_darker_than_the_ridge() {
+        let positions = vec![
+            Vector3::new(0.0, 14.2, 0.0), // at the real eave
+            Vector3::new(0.0, 15.2, 0.0), // halfway up the real cascade
+            Vector3::new(0.0, 16.2, 0.0), // at the real ridge
+        ];
+        let colors = roof_contour_tint(&positions, Some((14.2, 16.2)));
+        assert!(colors[0].r < colors[1].r, "eave should be darker than the midpoint");
+        assert!(colors[1].r < colors[2].r, "midpoint should be darker than the ridge");
+        assert_eq!((colors[2].r, colors[2].g, colors[2].b), (1.0, 1.0, 1.0), "the real ridge itself should read at full brightness");
+    }
+
+    /// A vertex outside the real `[eave, ridge]` range (e.g. a Surface Nets
+    /// residual sliver triangle sitting near the wall base, see this
+    /// function's own doc for why height_range comes from the building's
+    /// real roof data rather than back from extracted geometry) gets
+    /// clamped to the darkest real shade, not extrapolated into a
+    /// nonsensical negative-brightness color.
+    #[test]
+    fn a_vertex_below_the_real_eave_clamps_instead_of_extrapolating() {
+        let positions = vec![Vector3::new(0.0, 0.0, 0.0)];
+        let colors = roof_contour_tint(&positions, Some((14.2, 16.2)));
+        let c = colors[0];
+        assert!(c.r > 0.0 && c.r < 1.0, "expected the clamped MIN_TINT shade, got {}", c.r);
     }
 }
