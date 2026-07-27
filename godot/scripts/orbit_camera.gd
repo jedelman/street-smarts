@@ -30,6 +30,27 @@ extends Camera3D
 ## setting Node3D.rotation directly, deliberately avoiding a second,
 ## separately-signed convention this environment has no display to check.
 
+## Object-selector "walkabout" picking (see NeighborhoodNode3D::pick_zone_at
+## and pattern_lab.gd's "Pick on Map/World" button): while `picking_mode` is
+## on, a walk-mode tap that would normally plan a route instead raycasts
+## the SAME ground point (`_try_set_walk_target`'s own technique, reused
+## verbatim) and resolves it through `pick_zone_at` on `collider`, emitting
+## `zone_picked(kind, id)` instead of walking there. Gated to WALK mode's
+## existing tap handling, same as tap-to-walk itself -- picking from the
+## 3D view only makes sense once you're standing in it, not while orbiting
+## the whole site from above (the minimap already covers that overview
+## case). A miss (ground point outside every building/parcel, or looking
+## at the sky) stays in picking mode rather than silently doing nothing
+## forever, mirroring minimap.gd's own "stay open on a miss" behavior.
+signal zone_picked(kind: String, id: String)
+var picking_mode: bool = false
+
+func start_picking() -> void:
+	picking_mode = true
+
+func cancel_picking() -> void:
+	picking_mode = false
+
 enum Mode { ORBIT, WALK }
 
 @export var target: Vector3 = Vector3(0.0, 5.0, 0.0)
@@ -201,6 +222,29 @@ func _try_set_walk_target(screen_pos: Vector2) -> void:
 	var trip_distance := horizontal.length()
 	_current_walk_speed_mps = clamp(trip_distance / walk_target_trip_seconds, walk_speed_mps, walk_max_speed_mps)
 
+## Same ground-plane raycast as `_try_set_walk_target`, but resolves the
+## hit through `pick_zone_at` instead of planning a route -- see
+## `picking_mode`'s own doc for why this is a separate function rather
+## than a branch bolted onto the walk-target one (they diverge completely
+## after finding `destination`; sharing that little math isn't worth the
+## indirection).
+func _try_pick_zone(screen_pos: Vector2) -> void:
+	var ray_origin := project_ray_origin(screen_pos)
+	var ray_dir := project_ray_normal(screen_pos)
+	if absf(ray_dir.y) < 0.0001:
+		return
+	var t := -ray_origin.y / ray_dir.y
+	if t <= 0.0:
+		return
+	var ground_point: Vector3 = ray_origin + ray_dir * t
+
+	if collider == null or not collider.has_method("pick_zone_at"):
+		return
+	var result: Dictionary = collider.pick_zone_at(ground_point.x, ground_point.z)
+	if String(result.get("kind", "none")) != "none":
+		picking_mode = false
+		zone_picked.emit(result["kind"], result["id"])
+
 func _apply_walk_transform() -> void:
 	position = walk_position + Vector3(0.0, walk_height_m, 0.0)
 	look_at(position + _look_direction(walk_yaw, walk_pitch), Vector3.UP)
@@ -222,7 +266,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if was_sole_touch and mode == Mode.WALK:
 				var start: Vector2 = _touch_start_pos.get(event.index, event.position)
 				if start.distance_to(event.position) <= tap_max_drag_px:
-					_try_set_walk_target(event.position)
+					if picking_mode:
+						_try_pick_zone(event.position)
+					else:
+						_try_set_walk_target(event.position)
 			_touch_points.erase(event.index)
 			_touch_start_pos.erase(event.index)
 		if _touch_points.size() != 2:

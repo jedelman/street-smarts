@@ -26,6 +26,16 @@ extends Control
 
 signal pattern_applied
 
+## Emitted when the "Pick on Map/World" button is toggled -- true entering
+## picking mode, false leaving it (including a self-cancel via the same
+## button). neighborhood_controller.gd owns forwarding this to both
+## minimap.gd's and orbit_camera.gd's own `start_picking`/`cancel_picking`,
+## since PatternLab has no reference to either -- it only knows about the
+## real operator/apply_pattern side of NeighborhoodNode3D, not the
+## camera/minimap UI wiring, and there's no reason to give it one just for
+## this.
+signal pick_toggled(active: bool)
+
 @export var neighborhood_node: Node = null
 
 const PANEL_HEIGHT := 340.0
@@ -33,11 +43,13 @@ const PANEL_HEIGHT := 340.0
 var _patterns: Array = []
 var _selected_index: int = -1
 var _param_sliders: Dictionary = {}  # param name (String) -> HSlider
+var _picking: bool = false
 
 var _pattern_list: ItemList
 var _description_label: RichTextLabel
 var _params_box: VBoxContainer
 var _target_field: LineEdit
+var _pick_button: Button
 var _seed_field: SpinBox
 var _apply_button: Button
 var _status_label: RichTextLabel
@@ -103,6 +115,13 @@ func _ready() -> void:
 	_target_field.custom_minimum_size = Vector2(140, 0)
 	_target_field.tooltip_text = "\"*\" for whole-site (most patterns). A real BLOCK_n parcel id for P95 Building Complex."
 	target_row.add_child(_target_field)
+
+	_pick_button = Button.new()
+	_pick_button.text = "Pick on Map/World"
+	_pick_button.tooltip_text = "Tap a building or block on the minimap, or walk up and tap it in 3D, to fill target."
+	_pick_button.toggle_mode = true
+	_pick_button.toggled.connect(_on_pick_button_toggled)
+	target_row.add_child(_pick_button)
 
 	var seed_label := Label.new()
 	seed_label.text = "seed:"
@@ -183,6 +202,28 @@ func _rebuild_param_sliders(params: Array) -> void:
 
 func _format_param_value(v: float, is_integer: bool) -> String:
 	return str(int(round(v))) if is_integer else "%.2f" % v
+
+func _on_pick_button_toggled(active: bool) -> void:
+	_picking = active
+	_pick_button.text = "Cancel Pick" if active else "Pick on Map/World"
+	pick_toggled.emit(active)
+
+## Called by neighborhood_controller.gd when either the minimap or the
+## 3D walkabout view resolves a real pick -- fills `target` with the real
+## id and drops the button back out of its toggled "picking" state (the
+## picking session that just produced this id is over, on both the
+## minimap/camera side, which neighborhood_controller.gd cancels itself,
+## and this button's own visual state).
+func set_target(id: String) -> void:
+	_target_field.text = id
+	_picking = false
+	# set_pressed_no_signal, not the `button_pressed` property directly --
+	# that setter re-emits `toggled`, which would loop back into
+	# _on_pick_button_toggled(false) and re-emit pick_toggled(false) a
+	# second time (harmless since cancel_picking is idempotent, but not
+	# worth the redundant round trip).
+	_pick_button.set_pressed_no_signal(false)
+	_pick_button.text = "Pick on Map/World"
 
 func _on_apply_pressed() -> void:
 	if _selected_index < 0 or _selected_index >= _patterns.size() or neighborhood_node == null:

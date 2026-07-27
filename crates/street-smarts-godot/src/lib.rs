@@ -357,6 +357,66 @@ impl NeighborhoodNode3D {
         PackedStringArray::from(ids.as_slice())
     }
 
+    /// Resolves a tapped ground point (site-local meters, x/z -- the same
+    /// frame `find_path`/`resolve_move` already use) to the real building
+    /// or parcel it lands inside. The object-selector's one shared
+    /// entry point: the minimap (tapping a marker or the map itself) and
+    /// the 3D "walkabout" view (a ground-plane raycast, same technique
+    /// `orbit_camera.gd`'s tap-to-walk already uses) both resolve a real
+    /// id through here instead of each re-implementing their own
+    /// point-in-polygon logic, so PatternLab's `target` field always gets
+    /// a real id whichever way it was picked.
+    ///
+    /// Buildings are checked first via `FootprintCollider::distance()`
+    /// (the same real SDF `resolve_move`/`find_path` already trust) --
+    /// cheap, and there's no real overlap to arbitrate: a parcel is
+    /// removed from `Neighborhood.parcels` the moment a building replaces
+    /// it (see `ground_features::parcel_polygon`'s own doc), so a point
+    /// can never legitimately land inside both a live building and a live
+    /// parcel at once. Parcels are checked second by re-parsing
+    /// `neighborhood_json` fresh (they aren't cached anywhere -- unlike
+    /// `colliders`, `rebuild_3d_mesh()` only ever touches them
+    /// transiently for the raw-parcel rendering pass) and testing the
+    /// same real outer ring `parcel_polygon` renders, via
+    /// `street_smarts_patterns::planar::point_in_polygon`. Returns
+    /// `{"kind": "none", "id": ""}` for a miss, or nothing's loaded yet.
+    #[func]
+    pub fn pick_zone_at(&self, x: f32, z: f32) -> Dictionary {
+        let mut result = Dictionary::new();
+        for c in &self.colliders {
+            if c.distance(x as f64, z as f64) < 0.0 {
+                result.insert("kind", "building");
+                result.insert("id", c.id());
+                return result;
+            }
+        }
+
+        if !self.neighborhood_json.is_empty() {
+            if let Ok(nir) = serde_json::from_str::<Neighborhood>(&self.neighborhood_json) {
+                // Same shared local-meter origin rebuild_3d_mesh() uses --
+                // see that function's own doc for why (neighborhood bbox
+                // center).
+                let origin = LngLat::new(
+                    (nir.bbox_wgs84[0] + nir.bbox_wgs84[2]) / 2.0,
+                    (nir.bbox_wgs84[1] + nir.bbox_wgs84[3]) / 2.0,
+                );
+                let pt = street_smarts_patterns::planar::Pt2::new(x as f64, z as f64);
+                for parcel in &nir.parcels {
+                    let ring = street_smarts_patterns::planar::ring_to_local(&parcel.polygon.outer, &origin);
+                    if ring.len() >= 3 && street_smarts_patterns::planar::point_in_polygon(pt, &ring) {
+                        result.insert("kind", "parcel");
+                        result.insert("id", parcel.id.as_str());
+                        return result;
+                    }
+                }
+            }
+        }
+
+        result.insert("kind", "none");
+        result.insert("id", "");
+        result
+    }
+
     /// Resolves a walk-mode move against real building footprints, so a
     /// walker stops at walls instead of ghosting through them. Returns the
     /// position actually reachable this step: `to` when it's clear, a

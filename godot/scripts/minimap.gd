@@ -20,8 +20,26 @@ extends Control
 ## Replaces the old UI/Panel (title + opinion-chorus labels + waypoint
 ## dropdown) entirely, per the explicit design call to lead with real
 ## spatial navigation instead of a dropdown list of raw generator ids.
+##
+## A third state, `_picking`, layers on top of expanded mode for the
+## object-selector (see pattern_lab.gd's "Pick on Map" button): entered
+## via `start_picking()`, a tap resolves through the SAME real hit-test
+## `waypoint_selected` already used for buildings (nearest marker within
+## `MARKER_HIT_RADIUS_PX`), falling back to `NeighborhoodNode3D::
+## pick_zone_at` (a real point-in-polygon test against both buildings and
+## raw parcels) for a tap that misses every marker -- a picking tap on a
+## parcel/block has no marker to hit, unlike a building. Emits
+## `zone_selected(kind, id)` instead of walking there, and a miss (empty
+## ground, off the real site) stays in picking mode rather than closing
+## the map, so a mis-tap doesn't force re-opening the picker.
 
 signal waypoint_selected(building_id: String)
+signal zone_selected(kind: String, id: String)
+
+## Set by neighborhood_controller.gd, same as `camera` -- only needed for
+## the picking-mode parcel fallback (`pick_zone_at`); building hits never
+## need it, they're already resolved from `_centroids`/`_building_ids`.
+var neighborhood_node: Node = null
 
 const SMALL_SIZE := Vector2(160, 160)
 const SMALL_MARGIN := 16.0
@@ -51,9 +69,26 @@ var _touch_points: Dictionary = {}
 var _touch_start_pos: Dictionary = {}
 var _last_pinch_span: float = 0.0
 
+var _picking: bool = false
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_apply_layout()
+
+## Enters picking mode -- expands the map (if not already) and switches
+## the next tap over to `zone_selected` instead of walk-there. Idempotent.
+func start_picking() -> void:
+	_picking = true
+	if not _expanded:
+		_set_expanded(true)
+	queue_redraw()
+
+## Leaves picking mode without making a selection -- called by
+## pattern_lab.gd when its own "Pick on Map" toggle is turned back off by
+## hand, so a half-finished pick doesn't linger.
+func cancel_picking() -> void:
+	_picking = false
+	queue_redraw()
 
 ## Called once after a rebuild -- real building footprints (site-local
 ## meters, ground plane x/z) and their real ids, same order. Recomputes
@@ -130,6 +165,17 @@ func _world_to_screen(world_xz: Vector2) -> Vector2:
 		size.y * 0.5 - dz * scale + pan.y
 	)
 
+## Inverse of `_world_to_screen` -- picking mode's only real use for it,
+## turning a tap that missed every building marker into the real world
+## (x, z) `pick_zone_at` needs to test against raw parcels.
+func _screen_to_world(screen_pos: Vector2) -> Vector2:
+	var base_scale: float = (min(size.x, size.y) * 0.42) / _site_half_span
+	var scale: float = base_scale * (_zoom if _expanded else 1.0)
+	var pan: Vector2 = _pan if _expanded else Vector2.ZERO
+	var dx := (screen_pos.x - size.x * 0.5 - pan.x) / scale
+	var dz := -(screen_pos.y - size.y * 0.5 - pan.y) / scale
+	return Vector2(_site_center.x + dx, _site_center.y + dz)
+
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.08, 0.09, 0.88 if _expanded else 0.75), true)
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.25), false, 1.5)
@@ -145,8 +191,9 @@ func _draw() -> void:
 	if _expanded:
 		for i in range(_centroids.size()):
 			var p := _world_to_screen(_centroids[i])
-			draw_circle(p, MARKER_RADIUS_PX, Color(1.0, 0.05, 0.9, 0.95))
-		draw_string(ThemeDB.fallback_font, Vector2(12, 22), "tap a building to walk there · tap elsewhere to close",
+			draw_circle(p, MARKER_RADIUS_PX, Color(1.0, 0.05, 0.9, 0.95) if not _picking else Color(0.15, 0.85, 1.0, 0.95))
+		var hint := "tap a building or block to select" if _picking else "tap a building to walk there · tap elsewhere to close"
+		draw_string(ThemeDB.fallback_font, Vector2(12, 22), hint,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.85))
 
 	if camera != null:
@@ -216,6 +263,26 @@ func _handle_tap(pos: Vector2) -> void:
 		if d < nearest_dist:
 			nearest_dist = d
 			nearest_idx = i
+
+	if _picking:
+		if nearest_idx >= 0:
+			_picking = false
+			zone_selected.emit("building", _building_ids[nearest_idx])
+			_set_expanded(false)
+			return
+		var world := _screen_to_world(pos)
+		if neighborhood_node != null and neighborhood_node.has_method("pick_zone_at"):
+			var result: Dictionary = neighborhood_node.pick_zone_at(world.x, world.y)
+			if String(result.get("kind", "none")) != "none":
+				_picking = false
+				zone_selected.emit(result["kind"], result["id"])
+				_set_expanded(false)
+				return
+		# A real miss (empty ground, off-site) -- stay in picking mode
+		# rather than closing the map, so a mis-tap doesn't force
+		# re-opening the picker from pattern_lab.gd's own toggle.
+		return
+
 	# A real building hit walks there; tapping empty map space is the
 	# close gesture AND doubles as "back to overview" (empty string,
 	# same "no building" convention the old waypoint dropdown's own

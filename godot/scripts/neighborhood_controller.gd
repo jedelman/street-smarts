@@ -125,6 +125,7 @@ func _setup_minimap() -> void:
     if minimap == null or not neighborhood_node.has_method("get_building_footprints"):
         return
     minimap.camera = camera
+    minimap.neighborhood_node = neighborhood_node
     minimap.set_buildings(neighborhood_node.get_building_footprints(), neighborhood_node.get_building_ids())
     if not minimap.waypoint_selected.is_connected(_walk_to_building):
         minimap.waypoint_selected.connect(_walk_to_building)
@@ -145,10 +146,46 @@ func _setup_pattern_lab() -> void:
     pattern_lab.call_deferred("refresh_patterns")
     if not pattern_lab.pattern_applied.is_connected(_on_pattern_applied):
         pattern_lab.pattern_applied.connect(_on_pattern_applied)
+    if not pattern_lab.pick_toggled.is_connected(_on_pick_toggled):
+        pattern_lab.pick_toggled.connect(_on_pick_toggled)
+    if minimap != null and not minimap.zone_selected.is_connected(_on_zone_picked):
+        minimap.zone_selected.connect(_on_zone_picked)
+    if camera.has_signal("zone_picked") and not camera.zone_picked.is_connected(_on_zone_picked):
+        camera.zone_picked.connect(_on_zone_picked)
 
 func _on_pattern_applied() -> void:
     _frame_generated_massing()
     _setup_minimap()
+
+## The object selector's real single entry/exit point: turns PatternLab's
+## own "Pick on Map/World" toggle into `start_picking`/`cancel_picking`
+## calls on BOTH the minimap and the 3D walkabout camera at once, since a
+## person picking a target could reasonably do either without switching
+## anything else first.
+func _on_pick_toggled(active: bool) -> void:
+    if active:
+        if minimap != null:
+            minimap.start_picking()
+        if camera.has_method("start_picking"):
+            camera.start_picking()
+    else:
+        if minimap != null:
+            minimap.cancel_picking()
+        if camera.has_method("cancel_picking"):
+            camera.cancel_picking()
+
+## Fires from either real picking source (minimap.zone_selected or
+## orbit_camera's own zone_picked) -- cancels picking on BOTH regardless
+## of which one actually produced the hit (the other is still sitting in
+## its own picking state and has no way to know the session is over
+## otherwise), then hands the real id to PatternLab's target field.
+func _on_zone_picked(_kind: String, id: String) -> void:
+    if minimap != null:
+        minimap.cancel_picking()
+    if camera.has_method("cancel_picking"):
+        camera.cancel_picking()
+    if pattern_lab != null:
+        pattern_lab.set_target(id)
 
 ## Real generated id (e.g. "p108_merged_9_building") -> walk mode, standing
 ## just outside it. Empty string is the "Site Overview" convention the old
