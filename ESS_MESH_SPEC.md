@@ -443,6 +443,22 @@ to need existing at all. That revision is recorded in this document's own
 git history, not hidden — a design sketch this order of unfinished should
 show its work, not just its current conclusion.
 
+Also not, as of this note, a project that's found its right home yet.
+§3.2 onward describes a general-purpose decentralized identity +
+capability-graph + lightweight-governance protocol — almost nothing past
+§3.1 is actually ESS-specific; only the `node.profile`/`node.event`
+lexicons and the `CATEGORY_WEIGHTS` tie-in to `sbci` are. The same
+substrate (offline-tolerant, no server to trust, searchable only by
+people actually granted access) would carry private messaging, tenant
+organizing, or any small-group coordination tool just as well.
+Deliberately staying in `street-smarts` for now rather than being
+extracted to its own repo — this is still a design-only sketch, and
+`street-smarts` is itself a narrower-purpose project (an Alexander-
+pattern-language provocation engine) this arguably doesn't belong in any
+more permanently than it belonged in `tools/sbci/`. Revisit extraction
+once there's an actual implementation worth giving its own home, not
+before.
+
 ## 6. Open questions, ranked by "blocks anything getting built"
 
 1. Has anyone talked to an actual cooperative about whether any of this
