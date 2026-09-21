@@ -63,6 +63,33 @@ returning fabricated numbers. There is no synthetic-data fallback mode —
 if a source is unreachable, the pipeline stops there and tells you which
 stage failed.
 
+## Finding: the data fabric itself is asymmetric
+
+The table above isn't just a status log — read across it and a pattern
+shows up that `sbci/data_fabric.py` makes explicit: every capital-adjacent
+source (OSM, Census, Open Data BCN, even Catastro's clunky SOAP service)
+is a real, queryable API. Every commons/ESS source (XES, Pam a Pam) is a
+browse-only web directory with no API found at all. Of 4 capital-side
+sources tested, 3 support bulk/bbox query; of 2 commons-side sources
+tested, 0 do.
+
+That's not a claim that the solidarity economy is smaller or less
+significant — it's a claim about which economy got built assuming
+programmatic bulk access matters, and which didn't. A pipeline like this
+one will always be able to say more, with less effort, about fixed
+capital than about commons, for reasons that have nothing to do with
+what's actually on the ground. Read a low SCED number in that light —
+`sced_abstain` (see `sced.py`) already refuses to silently read "no data
+collected" as "no commons found," and this finding is the same caution
+one level up: the entire pipeline's *reach* is capital-biased before a
+single grid cell is computed.
+
+n is small — six sources, one session, two cities. This is a documented
+pattern from building this specific pipeline, not a statistic that
+generalizes. Run `python examples/data_fabric_report.py` (no network
+required — it's a static assessment of what got tested) to see it and its
+receipts directly, or `sbci.assess_data_fabric()` to get it as data.
+
 ## Layout
 
 ```
@@ -78,10 +105,11 @@ sbci/
   sei.py                Step 3: Network Porosity & Enclosure Index
   survey.py             PRIMARY OUTPUT — chorus summary, abstentions, questions_for_humans
   composite.py          optional single-number sbci lens — not the report, see survey.py
+  data_fabric.py        capital-vs-commons data-legibility finding (no network, static)
   pipeline.py           run_spatial_capital_analysis() orchestrator
   viz.py                Dual-panel heatmaps (matplotlib), folium isochrone overlay
 tests/                 Unit tests against synthetic geometry — no network calls
-examples/               run_norfolk.py / run_barcelona.py entry points
+examples/               run_norfolk.py / run_barcelona.py / data_fabric_report.py
 data/                   ESS seed fixture (see table above)
 ```
 
