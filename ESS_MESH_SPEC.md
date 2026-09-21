@@ -210,6 +210,7 @@ borrowed from how sociocratic/consensus groups already grade decisions:
 | Grant a *new* capability scope (e.g., operator gets write access to the private namespace, not just public) | medium (e.g. 3 of 5) | A real change in what the operator can do; deserves more than routine friction. |
 | Replace the operator entirely / revoke-and-lock-out | high (e.g. 4 of 5 or unanimous minus absent) | The consequential, adversarial case — should require the group to actually deliberate, same as expelling a member would in the underlying human organization. |
 | Change the quorum policy itself | unanimous | The constitution-amendment case. If a subset of the group could lower their own oversight threshold unilaterally, every other safeguard here is decorative. |
+| Rekey / change the signer set (someone joins or leaves the cooperative) | unanimous among current share-holders | Not a distinct operation from the row above — see §3.8's "rekeying is governance, not cryptography." A member entering or leaving the collective changes who the constitution-amendment tier even is, so it gets the same friction as amending it. |
 
 **3.7.4 Transparency: delegation events are records, not administrative
 side effects.**
@@ -287,12 +288,45 @@ that specific proposal's content, at that moment. There is no gap between
 your FROST share to a proposal *is* the act of ratifying it, not a
 vote that gets executed by someone else afterward.
 
-**Honest gap**: FROST's base protocol assumes a fixed *n* from DKG. A
-cooperative's membership changing — someone actually joining or leaving
-the collective, not just an operator rotation — needs share
-resharing/refresh, which exists in the research literature but is
-meaningfully less mature and less standardized than FROST's core signing
-protocol. Don't let that slide by unexamined when this gets built.
+**Rekeying is governance, not cryptography — a correction to an earlier
+draft of this section.** FROST's base protocol assumes a fixed *n* from
+DKG, which reads like a gap requiring FROST-specific share
+resharing/redistribution (real research, meaningfully less mature than
+FROST's core signing protocol) to fill. It doesn't need filling. Don't
+reshare the *same* key at all: when membership changes, run a fresh DKG
+among the new signer set to produce a new group key, and have the
+*outgoing* quorum sign a succession statement — "group key GPK′
+supersedes GPK" — as an ordinary `Ratification` (§3.9) at the unanimous
+tier (§3.7.3's new "rekey" row). Recomposition isn't a special case the
+protocol needs separate machinery for. It's a governance action *about*
+the protocol's own configuration, using the exact same
+Proposal→Signal→Ratification pipeline every other decision uses. Once
+this is seen as governance rather than cryptography, "who is eligible to
+issue a `block` Signal" (§3.9, formerly open question #8) and "how does
+the signer set change" (this section, formerly open question #7) turn out
+to be the same question: a share-holder is who counts, and rekeying is
+how the roster of share-holders itself gets changed — by the same
+unanimous `Ratification`, not by a separate governance layer bolted on
+top. **This equivalence holds only if share-holding is defined 1:1 with
+cooperative membership** — every member is, by construction, a
+share-holder, no smaller technical committee holding keys on the wider
+membership's behalf. That's a design choice this document makes on
+purpose (a keyholder class distinct from the membership would quietly
+recreate the hierarchy §3.7 exists to avoid), not a fact the cryptography
+hands you for free — state it as a stated choice, not an assumption, if
+this gets built.
+
+**One real remaining wrinkle: identifier continuity.** §3.2 derives
+`did:iroh`'s identifier directly from the group's NodeId/public key. A
+rekey produces a new key, which by that derivation produces a new
+identifier — anyone holding a ticket to, or a stored cross-reference
+pointing at, `did:iroh:<old-nodeid>` doesn't automatically follow to the
+new one. The succession `Ratification` needs to double as a redirect
+record (old DID → new DID, signed by the outgoing quorum) for identity to
+survive its own governance acting on it — the same shape `did:plc` uses
+its operation log for, and worth reusing rather than reinventing. Small
+addition to the record format, not a new problem class, but a real one:
+§3.2 as currently written doesn't have this field yet.
 
 ### 3.9 Vote primitives: minimal cryptography, everything else is convention
 
@@ -390,13 +424,21 @@ different question from what's wanted.
    holding only a derived, expiring capability rather than root, what can
    a hostile or compelled operator still see or do while a grant is live,
    and is that residual exposure acceptable to a group like Eleanor's?
-7. FROST share resharing/refresh when actual membership changes — someone
-   joins or leaves the collective, not just an operator rotation. (§3.8)
-   Less mature and less standardized than FROST's base signing protocol;
-   needs real research before assuming it's a solved problem.
-8. Who decides the roster of "eligible to block" per proposal class
-   (§3.9), and how does *that* roster itself get changed without being
-   just another unguarded power grab one level up? This is the same
-   governance question as §3.7.3's quorum table, recursively, and this
-   document doesn't have an answer beyond "probably the unanimous tier
-   again" — worth someone actually thinking through rather than assuming.
+7. **Resolved, not open**: FROST resharing and "who's eligible to block"
+   were the same question, and the answer is that membership change is
+   itself a `Ratification` (unanimous, §3.7.3) that rekeys via a fresh DKG
+   rather than resharing the old key — see §3.8. Kept here as a record of
+   the resolution, not because it's still unanswered.
+8. Identifier continuity across a rekey (§3.8's "one real remaining
+   wrinkle") — `did:iroh`'s identifier is currently derived straight from
+   the group's NodeId/pubkey (§3.2), so a rekey needs a succession/redirect
+   record the way `did:plc`'s operation log provides one, and §3.2 as
+   written doesn't have that field yet. Small, concrete, needs doing
+   before §3.8's rekeying design is actually complete.
+9. This document commits, in §3.8, to share-holding being defined 1:1
+   with cooperative membership — no smaller technical committee holding
+   keys on the wider membership's behalf. Is that actually workable for a
+   collective larger than "everyone happens to also be comfortable with
+   key management," or does it quietly require every member to become a
+   crypto operator to remain a full member? That tension is real and
+   unexamined.
