@@ -13,3 +13,6 @@ tools/vibe-render/__pycache__/
 public/vibe-render/*.png
 public/vibe-render/*.svg
 public/vibe-render/*.glb
+__pycache__/
+.pytest_cache/
+tools/sbci/output/

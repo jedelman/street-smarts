@@ -1,0 +1,54 @@
+{
+  "type": "FeatureCollection",
+  "_disclaimer": "SEED FIXTURE, NOT A REAL ESS CENSUS. Coordinates are neighborhood-level approximations from general knowledge, not geocoded from Pam a Pam, XES, or any primary registry (no accessible bulk API was found for either — see sbci/ess_source.py). Every feature has verified:false and coordinate_precision:'approximate'. Do not use for anything beyond pipeline smoke-testing. Replace with a real Pam a Pam / XES export before drawing any conclusion about Barcelona's actual ESS geography.",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.1332, 41.3746] },
+      "properties": {
+        "name": "La Borda",
+        "category": "coop_housing_clt",
+        "weight": 1.0,
+        "neighborhood": "Sants (Can Batlló site)",
+        "verified": false,
+        "coordinate_precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.1329, 41.3748] },
+      "properties": {
+        "name": "Can Batlló",
+        "category": "public_cooperative_facility",
+        "weight": 0.7,
+        "neighborhood": "Sants",
+        "verified": false,
+        "coordinate_precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.1305, 41.3752] },
+      "properties": {
+        "name": "La Ciutat Invisible",
+        "category": "worker_coop",
+        "weight": 0.8,
+        "neighborhood": "Sants",
+        "verified": false,
+        "coordinate_precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.1637, 41.3874] },
+      "properties": {
+        "name": "Coop57",
+        "category": "worker_coop_ethical_finance",
+        "weight": 0.8,
+        "neighborhood": "Eixample (approx.)",
+        "verified": false,
+        "coordinate_precision": "approximate"
+      }
+    }
+  ]
+}

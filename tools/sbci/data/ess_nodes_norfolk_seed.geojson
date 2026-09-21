@@ -1,0 +1,5 @@
+{
+  "type": "FeatureCollection",
+  "_disclaimer": "Empty on purpose. Unlike Barcelona, no specific Norfolk worker-cooperative or commons-facility locations were confidently known well enough to seed here without fabricating them — the brief's own framing of Norfolk as 'high fixed capital footprint... dispersed industrial/military infrastructure' with SCED as a comparison point implies few if any ESS nodes is itself a real hypothesis worth testing, not something to paper over with invented entries. Populate this from a real source (Norfolk Cooperative Extension, a local CLT/co-op registry, or direct knowledge Jason supplies) before running SCED against Norfolk for real.",
+  "features": []
+}
