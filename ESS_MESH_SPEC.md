@@ -254,6 +254,94 @@ checked — that combination needs real prototyping, not just citing the
 two specs next to each other. None of §3.7 has been validated against
 `iroh-docs`'s actual current API surface.
 
+### 3.8 How FROST makes §3.7 concrete
+
+§3.7.2 named "a threshold scheme" without saying which one or how signing
+actually happens. FROST (Flexible Round-Optimized Schnorr Threshold
+signatures — Komlo & Goldberg, 2020) is the concrete proposal, for two
+reasons specific to this design:
+
+- **The output is an ordinary Schnorr signature.** Any verifier checking a
+  `did:iroh` document or an MST commit signature needs zero threshold-aware
+  logic — it's the same check as a single-key signature. FROST slots
+  underneath atproto's existing repo-signing conventions rather than
+  requiring them to be rewritten.
+- **Signing is two rounds, and the first round doesn't depend on the
+  message.** Key generation happens once (a distributed key generation
+  protocol — Pedersen DKG is the standard pairing — so the *n* members
+  jointly compute a group public key and each walks away with a private
+  share; no dealer, no moment where the full key exists in one place).
+  Round 1 (nonce commitment) can be precomputed in bulk, well ahead of any
+  actual proposal. Round 2 (the actual partial signature) always requires
+  the live, specific message content — nonce precomputation cannot be used
+  to sign something on a member's behalf later without their knowledge.
+  Aggregation (summing valid partial signatures into the final signature)
+  can be done by anyone, including the untrusted hosting operator from
+  §3.7 — a malicious aggregator can only refuse to produce output
+  (a liveness risk, not a safety one), never forge or corrupt a result.
+
+The property that makes FROST the right fit here, not just *a* fit: you
+cannot produce a partial signature without deliberately computing one over
+that specific proposal's content, at that moment. There is no gap between
+"a member agreed" and "it happened" for anyone to misrepresent — contributing
+your FROST share to a proposal *is* the act of ratifying it, not a
+vote that gets executed by someone else afterward.
+
+**Honest gap**: FROST's base protocol assumes a fixed *n* from DKG. A
+cooperative's membership changing — someone actually joining or leaving
+the collective, not just an operator rotation — needs share
+resharing/refresh, which exists in the research literature but is
+meaningfully less mature and less standardized than FROST's core signing
+protocol. Don't let that slide by unexamined when this gets built.
+
+### 3.9 Vote primitives: minimal cryptography, everything else is convention
+
+The mistake to actively avoid: encoding a specific decision-making
+procedure — majority vote, consensus-minus-one-block, Robert's Rules —
+into the protocol. A cooperative that already knows how to run a hard
+meeting doesn't need software telling it how to deliberate; it needs
+software that can't be argued with about whether quorum was actually met.
+Split accordingly, with a hard boundary between the two layers:
+
+**Social layer — expressive, human, cryptographically inert.** A `Signal`
+record: any member can publish one, at any time, attached to a
+`Proposal`. Type is one of `consent | stand_aside | block | abstain`, plus
+free text — that vocabulary because it's what a consensus-trained group
+already uses, and collapsing it to `yes/no` would be a regression, not a
+simplification. Each `Signal` is just an ordinary signed record from the
+member's own individual key — not a threshold operation, no special
+status. This is where discussion, "I'll go along but want my concern
+noted," and everything else genuinely human-shaped lives, exactly as
+messy as a real meeting, because the protocol doesn't touch it.
+
+**Ratification layer — mechanical, minimal, the only thing with actual
+teeth.** A `Ratification` is nothing but the FROST-aggregated signature
+over a `Proposal`'s content, checked against the threshold *t* its class
+requires (§3.7.3's table). It either meets that threshold or it doesn't
+exist. No cryptographic representation of "no" is needed: signing your
+share already is the only "yes" that has power, and declining to sign is
+every other outcome at once.
+
+**What a `block` Signal actually does, and doesn't do.** At low-threshold
+tiers (routine renewal, 2-of-5) a block cannot stop a willing quorum by
+itself — three willing signers just proceed. That's not a gap, it matches
+real consensus practice: you don't give block power over routine
+logistics. The tiers that already require unanimity (§3.7.3's
+"change the quorum policy itself" row) are exactly where a block is
+*structurally* sufficient, since unanimous-minus-one can never reach
+unanimous. For everything in between, say the honest thing plainly:
+**a block is a social fact enforced by client convention, not by
+cryptography.** An honest reference client refuses to build, relay, or
+act on a `Ratification` whose `Proposal` has an outstanding, un-withdrawn
+`block` Signal from an eligible member — the same way a block works in a
+real meeting: nothing physically stops the room from acting anyway, the
+group's shared practice is what makes it matter. Write that down as a
+client norm, and don't dress it up as a cryptographic guarantee it isn't
+— that distinction (cryptography for privacy and authentication;
+everything about how a decision is actually made is convention, enforced
+by the humans and the software they choose to run) is the design
+principle this whole section follows, not just this one paragraph.
+
 ## 4. Relationship to `tools/sbci/`
 
 If this existed, `sbci/ess_source.py` would gain a mesh-backed loader
@@ -302,3 +390,13 @@ different question from what's wanted.
    holding only a derived, expiring capability rather than root, what can
    a hostile or compelled operator still see or do while a grant is live,
    and is that residual exposure acceptable to a group like Eleanor's?
+7. FROST share resharing/refresh when actual membership changes — someone
+   joins or leaves the collective, not just an operator rotation. (§3.8)
+   Less mature and less standardized than FROST's base signing protocol;
+   needs real research before assuming it's a solved problem.
+8. Who decides the roster of "eligible to block" per proposal class
+   (§3.9), and how does *that* roster itself get changed without being
+   just another unguarded power grab one level up? This is the same
+   governance question as §3.7.3's quorum table, recursively, and this
+   document doesn't have an answer beyond "probably the unanimous tier
+   again" — worth someone actually thinking through rather than assuming.
