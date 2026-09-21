@@ -328,6 +328,46 @@ its operation log for, and worth reusing rather than reinventing. Small
 addition to the record format, not a new problem class, but a real one:
 §3.2 as currently written doesn't have this field yet.
 
+**Rekey's unanimity requirement is constituent power, not just a safety
+threshold.** Every other row in §3.7.3's table applies a decision rule to
+a membership the protocol treats as fixed for that decision's purposes —
+constituted power's routine operation, in Hardt and Negri's terms
+(constituted power being what a founding act ossifies into once it seals
+itself off from the generative force — constituent power — that produced
+it; the multitude, in their joint work, being plurality that refuses to
+resolve into a single unified sovereign rather than many-becoming-one).
+Rekey is different in kind, not just in threshold: it's the group asking
+"who are we" again, live — re-founding the membership rather than
+applying a rule to it. Requiring unanimity rather than a majority is what
+keeps that act from collapsing into just another vote with higher
+friction.
+
+That's also what makes unanimity-for-rekey a clean fission mechanism
+rather than a deadlock hazard. A subset that can't get the whole group to
+unanimously ratify a rekey isn't stuck: thanks to §3.7.5's portability
+guarantee, they can run a fresh DKG among themselves and mint their own
+new `did:iroh` with the full repo history carried forward intact. What
+they can't do is claim succession of the *old* identifier — that
+specifically requires the unanimity they don't have. The "official" name
+stays only with whoever can still reach it; everyone else forks with
+everything except the name. Disagreement doesn't get forced into one
+resolution the way a majority vote would force it — it gets a legible,
+non-destructive technical form instead. The multitude staying plural
+rather than being resolved into one, built into the protocol rather than
+merely asserted about it.
+
+**The gap this exposes**: "unanimous among current share-holders," as
+written, doesn't distinguish a member *voluntarily leaving* from a
+*hostile holdout* who simply never engages and thereby freezes the
+identifier forever by omission — that's capture-by-absence, not
+legitimate fission, and the design needs to tell the two apart. Fix: a
+fifth `Signal` type (§3.9), `exit` — individual, self-signed, meaning "I
+withdraw my own claim to future participation" — which redefines the
+*effective* unanimity set going forward to exclude the exiting member.
+Voluntary exit shrinks the required *n* cleanly. A member who won't even
+sign their own exit is exactly the case where fission, not a forced
+workaround, is the correct and available answer.
+
 ### 3.9 Vote primitives: minimal cryptography, everything else is convention
 
 The mistake to actively avoid: encoding a specific decision-making
@@ -339,14 +379,19 @@ Split accordingly, with a hard boundary between the two layers:
 
 **Social layer — expressive, human, cryptographically inert.** A `Signal`
 record: any member can publish one, at any time, attached to a
-`Proposal`. Type is one of `consent | stand_aside | block | abstain`, plus
-free text — that vocabulary because it's what a consensus-trained group
-already uses, and collapsing it to `yes/no` would be a regression, not a
-simplification. Each `Signal` is just an ordinary signed record from the
-member's own individual key — not a threshold operation, no special
-status. This is where discussion, "I'll go along but want my concern
-noted," and everything else genuinely human-shaped lives, exactly as
-messy as a real meeting, because the protocol doesn't touch it.
+`Proposal`. Type is one of `consent | stand_aside | block | abstain |
+exit`, plus free text — that vocabulary because it's what a
+consensus-trained group already uses, and collapsing it to `yes/no` would
+be a regression, not a simplification. `exit` is the odd one out and the
+only type with a defined mechanical effect rather than being purely
+informational: a member's own signed withdrawal of their claim to future
+participation, which — per §3.8's fission discussion — shrinks the
+effective unanimity set for future rekey `Ratification`s rather than
+freezing it. Every other `Signal` type is just an ordinary signed record
+from the member's own individual key — not a threshold operation, no
+special status. This is where discussion, "I'll go along but want my
+concern noted," and everything else genuinely human-shaped lives, exactly
+as messy as a real meeting, because the protocol doesn't touch it.
 
 **Ratification layer — mechanical, minimal, the only thing with actual
 teeth.** A `Ratification` is nothing but the FROST-aggregated signature
@@ -442,3 +487,10 @@ different question from what's wanted.
    key management," or does it quietly require every member to become a
    crypto operator to remain a full member? That tension is real and
    unexamined.
+10. The `exit` Signal (§3.9) shrinks the effective unanimity set for
+    future rekeys, but what stops it being abused in the other direction —
+    e.g. an outside pressure campaign coercing enough members to sign
+    `exit` that the remaining group can no longer reach whatever quorum it
+    needs to function at all? "Voluntary" needs more than a self-signed
+    record to be a meaningful guarantee against coercion, and this
+    document doesn't have that answer yet.
