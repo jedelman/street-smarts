@@ -92,12 +92,16 @@ receipts directly, or `sbci.assess_data_fabric()` to get it as data.
 
 **A design sketch for closing this gap without recreating the capital-side
 problem** — a crawled or scraped public ESS index has real opsec costs for
-the cooperatives it would list — lives at `../../ESS_MESH_SPEC.md`
-(repo root): a capability-scoped, audit-by-construction protocol
-combining atproto's data model with iroh's private transport, so a search
-against a node is traced by that node rather than by a public index. No
-code yet; it's a design doc, not a dependency of anything in this
-package.
+the cooperatives it would list — was designed here and has since been
+extracted to its own repo: **https://github.com/jedelman/atproto-iroh**.
+A capability-scoped, audit-by-construction protocol combining atproto's
+data model with iroh's private transport, so a search against a node is
+traced by that node rather than by a public index. It grew into something
+general-purpose, not ESS-specific, which is why it moved — see that
+repo's `README.md`. Not a dependency of anything in this package; the one
+live link back is `node.profile.category`'s lexicon copying this file's
+`CATEGORY_WEIGHTS` vocabulary, with no automated check keeping the two in
+sync across repos.
 
 ## Layout
 
