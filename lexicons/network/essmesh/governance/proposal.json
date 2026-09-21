@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "network.essmesh.governance.proposal",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Something the namespace's members are being asked to weigh in on. See ESS_MESH_SPEC.md 3.9 -- a Proposal carries no power on its own; it only becomes a Ratification once enough network.essmesh.governance.signal records of type 'consent' reference it (counted by any reader, not aggregated, not signed by anyone but the individual consenters). There is no separate 'ratification' record type -- see this file's note on that.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "class", "createdAt"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000
+          },
+          "class": {
+            "type": "string",
+            "knownValues": [
+              "admitCoSigner",
+              "removeCoSigner",
+              "changePolicy",
+              "general"
+            ],
+            "description": "The three named classes map directly to ESS_MESH_SPEC.md 3.7.3's table and carry a mechanically-relevant N-of-M threshold the group has agreed on out of band (this schema doesn't encode the threshold itself -- see requiredCount). 'general' is for any other decision the group wants a signed, counted record of, per 3.9's point that a cooperative already knows how to run a hard meeting and shouldn't need the protocol to enumerate every kind of decision it might want to make this way."
+          },
+          "requiredCount": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional. The N the proposer believes this class currently requires, restated here for legibility -- not authoritative; the actual current N-of-M policy lives in the namespace's own governance history (a changePolicy Proposal's own prior Ratification), and a reader should verify against that, not trust this field."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

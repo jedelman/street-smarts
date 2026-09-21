@@ -1,0 +1,53 @@
+{
+  "lexicon": 1,
+  "id": "network.essmesh.node.profile",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A cooperative/ESS node's self-asserted profile record. One per member repo -- 'Eleanor's' profile, as this namespace understands it, is the union of every included member's own profile record, not a single converged statement. See ESS_MESH_SPEC.md sections 3.3 and 3.9.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["name", "category", "createdAt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 100,
+            "description": "Display name, e.g. \"Eleanor's\"."
+          },
+          "category": {
+            "type": "string",
+            "knownValues": [
+              "coop_housing_clt",
+              "worker_coop",
+              "worker_coop_ethical_finance",
+              "public_cooperative_facility",
+              "standard_commercial"
+            ],
+            "description": "Governance tier. Must match tools/sbci/sbci/ess_source.py's CATEGORY_WEIGHTS keys exactly -- this is the shared vocabulary the SBCI pipeline's SCED weighting reads from a self-asserted field instead of guessing at from outside."
+          },
+          "neighborhood": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 100,
+            "description": "Coarse location, safe for the public tier (ESS_MESH_SPEC.md 3.5) -- not a street address."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000
+          },
+          "governanceEligible": {
+            "type": "boolean",
+            "description": "Self-asserted claim of governance-eligible standing (ESS_MESH_SPEC.md 3.7.2). Not authoritative on its own -- a reader checking actual standing should verify against the namespace's governance collection (network.essmesh.governance.signal / .proposal history), not trust this field alone. Present for quick display, not as the source of truth."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

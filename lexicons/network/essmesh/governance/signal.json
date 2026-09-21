@@ -1,0 +1,37 @@
+{
+  "lexicon": 1,
+  "id": "network.essmesh.governance.signal",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "One member's response to a network.essmesh.governance.proposal record. See ESS_MESH_SPEC.md 3.9 -- an ordinary signed record from the member's own individual key, never a threshold or aggregated operation. A Proposal becomes a de facto Ratification purely by count: N distinct, valid 'consent' Signals referencing it, no separate record or signature required to mark that. 'exit' is the one type with a defined mechanical effect beyond information -- see ESS_MESH_SPEC.md 3.8's fission discussion.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "signalType", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "AT-URI + CID of the network.essmesh.governance.proposal record this responds to. Pinning the CID, not just the URI, means a Signal is unambiguous about exactly which version of a Proposal it consented to, even if the author edited it after some members already signaled -- an edit produces a new record version a stale Signal doesn't cover."
+          },
+          "signalType": {
+            "type": "string",
+            "knownValues": ["consent", "stand_aside", "block", "abstain", "exit"],
+            "description": "This is not yes/no by design -- see ESS_MESH_SPEC.md 3.9 on why collapsing it would be a regression. 'consent' is the only type that counts toward a Ratification threshold. 'block' has no cryptographic effect of its own (ESS_MESH_SPEC.md 3.9's 'What a block Signal actually does, and doesn't do') -- it's a social fact an honest client is expected to honor by refusing to act on the Proposal, not something this schema can enforce. 'exit' shrinks the effective governance-eligible roster per ESS_MESH_SPEC.md 3.8, independent of whichever Proposal it's attached to -- an exit is about the signaler's own standing, not a response to that specific proposal's content."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000,
+            "description": "Free text -- 'I'll go along but want my concern noted,' or a block's stated reason. This is where the actual deliberation lives; the protocol doesn't parse or act on it."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

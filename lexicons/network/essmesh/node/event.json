@@ -1,0 +1,45 @@
+{
+  "lexicon": 1,
+  "id": "network.essmesh.node.event",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A single event/activity record (an assembly, an open hours change, a workshop). One record per event, keyed by tid so multiple events coexist under one member's repo.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "startsAt", "createdAt"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "locationNote": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 150,
+            "description": "Free text, deliberately not structured geo -- whether and how precisely to disclose location is a per-event, per-disclosure-tier choice (ESS_MESH_SPEC.md 3.5), not something this schema should make for the author by giving them a lat/lon field that implies it belongs in the public tier."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

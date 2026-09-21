@@ -106,13 +106,17 @@ a repo
 
 Each member runs (or has hosted on their behalf — see §3.7) one ordinary,
 single-key-signed MST repo — the standard atproto shape, nothing new,
-nothing collectively owned. Records use lexicon collections, tentatively
-`network.essmesh.node.profile` and `network.essmesh.node.event`
-(governance tier, category, hours, etc. — schema TBD, needs input from an
-actual cooperative before it's finalized, not invented wholesale here).
-This is where the SCED weighting scheme from `sbci`'s brief
-(coop_housing_clt=1.0, worker_coop=0.8, ...) could live as a first-class,
-self-asserted field rather than something an outside pipeline guesses at.
+nothing collectively owned. Records use lexicon collections,
+`network.essmesh.node.profile` and `network.essmesh.node.event`, drafted
+in full at `lexicons/network/essmesh/node/` — real schema, not a
+placeholder, though not yet validated against live atproto tooling (see
+`lexicons/README.md`) and still needing input from an actual cooperative
+before any field list should be treated as final. This is where the SCED
+weighting scheme from `sbci`'s brief (coop_housing_clt=1.0,
+worker_coop=0.8, ...) lives as a first-class, self-asserted field —
+`profile.category`'s allowed values are copied verbatim from
+`tools/sbci/sbci/ess_source.py`'s `CATEGORY_WEIGHTS` keys, the one place
+protocol and pipeline share vocabulary directly.
 
 **"Eleanor's" is a namespace, not an entity with its own signing key.** A
 topic — identified by its own ID, not by anyone's DID — aggregates
@@ -129,7 +133,7 @@ attributed statements, trust aggregation left to the reader or to
 explicit convention — than earlier drafts' single-voice model was.
 
 ### 3.4 Transport: two edge types are the entire membership structure;
-gossip for propagation, direct sync for backfill
+direct peering does both aggregation and updates
 
 No separate "membership" object exists anywhere in this design. Two
 directed edge types over the same set of individual `did:iroh` identity
@@ -146,41 +150,36 @@ checkable, not a separate roster that could drift out of sync with the
 actual capability grants (§6 covers whether the underlying mechanism
 exposes this enumerably).
 
-**A correction on mechanism, not on this section's meaning**: earlier
-drafts described this purely as `iroh-docs` namespace sync (a
-CRDT-replicated document, pull-based). That's more machinery than the
-design actually needs, given §3.3 already committed to no single
-converged "namespace state" — there's no consistency property left for a
-CRDT to guarantee. Two mechanisms instead, matched to what each is
-actually good at:
+**Correction to the previous revision, which read "peering for
+aggregation and updates" as gossip and overcorrected.** It isn't gossip —
+gossip specifically means epidemic, multi-hop relay (a peer forwards what
+it received to *its own* peers), and that really would have needed the
+strict relay-scoping the previous revision spent a full paragraph
+defending. What was actually meant is simpler and doesn't have that
+problem: **direct peer-to-peer connections between exactly the edge
+holders themselves**, no relay, no intermediary. Two peers who each hold
+an edge into the same namespace connect directly and sync — the same
+operation whether it's catching up on history or picking up something
+published five minutes ago. One mechanism, not the two-mechanism
+gossip/backfill split the previous revision invented to solve a
+multi-hop leak risk that direct peering never had in the first place.
 
-- **Gossip for live propagation.** New records disseminate via
-  `iroh-gossip` (a distinct iroh primitive from `iroh-docs` — pub-sub over
-  a topic among a connected swarm) among the namespace's current
-  read-edge holders. Each peer accumulates whatever arrives from peers
-  they've granted an edge to; there's no canonical merged state, matching
-  §3.3 exactly.
-- **Direct repo sync for backfill.** Gossip is good at "propagate what's
-  happening now," not at cheaply catching a peer up after they've been
-  offline a month. That's what §3.3's individual, durable, per-member
-  repos are for: a returning or newly-admitted peer does an ordinary
-  direct sync against specific members' repos to backfill history; gossip
-  only needs to carry new records going forward.
-
-**The one hard constraint this mechanism shift introduces, and it's load-
-bearing, not a detail**: gossip protocols get their efficiency from
-multi-hop relay — a peer forwards what it received to *its* peers, not
-only the ones who sent it to them. That's fine for propagation speed and
-fatal for §2's first two design goals (zero ambient legibility,
-audit-by-construction) if left unscoped: relay beyond a peer's own direct
-edges would let data reach peers who were never granted anything. **Topic
-membership must equal the current read-edge set, exactly** — relay stops
-at the edge of who's actually been granted access, or every peer inside
-the topic is implicitly being granted an edge by whoever admits them,
-which then needs to be the thing §3.7's governance actually gates, not an
-afterthought to it. No ticket, no edge, no knowledge the node exists on
-the mesh at all — that property has to survive the switch to gossip
-deliberately, not by assumption.
+That also walks back last revision's objection to `iroh-docs`' own
+namespace-document model, which was aimed at the wrong target. The
+concern was "a converged document implies one canonical merged answer
+across every author," which would contradict §3.3's no-single-voice
+stance. But `iroh-docs`' actual replication model resolves convergence
+*per key*, not across authors — if each member writes under their own
+keyspace (e.g. `<member-did>/profile`, `<member-did>/event/<tid>`),
+convergence only ever answers "what's the current version of *this
+member's own* record," which is exactly wanted (no ambiguity about which
+version of someone's own claim is current) and never forces any
+resolution *between* different members' claims, which stays exactly as
+side-by-side and individually attributed as §3.3 already described. **One
+`iroh-docs` document per namespace, synced directly between edge holders,
+is the mechanism** — simpler than the previous revision's gossip/backfill
+split, and the objection to it doesn't survive close reading of what
+`iroh-docs` actually converges on.
 
 ### 3.5 Tiered disclosure: two namespaces, not one
 
@@ -287,11 +286,13 @@ consent:**
 side effects.** Unchanged from earlier drafts in substance, mechanism
 updated per §3.4: every grant, renewal, and `consent`/`block`/`exit`
 `Signal` is a signed record in a `governance` collection within the
-namespace, disseminated live via gossip to every current holder —
-transparency as a property of the topology (pushed to everyone watching,
-as it happens), not a log someone has to remember to check. A member who
-was offline catches up on reconnect via direct backfill against another
-member's repo, same as any other missed history.
+namespace's document, synced directly to every current holder the same
+way any other record is — transparency as a property of the topology
+(reaching everyone with a live connection as it happens, no separate
+broadcast step), not a log someone has to remember to check. A member who
+was offline catches up on reconnect via the same direct sync against
+another edge holder, same as any other missed history — one mechanism,
+not a live/backfill split.
 
 **3.7.5 Portability was never about a group key, and is cleaner now.**
 Each member's own repo (§3.3) is theirs regardless of what happens to any
@@ -310,9 +311,9 @@ could matter for someone's safety if patterns get correlated over time.
 Worth the group deciding that's acceptable, not assuming it away. Second
 cost: "governance-eligible" as a status distinct from "has a write edge"
 is a real conceptual addition this document is choosing to make (§3.7.2),
-not something free. None of §3.7 has been validated against the actual
-current API surface of either `iroh-gossip` or `iroh-docs` (§3.4) — in
-particular, whether either exposes an enumerable list of current
+not something free. None of §3.7 has been validated against `iroh-docs`'s
+actual current API surface (§3.4) — in particular, whether it exposes an
+enumerable list of current
 capability/topic holders at all, which the governance-eligible-roster
 idea depends on (§6).
 
@@ -358,7 +359,12 @@ procedure — majority vote, consensus-minus-one-block, Robert's Rules —
 into the protocol. A cooperative that already knows how to run a hard
 meeting doesn't need software telling it how to deliberate; it needs
 software that can't be argued with about whether quorum was actually met.
-Split accordingly, with a hard boundary between the two layers:
+`Proposal` and `Signal` are drafted in full as lexicons at
+`lexicons/network/essmesh/governance/` — there is deliberately no
+`Ratification` lexicon; see `lexicons/README.md` for why giving it a
+record type of its own would quietly reintroduce the aggregation step
+this design spent several revisions removing. Split accordingly, with a
+hard boundary between the two layers:
 
 **Social layer — expressive, human, cryptographically inert.** A `Signal`
 record: any member can publish one, at any time, attached to a
@@ -421,13 +427,10 @@ either "no data" or "scrape it without asking."
 
 Not a commitment that Eleanor's or any real cooperative wants this, needs
 this, or has been asked. Not a claim that iroh's current APIs
-(`iroh-gossip` and `iroh-docs`, the latter formerly `iroh-sync`) already
-support everything described here — they weren't checked against this
-design in detail and some of §3.3–3.5 may need real API research before
-it's buildable, especially §3.4's requirement that gossip relay be
-strictly scoped to a topic's current edge-holders rather than propagating
-further, which needs verifying against `iroh-gossip`'s actual behavior,
-not assumed. Not a replacement for actually talking to XES, Pam a Pam, or a
+(`iroh-docs`, formerly `iroh-sync`) already support everything described
+here — they weren't checked against this design in detail and some of
+§3.3–3.5 may need real API research before it's buildable. Not a
+replacement for actually talking to XES, Pam a Pam, or a
 Norfolk cooperative about what they'd want, if anything — this is an
 engineer's-eye-view sketch of what's *technically* possible, which is a
 different question from what's wanted. And, worth being honest about
@@ -445,21 +448,18 @@ show its work, not just its current conclusion.
 1. Has anyone talked to an actual cooperative about whether any of this
    solves a problem they have? Still ranked first, on purpose — everything
    below is unbuildable-usefully without an answer to this one.
-2. Does `iroh-gossip` (live propagation, §3.4) or `iroh-docs` (backfill)
-   expose an enumerable list of who currently holds a topic/capability
-   grant? §3.7.2's governance-eligible-roster idea depends on being able
-   to check who currently holds a grant-capable edge, not just on holding
-   one yourself. Needs a real read of both crates' current source, not
-   assumed from memory.
-3. §3.4's hard constraint — gossip relay stays strictly scoped to a
-   topic's current edge-holders, never propagating beyond them — needs
-   verifying against `iroh-gossip`'s actual relay behavior. If multi-hop
-   relay can't be scoped that tightly by the primitive itself, either
-   every peer in a topic needs to be treated as edge-granted by
-   construction (folding relay-participation into §3.7's governance
-   directly) or gossip isn't a safe substitute for direct-edge-only
-   dissemination after all, and §3.4 needs to be revisited rather than
-   assumed sound.
+2. Does `iroh-docs` expose an enumerable list of who currently holds a
+   capability grant into a namespace? §3.7.2's governance-eligible-roster
+   idea depends on being able to check who currently holds a grant-capable
+   edge, not just on holding one yourself. Needs a real read of the
+   crate's current source, not assumed from memory.
+3. **Resolved by correcting a misreading, not by new design work**: an
+   earlier revision worried about scoping multi-hop gossip relay to
+   exactly the edge set, which would have been a real, load-bearing
+   constraint. It doesn't apply — §3.4 now describes direct peer-to-peer
+   sync between edge holders, not epidemic/relayed gossip, so there's no
+   relay boundary to leak beyond in the first place. Kept as a record that
+   this was worried about and the worry doesn't survive the correction.
 4. §3.7.2's fork — flat capability-granting (a) vs. N-of-M consent
    specifically for governance-eligible status (b) — is a live, unresolved
    design choice, not something this document has picked on the group's
@@ -495,14 +495,24 @@ show its work, not just its current conclusion.
    DID-redirect problem this replaces, there's no natural place to put
    that signal, since a bare topic ID carries no signature of its own the
    way a DID document did.
-10. **Mostly resolved by §3.4's split into gossip-for-propagation +
-    direct-repo-backfill, worth confirming rather than fully closing**:
-    new-member historical access no longer depends on an implicit "does
-    granting an edge imply full history" question — backfill is a
-    designed, separate mechanism (direct sync against another member's
-    repo), not something riding on gossip's own semantics. What's still
-    unverified: does that backfill sync actually need to happen
-    peer-by-peer against whoever the new member can reach, or is there a
-    cleaner "catch up from any current holder" mechanism `iroh-docs`
-    already provides that would make this less manual than it currently
-    reads?
+10. **Mostly resolved by §3.4's correction, worth confirming against the
+    real API rather than fully closing**: new-member historical access
+    was a real open question when "live propagation" and "backfill" were
+    two separate mechanisms with different semantics. With one mechanism
+    (direct sync of the namespace's `iroh-docs` document), the answer
+    should just fall out of what document sync means by definition —
+    syncing a document gets you its current state, not merely a
+    subscription to future changes. What's still unverified: does
+    `iroh-docs` actually behave that way in practice, and does a new
+    member's first sync need to happen against one specific peer they can
+    reach, or can it pull from any current holder — which would make this
+    faster in practice than it reads on paper.
+11. The four lexicons at `lexicons/` (§3.3, §3.9) are a careful draft
+    following documented atproto lexicon conventions, not run through an
+    actual lexicon validator or checked against current atproto tooling —
+    same caveat as everything else in this document that hasn't touched a
+    real API this session. Before anyone builds against them: validate
+    the schemas themselves, and get an actual cooperative's eyes on
+    `profile`'s and `event`'s field lists specifically, since those are
+    the two records asking someone to describe themselves, not just the
+    two managing protocol mechanics.
