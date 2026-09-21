@@ -21,6 +21,7 @@ from .grid import build_grid
 from .scci import compute_scci
 from .sced import compute_sced
 from .sei import compute_sei
+from .survey import SurveyReport, build_survey, print_report
 
 
 @dataclass
@@ -28,6 +29,7 @@ class CityRunResult:
     city_name: str
     grid: gpd.GeoDataFrame
     ess_nodes: gpd.GeoDataFrame
+    survey: SurveyReport
     warnings: list[str] = field(default_factory=list)
 
 
@@ -75,7 +77,7 @@ def run_spatial_capital_analysis(
     grid = compute_scci(grid, buildings, road_network_edges=drive_edges)
     grid = compute_sced(grid, ess_nodes)
     grid = compute_sei(grid, walk_graph, barrier_features=barrier_edges)
-    grid = compute_sbci(grid)
+    grid = compute_sbci(grid)  # one optional lens, not the report — see survey.py
 
     grid.to_file(output_dir / f"sbci_grid_{city_name.lower()}.gpkg", driver="GPKG")
     ess_nodes.to_file(
@@ -85,8 +87,15 @@ def run_spatial_capital_analysis(
     summary = grid[["scci_norm", "sced_norm", "sei_norm", "sbci"]].describe()
     summary.to_csv(output_dir / f"sbci_summary_{city_name.lower()}.csv")
 
+    survey = build_survey(grid, city_name)
+    print_report(survey)
+
     return CityRunResult(
-        city_name=city_name, grid=grid, ess_nodes=ess_nodes, warnings=warnings
+        city_name=city_name,
+        grid=grid,
+        ess_nodes=ess_nodes,
+        survey=survey,
+        warnings=warnings,
     )
 
 

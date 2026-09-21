@@ -1,4 +1,12 @@
-"""Composite Spatial Bio-Capital Index.
+"""One optional single-number lens on SCCI/SCED/SEI — not the report.
+
+survey.py is the primary output of this package: three metrics kept
+separate, disagreements between them surfaced as questions rather than
+folded away. This module exists because a single number is occasionally
+useful for a quick sort or a shared-color-scale map, not because it's an
+answer. Don't cite sbci as if it settles anything a look at the three
+sub-metrics wouldn't settle better — see the package README's note on
+this repo's own anti-measurement stance.
 
 The brief doesn't specify a compositing formula beyond naming the three
 inputs, so this makes one explicit choice and documents it rather than

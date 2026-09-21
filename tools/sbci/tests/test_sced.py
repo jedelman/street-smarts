@@ -27,7 +27,7 @@ def test_sced_decays_with_distance():
     assert values[0] > 0
 
 
-def test_sced_empty_nodes_is_zero():
+def test_sced_empty_nodes_abstains_not_zero_measurement():
     grid = _synthetic_grid()
     empty_nodes = gpd.GeoDataFrame(
         {"weight": [], "category": []}, geometry=[], crs=UTM_NORFOLK
@@ -35,6 +35,21 @@ def test_sced_empty_nodes_is_zero():
     out = compute_sced(grid, empty_nodes)
     assert (out["sced_raw"] == 0).all()
     assert (out["sced_norm"] == 0).all()
+    # the interesting assertion: an empty layer must be flagged as "no data",
+    # not silently indistinguishable from "measured zero commons"
+    assert (out["sced_abstain"] == True).all()  # noqa: E712
+    assert out["sced_abstain_reason"].notna().all()
+
+
+def test_sced_nonempty_nodes_does_not_abstain():
+    grid = _synthetic_grid()
+    node = gpd.GeoDataFrame(
+        {"weight": [1.0], "category": ["coop_housing_clt"], "verified": [True]},
+        geometry=[Point(50, 50)],
+        crs=UTM_NORFOLK,
+    )
+    out = compute_sced(grid, node)
+    assert (out["sced_abstain"] == False).all()  # noqa: E712
 
 
 def test_sced_weight_scales_linearly():
