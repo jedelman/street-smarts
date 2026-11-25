@@ -1,28 +1,16 @@
-name: Build and deploy to Cloudflare
+name: Build and test
 
-# Production (push to main) deploys to the live Worker (custom domain) AND
-# to the Cloudflare Pages project's production branch. Every PR/branch
-# build also deploys to Pages, which gives it its own unique preview URL
-# (<hash>.street-smarts.pages.dev) with no effect on production traffic --
-# the "Comment preview URL on the PR" step below posts/updates that link
-# on the PR. The Workers deploy step stays main-only and untouched so the
-# live site's custom domain keeps working exactly as before -- retiring it
-# needs one manual step outside CI: re-pointing that custom domain to the
-# Pages project in the Cloudflare dashboard.
+# Deploys are Cloudflare's now (Workers Builds, connected to this repo in the
+# dashboard: build command `bash scripts/cloudflare-build.sh`, deploy command
+# `npx wrangler deploy`), so this workflow holds no Cloudflare credentials. It
+# builds everything the deploy builds and runs every gate on each PR and push:
+# Rust tests, the walk page's tests, the WASM build, the vibe-render pipeline,
+# packed GLBs, the isometric perceptual-hash check, and the bundle budget.
+# (Until 2026-11-25 it also deployed, with a CLOUDFLARE_API_TOKEN secret that
+# had stopped working; see the git history for those steps.)
 #
-# Also runs the 3D "vibe render" visual regression gate and uploads its
-# renders as a downloadable artifact -- folded in from a formerly separate
-# `vibe-render.yml` workflow, which ran `scripts/vibe-render.sh` a SECOND
-# time on every PR (its own full Rust compile + cadquery render, paying
-# real CI minutes twice for identical output). This job already runs
-# vibe-render.sh once for the deploy itself; the old workflow's two steps
-# below just read that SAME `target/vibe-render` output, no separate run
-# needed. This also closes a real gap the split left open: the perceptual-
-# hash check previously couldn't block a deploy at all (two independent
-# workflows, neither gated on the other) -- a real visual regression could
-# land on production as long as build-and-deploy itself stayed green. Now
-# it's a real gate, same "gated, not just measured" standard as the bundle
-# size budget below.
+# The vibe-render gate reads the same `target/vibe-render` output the build
+# step writes, so the pipeline runs once per job, not twice.
 
 on:
   push:
@@ -32,10 +20,9 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  build-and-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -174,90 +161,3 @@ jobs:
             echo "::error::WASM gzip size ${GZIP} bytes exceeds budget of ${BUDGET_GZIP_BYTES} bytes"
             exit 1
           fi
-
-      - name: Deploy to Cloudflare Workers (production, main only)
-        # Still the live site's custom domain until that's manually
-        # re-pointed to the Pages project below -- see this workflow's
-        # header comment. PRs never touch production.
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        id: deploy
-        run: |
-          rm -rf .wrangler/tmp 2>/dev/null || true
-          npx -y wrangler@4 deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Create street-smarts Cloudflare Pages project (idempotent)
-        run: |
-          npx -y wrangler@4 pages project create street-smarts \
-            --production-branch=main 2>/dev/null || true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Deploy preview/production to Cloudflare Pages
-        # Runs on every PR/branch build, not just main -- this is what
-        # gives each branch its own preview URL. Plain `wrangler pages
-        # deploy`, same as the Ghent canopy step below, not the
-        # `cloudflare/pages-action` wrapper -- Cloudflare archived that
-        # action in Oct 2024, so it's off the table for new CI. Wrangler
-        # decides preview vs production from the branch name against the
-        # project's production-branch (main, set above); its own stdout
-        # reports the deployment URL either way, captured here for the PR
-        # comment step below.
-        id: pages-deploy
-        run: |
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          OUTPUT=$(npx -y wrangler@4 pages deploy public \
-            --project-name=street-smarts \
-            --branch="$BRANCH" \
-            --commit-dirty=true 2>&1 | tee /dev/stderr)
-          URL=$(echo "$OUTPUT" | grep -oE 'https://[a-z0-9.-]+\.pages\.dev' | tail -1)
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Comment preview URL on the PR
-        if: github.event_name == 'pull_request' && steps.pages-deploy.outputs.url != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const url = "${{ steps.pages-deploy.outputs.url }}";
-            const marker = "<!-- cloudflare-pages-preview -->";
-            const body = `${marker}\nPreview deployed: ${url}`;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-      - name: Deploy Ghent canopy microsite to Cloudflare Pages (main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          npx -y wrangler@4 pages project create ghent-canopy \
-            --production-branch=main 2>/dev/null || true
-          npx -y wrangler@4 pages deploy tools/canopy-loss/site \
-            --project-name=ghent-canopy \
-            --branch=main \
-            --commit-dirty=true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
