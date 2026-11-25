@@ -511,7 +511,15 @@ pub struct Opening {
 #[serde(rename_all = "snake_case")]
 pub enum OpeningKind {
     Window,
+    /// A door into the building: its own entrances (P221, P110, P100).
     Door,
+    /// A small shop's own door onto the street (P87 Individually Owned
+    /// Shops). Not an entrance to the building: P110 Main Entrance, P102
+    /// Family of Entrances and the interior patterns read `Door` only, so a
+    /// row of shop doors doesn't make a building's own entrance any less
+    /// singular. It still counts as an opening wherever openings are summed
+    /// (P165's street-wall coverage).
+    ShopDoor,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

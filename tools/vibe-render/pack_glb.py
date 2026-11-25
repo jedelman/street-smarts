@@ -467,10 +467,11 @@ def add_trees_file(path, trees):
 #             (glTF axes: x east, z south; a wall runs from (ax, az) along
 #             (dx, dz) for `length` metres, facing (nx, nz); flags 1 = public,
 #             2 = on a courtyard; building = index into `strings`)
-#   openings  uint16 x 6: wall, kind | floor << 1 (kind 0 window, 1 door),
-#             along, bottom, width, height (centimetres)
-#   shops     rows of [wall, lo, hi, door, door_width, door_height, arcade]
-#             (metres along the wall; arcade 1 when a P119 arcade covers it)
+#   openings  uint16 x 6: wall, kind | floor << 2 (kind 0 window, 1 door,
+#             2 a P87 shop door), along, bottom, width, height (centimetres)
+#   shops     rows of [wall, lo, hi, door, door_width, door_height, arcade,
+#             p87] (metres along the wall; arcade 1 when a P119 arcade
+#             covers it; p87 1 when its door is a P87 shop door)
 # About 120 KB for clean_baseline's 9,784 openings.
 
 def add_detail(gltf, bin_chunk, detail):
@@ -494,18 +495,19 @@ def add_detail(gltf, bin_chunk, detail):
     w = np.array([[x["ax"], -x["ay"], x["dx"], -x["dy"], x["nx"], -x["ny"], x["length"],
                    (1 if x["public"] else 0) | (2 if x["on_hole"] else 0), intern(x["building"])] for x in walls], np.float32)
     cm = lambda v: int(min(65535, max(0, round(v * 100))))
-    o = np.array([[x["wall"], (1 if x["kind"] == "door" else 0) | (x["floor"] << 1),
+    kinds = {"window": 0, "door": 1, "shop_door": 2}
+    o = np.array([[x["wall"], kinds.get(x["kind"], 0) | (x["floor"] << 2),
                    cm(x["along"]), cm(x["z"]), cm(x["width"]), cm(x["height"])] for x in openings], np.uint16)
     r2 = lambda v: round(float(v), 2)
     table["detail"] = {
-        "version": 1,
+        "version": 2,
         "walls": {"bufferView": add_view(w), "count": len(walls),
                   "fields": ["ax", "az", "dx", "dz", "nx", "nz", "length", "flags", "building"]},
         "openings": {"bufferView": add_view(o), "count": len(openings),
                      "fields": ["wall", "kindFloor", "along", "bottom", "width", "height"]},
-        "shops": {"fields": ["wall", "lo", "hi", "door", "doorWidth", "doorHeight", "arcade"],
+        "shops": {"fields": ["wall", "lo", "hi", "door", "doorWidth", "doorHeight", "arcade", "p87"],
                   "rows": [[x["wall"], r2(x["lo"]), r2(x["hi"]), r2(x["door"]), r2(x["door_width"]), r2(x["door_height"]),
-                            1 if x.get("arcade") else 0] for x in shops]},
+                            1 if x.get("arcade") else 0, 1 if x.get("p87") else 0] for x in shops]},
     }
     gltf["buffers"][0]["byteLength"] = len(blob)
     return gltf, bytes(blob)

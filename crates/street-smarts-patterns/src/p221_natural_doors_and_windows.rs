@@ -478,7 +478,7 @@ impl PatternOperator for P221NaturalDoorsAndWindows {
             for o in &openings {
                 match o.kind {
                     OpeningKind::Window => total_windows += 1,
-                    OpeningKind::Door => total_doors += 1,
+                    OpeningKind::Door | OpeningKind::ShopDoor => total_doors += 1,
                 }
             }
 

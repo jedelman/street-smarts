@@ -131,3 +131,15 @@ test("trees, the meadow and green streets: P171, P172, P51", () => {
   assert.equal(lines[0], "A local street of grass and paving stones.");
   assert.equal(lines[3], `P51 Green Streets: ${PATTERNS[51].gist}.`);
 });
+
+test("shops: P87 at its own door, the building's door otherwise", () => {
+  const p87 = { group: "shops", kind: "books", p87: true, source: "p108_merged_2_building" };
+  const own = { group: "shops", kind: "coffee", p87: false, source: "p108_merged_2_building" };
+  assert.deepEqual(patternsOf(p87), [87]);
+  assert.deepEqual(patternsOf(own), [], "a shop at the building's own door names no shop pattern");
+  assert.equal(nounOf(p87), "bookshop");
+  assert.equal(promptOf(own), "Look in the coffee shop");
+  assert.equal(touchable(p87), true);
+  assert.deepEqual(answerOf(p87), ["A bookshop.", "Which shop is ours; its door is the pipeline's.", `P87 Individually Owned Shops: ${PATTERNS[87].gist}.`]);
+  assert.deepEqual(answerOf(own), ["A coffee shop.", "At the building's own door; which shop is ours."]);
+});
