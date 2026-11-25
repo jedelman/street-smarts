@@ -346,6 +346,8 @@ impl PatternOperator for P165OpeningToTheStreet {
             new_activity_nodes: vec![],
             new_boundaries: vec![],
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids,
@@ -383,6 +385,8 @@ mod tests {
                 label: "P165 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

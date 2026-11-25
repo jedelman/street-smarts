@@ -50,6 +50,8 @@ pub mod p192_windows_overlooking_life;
 pub mod p110_main_entrance;
 pub mod p102_family_of_entrances;
 pub mod p126_something_roughly_in_the_middle;
+pub mod p171_tree_places;
+pub mod p172_garden_growing_wild;
 pub mod cascade_contracts;
 pub mod orientation;
 pub mod pipeline;

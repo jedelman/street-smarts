@@ -443,6 +443,8 @@ impl PatternOperator for P161SunnyPlace {
             entity_provenance,
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }
@@ -503,6 +505,8 @@ mod tests {
                 label: "P161 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

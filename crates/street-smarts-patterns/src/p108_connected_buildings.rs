@@ -311,6 +311,8 @@ impl PatternOperator for P108ConnectedBuildings {
             entity_provenance,
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }

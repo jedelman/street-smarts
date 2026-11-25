@@ -109,6 +109,8 @@ mod tests {
             boundaries: vec![],
             activity_nodes: vec![],
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
             metadata: NeighborhoodMeta {
                 source: "test".into(),
                 fetched_at: "2026-01-01".into(),

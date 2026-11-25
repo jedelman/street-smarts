@@ -10,6 +10,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { MeshBVH } from "three-mesh-bvh";
 import { readElements } from "./answers.js";
+import { takeTrees } from "./trees.js";
 
 const NAME = /^(.*?)_(\d+)_(.*)$/; // render.py's f"{group}_{n}_{kind}"
 // Kinds that keep their translucency here: the halos, and the ghostly
@@ -24,8 +25,10 @@ export async function loadSite(url, onProgress) {
   gltf.scene.updateMatrixWorld(true);
   let table = null;
   gltf.scene.traverse((o) => { if (o.userData && o.userData.streetSmarts) table = o.userData.streetSmarts; });
+  // P171's trees are instanced; they're drawn and collided apart (trees.js).
+  const trees = table ? takeTrees(gltf.scene, readElements(table)) : null;
   const parts = table ? packedParts(gltf, table) : looseParts(gltf);
-  return assemble(parts);
+  return { ...assemble(parts), trees };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }
@@ -33,7 +36,7 @@ function packedParts(gltf, table) {
   const elements = readElements(table);
   const pieces = [];
   gltf.scene.traverse((o) => {
-    if (!o.isMesh) return;
+    if (!o.isMesh || o.isInstancedMesh) return;
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", o.geometry.attributes.position);
     g.setAttribute("normal", o.geometry.attributes.normal);

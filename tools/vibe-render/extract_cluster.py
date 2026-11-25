@@ -45,6 +45,41 @@ def dist_m(a, b):
     return math.hypot(dx, dy)
 
 
+def clip_to_square(ring, center, half_m):
+    """Sutherland-Hodgman: `ring` ({lng, lat} dicts, closed) clipped to the
+    axis-aligned square of half-width `half_m` metres around `center`
+    (lng, lat). The site's meadow is the whole site; a cluster keeps the
+    part of it around the cluster, so the walk frames the cluster, not the
+    site."""
+    lat0 = math.radians(center[1])
+    dlng = half_m / (111_320.0 * math.cos(lat0))
+    dlat = half_m / 110_540.0
+    pts = [(p["lng"], p["lat"]) for p in ring[:-1]] if ring and ring[0] == ring[-1] else [(p["lng"], p["lat"]) for p in ring]
+    edges = [
+        (lambda q: q[0] >= center[0] - dlng, lambda a, b: (center[0] - dlng, a[1] + (b[1] - a[1]) * (center[0] - dlng - a[0]) / (b[0] - a[0]))),
+        (lambda q: q[0] <= center[0] + dlng, lambda a, b: (center[0] + dlng, a[1] + (b[1] - a[1]) * (center[0] + dlng - a[0]) / (b[0] - a[0]))),
+        (lambda q: q[1] >= center[1] - dlat, lambda a, b: (a[0] + (b[0] - a[0]) * (center[1] - dlat - a[1]) / (b[1] - a[1]), center[1] - dlat)),
+        (lambda q: q[1] <= center[1] + dlat, lambda a, b: (a[0] + (b[0] - a[0]) * (center[1] + dlat - a[1]) / (b[1] - a[1]), center[1] + dlat)),
+    ]
+    for inside, cross in edges:
+        if not pts:
+            break
+        out = []
+        for i, cur in enumerate(pts):
+            prev = pts[i - 1]
+            if inside(cur):
+                if not inside(prev):
+                    out.append(cross(prev, cur))
+                out.append(cur)
+            elif inside(prev):
+                out.append(cross(prev, cur))
+        pts = out
+    if len(pts) < 3:
+        return None
+    ring_out = [{"lng": x, "lat": y} for x, y in pts]
+    return ring_out + [ring_out[0]]
+
+
 def pick_densest_anchor(building_centroids, radius_m):
     """The building with the most real neighbors within radius_m -- a
     real, non-arbitrary choice when the caller doesn't name one."""
@@ -102,7 +137,19 @@ def main():
     # every OTHER cluster too. Filtered by the same real distance test.
     kept_parcels = [p for p in nbhd.get("parcels", []) if within(p["polygon"]["outer"])]
 
+    # P171's trees and P172's meadow: the trees near the cluster, and the
+    # meadow cut to a square a little wider than the cluster.
+    margin = args.radius_m + 15.0
+    kept_trees = [t for t in nbhd.get("trees", []) if dist_m((t["location"]["lng"], t["location"]["lat"]), anchor_c) <= margin]
+    kept_ground = []
+    for g in nbhd.get("ground_cover", []):
+        clipped = clip_to_square(g["polygon"]["outer"], anchor_c, margin)
+        if clipped:
+            kept_ground.append({**g, "polygon": {"outer": clipped, "holes": [], "parts": [{"outer": clipped, "holes": []}]}})
+
     out = dict(nbhd)
+    out["trees"] = kept_trees
+    out["ground_cover"] = kept_ground
     out["buildings"] = kept_buildings
     out["open_space"] = kept_open_space
     out["streets"] = kept_streets
@@ -118,7 +165,8 @@ def main():
         json.dump(out, f)
 
     print(f"cluster anchor={anchor_id} radius_m={args.radius_m}: {len(kept_buildings)} building(s) "
-          f"({', '.join(sorted(kept_ids))}), {len(kept_open_space)} open-space, {len(kept_streets)} street(s)")
+          f"({', '.join(sorted(kept_ids))}), {len(kept_open_space)} open-space, {len(kept_streets)} street(s), "
+          f"{len(kept_trees)} tree(s)")
 
 
 if __name__ == "__main__":

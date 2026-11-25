@@ -279,6 +279,184 @@ def pack(gltf, bin_chunk, elements_by_name=None, opaque_alpha=OPAQUE_ALPHA):
     return out, bytes(blob)
 
 
+# --- Trees -------------------------------------------------------------------
+#
+# P171's trees go in as two instanced meshes (EXT_mesh_gpu_instancing): one
+# crown and one trunk, each drawn once for every tree. Two thousand trees cost
+# two draw calls and about 130 KB, where solids from cadquery would cost two
+# thousand nodes and megabytes. A viewer without the extension shows one tree
+# at the origin; three.js, so <model-viewer> and the walk, has it.
+#
+# Each tree is an element too: the instancing nodes' `extras.elementBase` is
+# the index of the first tree's element, and instance i is element base + i.
+
+TREE_CROWN_COLORS = {  # sRGB; P171's forms, a shade apart so a square's ring reads against a grove
+    "grove": "#3f6b35",
+    "avenue": "#4d7d3e",
+    "square": "#5b8c43",
+    "umbrella": "#35602e",
+}
+TREE_TRUNK_COLOR = "#5b4433"
+CROWN_SQUASH = 0.9  # crown height over crown width
+TRUNK_BASE_Y = -0.05  # just below the meadow's top, so every trunk meets the ground
+
+
+def _srgb_to_linear(hex_color):
+    c = np.array([int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)])
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def _hash01(text, salt):
+    """A stable number in [0, 1) from a tree's id, so a re-render doesn't
+    re-roll its turn or shade."""
+    import zlib
+    return (zlib.crc32(f"{salt}:{text}".encode()) & 0xFFFFFFFF) / 2**32
+
+
+def unit_crown(subdivide=True):
+    """A lumpy icosphere of radius about 1, centred on the origin, Y up, flat
+    shaded: (positions, normals), three vertices per triangle, 80 triangles
+    (20 with `subdivide=False`, for the isometric's matplotlib)."""
+    t = (1 + 5 ** 0.5) / 2
+    v = [(-1, t, 0), (1, t, 0), (-1, -t, 0), (1, -t, 0), (0, -1, t), (0, 1, t), (0, -1, -t), (0, 1, -t),
+         (t, 0, -1), (t, 0, 1), (-t, 0, -1), (-t, 0, 1)]
+    f = [(0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (5, 11, 4), (11, 10, 2), (10, 7, 6),
+         (7, 1, 8), (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9), (4, 9, 5), (2, 4, 11), (6, 2, 10),
+         (8, 6, 7), (9, 8, 1)]
+    verts = [np.array(p, dtype=np.float64) / np.linalg.norm(p) for p in v]
+    mid = {}
+    def midpoint(a, b):
+        key = (min(a, b), max(a, b))
+        if key not in mid:
+            m = verts[a] + verts[b]
+            verts.append(m / np.linalg.norm(m))
+            mid[key] = len(verts) - 1
+        return mid[key]
+    faces = []
+    for a, b, c in f:
+        if not subdivide:
+            faces.append((a, b, c))
+            continue
+        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
+        faces += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
+    lumps = np.array([1 + 0.12 * (_hash01(str(i), "lump") - 0.5) * 2 for i in range(len(verts))])
+    pts = np.array(verts) * lumps[:, None]
+    pts[:, 1] = np.where(pts[:, 1] < -0.35, -0.35 + (pts[:, 1] + 0.35) * 0.5, pts[:, 1])  # a flatter underside
+    tri = pts[np.array(faces)]  # (80, 3, 3)
+    n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    n /= np.linalg.norm(n, axis=1, keepdims=True)
+    return tri.reshape(-1, 3), np.repeat(n, 3, axis=0)
+
+
+def unit_trunk(sides=5):
+    """An open prism of radius 1 from y=0 to y=1, flat shaded, 10 triangles."""
+    pos, nrm = [], []
+    for i in range(sides):
+        a0, a1 = 2 * np.pi * i / sides, 2 * np.pi * (i + 1) / sides
+        p0, p1 = np.array([np.cos(a0), 0, np.sin(a0)]), np.array([np.cos(a1), 0, np.sin(a1)])
+        q0, q1 = p0 + [0, 1, 0], p1 + [0, 1, 0]
+        n = np.cross(q0 - p0, p1 - p0)
+        n /= np.linalg.norm(n)
+        for tri in ((p0, q0, p1), (p1, q0, q1)):
+            pos += tri
+            nrm += [n, n, n]
+    return np.array(pos), np.array(nrm)
+
+
+def tree_instances(trees):
+    """Per-tree transforms for `unit_crown` and `unit_trunk`, glTF axes (Y up,
+    -Z north). `trees` are dicts with local metres `x`, `y` (east, north),
+    `height_m`, `crown_radius_m`, `form`, `id`. Returns a dict of float32
+    arrays: crown_t, crown_s, trunk_t, trunk_s (n, 3), rot (n, 4), color (n, 3,
+    linear)."""
+    n = len(trees)
+    out = {k: np.zeros((n, 3), np.float32) for k in ("crown_t", "crown_s", "trunk_t", "trunk_s", "color")}
+    out["rot"] = np.zeros((n, 4), np.float32)
+    for i, t in enumerate(trees):
+        r, h = t["crown_radius_m"], t["height_m"]
+        cy = h - CROWN_SQUASH * r
+        out["crown_t"][i] = (t["x"], cy, -t["y"])
+        out["crown_s"][i] = (r, CROWN_SQUASH * r, r)
+        tw = 0.14 + 0.05 * r
+        out["trunk_t"][i] = (t["x"], TRUNK_BASE_Y, -t["y"])
+        out["trunk_s"][i] = (tw, cy - TRUNK_BASE_Y, tw)
+        yaw = 2 * np.pi * _hash01(t["id"], "yaw")
+        out["rot"][i] = (0, np.sin(yaw / 2), 0, np.cos(yaw / 2))
+        shade = 0.85 + 0.3 * _hash01(t["id"], "shade")
+        out["color"][i] = np.clip(_srgb_to_linear(TREE_CROWN_COLORS.get(t["form"], TREE_CROWN_COLORS["grove"])) * shade, 0, 1)
+    return out
+
+
+def add_trees(gltf, bin_chunk, trees):
+    """Append `trees` (see `tree_instances`) to a packed glTF as two instanced
+    meshes plus one element each. Returns (gltf, bin)."""
+    if not trees:
+        return gltf, bin_chunk
+    blob = bytearray(bin_chunk)
+    root = gltf["nodes"][0]
+    table = root["extras"]["streetSmarts"]
+    strings = table["strings"]
+    def intern(s):
+        if s is None:
+            return -1
+        if s not in strings:
+            strings.append(s)
+        return strings.index(s)
+    base = len(table["elements"])
+    for t in trees:
+        table["elements"].append([intern("trees"), intern(t["form"]), intern(t["id"]), -1, None])
+
+    def add_accessor(arr, ctype, atype, target=None, minmax=False):
+        blob.extend(b"\0" * (-len(blob) % 4))
+        view = {"buffer": 0, "byteOffset": len(blob), "byteLength": arr.nbytes}
+        if target:
+            view["target"] = target
+        gltf["bufferViews"].append(view)
+        blob.extend(arr.tobytes())
+        acc = {"bufferView": len(gltf["bufferViews"]) - 1, "componentType": ctype, "count": len(arr), "type": atype}
+        if minmax:
+            acc["min"], acc["max"] = arr.min(axis=0).tolist(), arr.max(axis=0).tolist()
+        gltf["accessors"].append(acc)
+        return len(gltf["accessors"]) - 1
+
+    inst = tree_instances(trees)
+    gltf.setdefault("materials", [])
+    for name, (pos, nrm), color, t_key, s_key, colors in (
+        ("tree_crowns", unit_crown(), [1, 1, 1, 1], "crown_t", "crown_s", True),
+        ("tree_trunks", unit_trunk(), list(_srgb_to_linear(TREE_TRUNK_COLOR)) + [1], "trunk_t", "trunk_s", False),
+    ):
+        gltf["materials"].append({"name": name, "pbrMetallicRoughness": {
+            "baseColorFactor": [float(c) for c in color], "metallicFactor": 0.0, "roughnessFactor": 1.0}})
+        prim = {"attributes": {
+            "POSITION": add_accessor(pos.astype(np.float32), 5126, "VEC3", 34962, minmax=True),
+            "NORMAL": add_accessor(nrm.astype(np.float32), 5126, "VEC3", 34962)},
+            "material": len(gltf["materials"]) - 1, "mode": 4}
+        gltf["meshes"].append({"name": name, "primitives": [prim]})
+        attrs = {
+            "TRANSLATION": add_accessor(inst[t_key], 5126, "VEC3"),
+            "ROTATION": add_accessor(inst["rot"], 5126, "VEC4"),
+            "SCALE": add_accessor(inst[s_key], 5126, "VEC3"),
+        }
+        if colors:
+            attrs["_COLOR_0"] = add_accessor(inst["color"], 5126, "VEC3")
+        gltf["nodes"].append({"name": name, "mesh": len(gltf["meshes"]) - 1,
+                              "extensions": {"EXT_mesh_gpu_instancing": {"attributes": attrs}},
+                              "extras": {"elementBase": base, "count": len(trees)}})
+        root["children"].append(len(gltf["nodes"]) - 1)
+    used = gltf.setdefault("extensionsUsed", [])
+    if "EXT_mesh_gpu_instancing" not in used:
+        used.append("EXT_mesh_gpu_instancing")
+    gltf["buffers"][0]["byteLength"] = len(blob)
+    return gltf, bytes(blob)
+
+
+def add_trees_file(path, trees):
+    gltf, bin_chunk = read_glb(path)
+    gltf, bin_chunk = add_trees(gltf, bin_chunk, trees)
+    write_glb(path, gltf, bin_chunk)
+    return len(trees)
+
+
 def pack_file(in_path, out_path=None, elements_by_name=None):
     gltf, bin_chunk = read_glb(in_path)
     before = sum(len(m["primitives"]) for m in gltf.get("meshes", []))

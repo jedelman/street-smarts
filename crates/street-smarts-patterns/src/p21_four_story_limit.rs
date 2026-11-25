@@ -180,6 +180,8 @@ impl PatternOperator for P21FourStoryLimit {
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }
@@ -211,7 +213,8 @@ mod tests {
         Neighborhood {
             id: "test".into(), bbox_wgs84: [-0.01, -0.01, 0.01, 0.01],
             parcels, buildings: vec![], streets: vec![], open_space: vec![],
-            boundaries: vec![], activity_nodes: vec![], pattern_fields: vec![],
+            boundaries: vec![], activity_nodes: vec![], pattern_fields: vec![], trees: vec![],
+            ground_cover: vec![],
             metadata: NeighborhoodMeta {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P21 unit fixture".into(),

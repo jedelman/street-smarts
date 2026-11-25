@@ -6,7 +6,7 @@
 //! prose ordering rationale that used to live duplicated in both
 //! `pipeline.rs`'s module header and `registry.rs`'s `all_operators_v01`
 //! doc comment (two files' worth of near-identical prose describing the
-//! same 31-step sequence -- exactly the "read-and-infer" cost
+//! same 33-step sequence -- exactly the "read-and-infer" cost
 //! PATTERN_LANGUAGE_SIMULATION.md §3.4 named) with something
 //! `validate_order` can actually verify. `pipeline.rs`'s header stays the
 //! one authoritative narrative home (implementation detail, bug history,
@@ -59,7 +59,7 @@ pub struct PatternNode {
     pub why: &'static str,
 }
 
-/// The 31-step sequence `run_corrected_pipeline_with_p37` actually runs,
+/// The 33-step sequence `run_corrected_pipeline_with_p37` actually runs,
 /// as of this table's writing. One row per step in `pipeline.rs`'s own
 /// numbered doc comment. `id`s are checked against real operator names by
 /// this module's own tests (`language_ids_match_real_operator_names`).
@@ -225,6 +225,18 @@ pub const LANGUAGE: &[PatternNode] = &[
         requires: &["p61_small_public_squares"],
         completes: &[],
         why: "places a generic Civic activity marker, jittered off-center, near any real Plaza that doesn't already have a real ActivityNode nearby from p61_small_public_squares/p124_activity_pockets/p53_main_gateways. Runs LAST so it sees the final, complete set of Plazas and ActivityNodes from every earlier stage and doesn't stack a redundant node on a plaza another generator already served. Doesn't strictly require p124_activity_pockets/p53_main_gateways (real but skippable steps -- see their own nodes), only checks whatever activity_nodes exist by the time it runs, which pipeline.rs's own real call order already guarantees is everything",
+    },
+    PatternNode {
+        id: "p172_garden_growing_wild", alexander_number: Some(172),
+        requires: &["p126_something_roughly_in_the_middle"],
+        completes: &[],
+        why: "grows one Meadow on the site's own perimeter ring, under everything else. After every pattern that sums open space (P126 is the last of them) so none of them counts a site-sized meadow",
+    },
+    PatternNode {
+        id: "p171_tree_places", alexander_number: Some(171),
+        requires: &["p172_garden_growing_wild", "path_network", "p61_small_public_squares"],
+        completes: &["p172_garden_growing_wild"],
+        why: "plants avenues along path_network's streets, rings and spreading trees in P61's squares, and groves on P172's meadow, clear of every building and marker. Last, because trees fit the finished plan",
     },
 ];
 

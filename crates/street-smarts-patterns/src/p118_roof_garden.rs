@@ -200,6 +200,8 @@ impl PatternOperator for P118RoofGarden {
             entity_provenance: Default::default(),
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }
@@ -240,6 +242,8 @@ mod tests {
                 layer_provenance: Default::default(), label: "P118 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

@@ -401,6 +401,8 @@ impl PatternOperator for P96NumberOfStories {
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }

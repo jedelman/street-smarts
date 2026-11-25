@@ -33,6 +33,8 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
         boundaries: vec![],
         activity_nodes: vec![],
         pattern_fields: vec![],
+        trees: vec![],
+            ground_cover: vec![],
         metadata: NeighborhoodMeta {
             source: "synthetic".into(),
             fetched_at: "test".into(),

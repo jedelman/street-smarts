@@ -47,6 +47,8 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
             label: "P37 fuzz fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 

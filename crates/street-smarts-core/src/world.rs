@@ -85,6 +85,10 @@ pub struct World {
     /// treatment as `metadata`/`bbox_wgs84`, not derived-and-reconstructed
     /// the way `density_tiers` below is.
     pub pattern_fields: Vec<crate::nir::PatternField>,
+    /// Mirrors `Neighborhood.trees` (P171 Tree Places), carried through as-is.
+    pub trees: Vec<crate::nir::Tree>,
+    /// Mirrors `Neighborhood.ground_cover` (P172 Garden Growing Wild).
+    pub ground_cover: Vec<crate::nir::GroundCover>,
     pub metadata: NeighborhoodMeta,
     pub density_tiers: BTreeMap<String, DensityTier>,
     /// Derived from each parcel's `use_category` -- same read-only,
@@ -145,6 +149,8 @@ impl World {
             boundaries: n.boundaries.iter().map(|b| (b.id.clone(), b.clone())).collect(),
             activity_nodes: n.activity_nodes.iter().map(|a| (a.id.clone(), a.clone())).collect(),
             pattern_fields: n.pattern_fields.clone(),
+            trees: n.trees.clone(),
+            ground_cover: n.ground_cover.clone(),
             metadata: n.metadata.clone(),
             density_tiers,
             pad_roles,
@@ -164,6 +170,8 @@ impl World {
             boundaries: self.boundaries.values().cloned().collect(),
             activity_nodes: self.activity_nodes.values().cloned().collect(),
             pattern_fields: self.pattern_fields.clone(),
+            trees: self.trees.clone(),
+            ground_cover: self.ground_cover.clone(),
             metadata: self.metadata.clone(),
         }
     }
@@ -223,6 +231,8 @@ mod tests {
             boundaries: vec![],
             activity_nodes: vec![],
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
             metadata: NeighborhoodMeta {
                 source: "synthetic".into(),
                 fetched_at: "test".into(),

@@ -33,6 +33,8 @@ fn square_plaza_neighborhood(side_m: f64) -> Neighborhood {
             label: "P61 unit fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 
@@ -177,6 +179,8 @@ fn elongated_plaza_partitions_along_the_long_axis_only() {
             label: "P61 elongated fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         };
 
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();

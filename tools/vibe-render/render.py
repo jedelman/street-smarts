@@ -103,6 +103,8 @@ M_PER_DEG_LNG = 111_320.0
 DEFAULT_BUILDING_HEIGHT_M = 9.0  # ~3 stories, for pads P107 didn't shape
 STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
+MEADOW_TOP_M = -0.02  # P172's meadow lies just below grade: it is the ground
+MEADOW_THICKNESS_M = 0.08  # everything else stands on, and shows only where nothing does
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
 OPENING_DECAL_OFFSET_M = 0.03  # how far a window/door decal sits proud of
 # the wall's own outward face -- enough to avoid z-fighting the wall's own
@@ -166,51 +168,53 @@ def ring_to_xy(ring, origin_lng, origin_lat):
     return pts
 
 
-def roof_cap_solid(outer_ring, eave_height_m, ridge_height_m, origin_lng, origin_lat):
-    """A real shed-roof cap for `p117_sheltering_roof`'s own `RoofForm`
+ROOF_CAP_SEAT_M = 0.15  # how far a shed cap reaches down into the wall top, so its
+# low (north) edge has some thickness instead of a zero-height sliver face.
+
+
+def roof_cap_solid(outer_ring, eave_height_m, ridge_height_m, origin_lng, origin_lat, holes=()):
+    """A shed-roof cap for `p117_sheltering_roof`'s own `RoofForm`
     (`crates/street-smarts-core/src/nir.rs`) -- always `slope_azimuth_deg
     == 0.0` (true north) today, so this only ever builds a north-low,
-    south-high slope; a real general-azimuth version isn't built yet since
-    nothing produces any other bearing.
+    south-high slope.
 
-    A real triangular-wedge EXTRUSION, not a boolean: the roof's own 2D
-    cross-section in the north-south/vertical (Y-Z) plane is a triangle --
-    (south, ridge_height_m), (south, eave_height_m), (north, eave_height_m)
-    -- meeting the wall top exactly at the low (north) eave and rising to
-    the ridge at the south edge, extruded along the east-west axis. Same
-    cheap primitive every wall extrusion already uses (`extrude_polygon`),
-    not a `.cut()`/`.union()` -- this pipeline's own real, measured lesson
-    (see this file's own module doc) is that a real boolean per building,
-    multiplied across a real fixture, is what actually costs real render
-    time; a plain extrusion doesn't carry that cost.
+    Follows the footprint's own outline exactly. The slope is one plane
+    (ridge at the footprint's south edge, eave at its north edge, the same
+    plane the old bounding-box wedge used), so the top face of any
+    footprint, convex or not, is a planar polygon: a ruled loft from the
+    footprint at the eave to the same footprint lifted onto that plane is
+    an exact cap, no boolean needed.
 
-    Approximates the building's own real footprint by its real, true-
-    north-aligned bounding box for the roof cap specifically (the wall
-    extrusion below it still uses the EXACT real footprint, unchanged) --
-    an honest simplification, not hidden: building a roof cap that follows
-    a real non-rectangular footprint's own exact outline needs a genuinely
-    non-planar ruled surface, a real, larger lift deferred along with P116
-    Cascade of Roofs' own per-wing segments (see p117_sheltering_roof.rs's
-    own module doc). `None` if the footprint or the real eave-to-ridge
-    rise is degenerate.
+    Until 2026-11-25 this capped the footprint's bounding box instead, on
+    the belief that a non-rectangular outline needed a non-planar surface.
+    It doesn't, and the bounding boxes lidded courtyards and the squares
+    between wings: 29 of `clean_baseline`'s 112 open spaces and 25 of its
+    87 markers sat under a roof. Holes (a whole-building roof over a
+    courtyard; P116's segments never have any) are cut out with one
+    boolean each, the only boolean here. `None` if the footprint or the
+    eave-to-ridge rise is degenerate.
     """
     pts = ring_to_xy(outer_ring, origin_lng, origin_lat)
     if len(pts) < 3:
         return None
-    xs = [p[0] for p in pts]
     ys = [p[1] for p in pts]
-    x_min, x_max = min(xs), max(xs)
     y_min, y_max = min(ys), max(ys)  # true north = +y; y_min = south (ridge), y_max = north (eave)
-    if x_max - x_min < 1e-6 or y_max - y_min < 1e-6 or ridge_height_m <= eave_height_m:
+    if y_max - y_min < 1e-6 or ridge_height_m <= eave_height_m:
         return None
+    rise = ridge_height_m - eave_height_m
     try:
-        profile = cq.Workplane("YZ").polyline(
-            [(y_min, ridge_height_m), (y_min, eave_height_m), (y_max, eave_height_m)]
-        ).close()
-        solid = profile.extrude(x_max - x_min).translate((x_min, 0, 0))
-        return solid
+        bottom = cq.Wire.makePolygon([cq.Vector(x, y, eave_height_m - ROOF_CAP_SEAT_M) for x, y in pts], close=True)
+        top = cq.Wire.makePolygon(
+            [cq.Vector(x, y, ridge_height_m - rise * (y - y_min) / (y_max - y_min)) for x, y in pts], close=True
+        )
+        cap = cq.Workplane("XY").newObject([cq.Solid.makeLoft([bottom, top], ruled=True)])
+        for hole in holes:
+            void = extrude_polygon(hole, [], rise + 2 * ROOF_CAP_SEAT_M, origin_lng, origin_lat)
+            if void is not None:
+                cap = cap.cut(void.translate((0, 0, eave_height_m - 1.5 * ROOF_CAP_SEAT_M)))
+        return cap
     except Exception as e:
-        print(f"  ! skipped a roof cap (extrude failed: {e})", file=sys.stderr)
+        print(f"  ! skipped a roof cap (loft failed: {e})", file=sys.stderr)
         return None
 
 
@@ -219,35 +223,15 @@ FLAT_ROOF_CAP_THICKNESS_M = 0.2  # a plausible real slab depth for a flat,
 # not a cited figure" category as FLOOR_PLATE_THICKNESS_M below.
 
 
-def flat_roof_cap_solid(outer_ring, height_m, origin_lng, origin_lat):
-    """A real flat roof cap for P118 Roof Garden's own occupiable
-    `RoofForm` (`RoofShape.Flat`, `ridge_height_m == eave_height_m` by
-    `p118_roof_garden`'s own construction -- see that generator's own
-    module doc). `roof_cap_solid` above needs a real `ridge_height_m >
-    eave_height_m` rise to build its triangular-wedge profile and returns
-    `None` for a genuinely flat roof -- this is a dedicated, much simpler
-    primitive instead: a real flat slab at `height_m`, using the SAME real
-    bounding-box footprint approximation `roof_cap_solid`'s own docstring
-    already documents and uses (not a new simplification introduced
-    here). `None` if the footprint is degenerate."""
-    pts = ring_to_xy(outer_ring, origin_lng, origin_lat)
-    if len(pts) < 3:
-        return None
-    xs = [p[0] for p in pts]
-    ys = [p[1] for p in pts]
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
-    if x_max - x_min < 1e-6 or y_max - y_min < 1e-6:
-        return None
-    try:
-        return (
-            cq.Workplane("XY")
-            .box(x_max - x_min, y_max - y_min, FLAT_ROOF_CAP_THICKNESS_M)
-            .translate(((x_min + x_max) / 2, (y_min + y_max) / 2, height_m + FLAT_ROOF_CAP_THICKNESS_M / 2))
-        )
-    except Exception as e:
-        print(f"  ! skipped a flat roof cap (extrude failed: {e})", file=sys.stderr)
-        return None
+def flat_roof_cap_solid(outer_ring, height_m, origin_lng, origin_lat, holes=()):
+    """A flat roof cap for P118 Roof Garden's own occupiable `RoofForm`
+    (`RoofShape.Flat`, `ridge_height_m == eave_height_m` by `p118_roof_
+    garden`'s own construction). `roof_cap_solid` above needs a real rise;
+    this is the footprint itself (holes and all) extruded into a slab at
+    `height_m`. Like `roof_cap_solid`, it capped the bounding box until
+    2026-11-25. `None` if the footprint is degenerate."""
+    solid = extrude_polygon(outer_ring, list(holes), FLAT_ROOF_CAP_THICKNESS_M, origin_lng, origin_lat)
+    return solid.translate((0, 0, height_m)) if solid is not None else None
 
 
 INTERIOR_WALL_HEIGHT_M = 2.7  # a plausible real interior ceiling height --
@@ -1316,11 +1300,14 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                         # real ridge > eave rise, which a flat roof never has
                         # by construction. See flat_roof_cap_solid's own
                         # docstring.
-                        roof_solid = flat_roof_cap_solid(part["outer"], roof["ridge_height_m"], origin_lng, origin_lat)
+                        roof_solid = flat_roof_cap_solid(
+                            part["outer"], roof["ridge_height_m"], origin_lng, origin_lat, part.get("holes", [])
+                        )
                         roof_kind = "roof_garden" if roof.get("occupiable") else "roof"
                     else:
                         roof_solid = roof_cap_solid(
-                            part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat
+                            part["outer"], roof["eave_height_m"], roof["ridge_height_m"], origin_lng, origin_lat,
+                            part.get("holes", []),
                         )
                         roof_kind = "roof"
                     if roof_solid is not None:
@@ -1442,6 +1429,29 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                 plaza_solids.append((solid, kind))
     plaza_prov.close()
 
+    # Ground cover (P172 Garden Growing Wild) -- one slab per polygon, just
+    # below grade, under everything else. Ground, not a place: it's in its
+    # own group so nothing that counts plazas counts it.
+    ground_solids = []
+    ground_prov = Provenance(ground_solids)
+    for g in nbhd.get("ground_cover", []):
+        ground_prov.mark(g)
+        parts = g["polygon"].get("parts") or [{"outer": g["polygon"]["outer"], "holes": g["polygon"].get("holes", [])}]
+        for part in parts:
+            solid = extrude_polygon(part["outer"], part.get("holes", []), MEADOW_THICKNESS_M, origin_lng, origin_lat)
+            if solid is not None:
+                ground_solids.append((solid.translate((0, 0, MEADOW_TOP_M - MEADOW_THICKNESS_M)), g.get("kind") or "meadow"))
+    ground_prov.close()
+
+    # Trees (P171 Tree Places) -- points with a height and crown, kept as
+    # data rather than solids: the isometric draws them as numpy meshes and
+    # the GLB instances one crown and one trunk (pack_glb.add_trees).
+    trees = []
+    for t in nbhd.get("trees", []):
+        x, y = project(t["location"]["lng"], t["location"]["lat"], origin_lng, origin_lat)
+        trees.append({"id": t["id"], "x": x, "y": y, "height_m": t["height_m"],
+                      "crown_radius_m": t["crown_radius_m"], "form": t.get("form") or "grove"})
+
     # Streets -- thin ribbons along the centerline, buffered by row_width_m.
     street_solids = []
     street_prov = Provenance(street_solids)
@@ -1466,7 +1476,13 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
             ]
             try:
                 solid = cq.Workplane("XY").polyline(corridor).close().extrude(STREET_THICKNESS_M)
-                street_solids.append((solid, s.get("classification") or "street"))
+                kind = s.get("classification") or "street"
+                # P51 Green Streets: grass with paving stones set in for
+                # wheels (path_network sets `surface`). Its own kind, so
+                # its own color, and the walk can name it.
+                if s.get("surface") == "grass_pavers":
+                    kind += "_grass"
+                street_solids.append((solid, kind))
             except Exception:
                 pass
     street_prov.close()
@@ -1506,9 +1522,11 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         except Exception as e:
             print(f"  ! activity marker build failed: {e}", file=sys.stderr)
         try:
+            # A 24-sided disc, not a true circle: OCC tessellates a circle
+            # into ~500 vertices, and 86 of them were 1.3 MB of the GLB.
             glow = (
                 cq.Workplane("XY")
-                .circle(ACTIVITY_GLOW_RADIUS_M)
+                .polygon(24, 2 * ACTIVITY_GLOW_RADIUS_M)
                 .extrude(ACTIVITY_GLOW_HEIGHT_M)
                 .translate((x, y, 0))
             )
@@ -1536,6 +1554,8 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         "wall_niches": wall_niche_records,
         "plazas": plaza_solids,
         "streets": street_solids,
+        "ground": ground_solids,
+        "trees": trees,
         "activity_markers": activity_solids,
         "activity_glow": activity_glow_solids,
         "context": context_solids,
@@ -1584,8 +1604,12 @@ COLORS = {
     # other) rather than a third unrelated hue.
     "common": "#a3b18a",
     "undecided": "#b8602a",
+    "meadow": "#8ea85f",  # P172: grasses and flowers, a warmer, yellower green
+    # than "common" (mown shared lawn) and the tree crowns above it.
     "local": "#6b6259",
     "pedestrian": "#9b8f7a",
+    "local_grass": "#7d8c62",  # P51 Green Streets: grass with paving stones, so a
+    "pedestrian_grass": "#8e9670",  # green-gray, still a lane apart from the meadow beside it.
     "street": "#6b6259",
     "context": "#5a5a5e",  # flat neutral gray -- deliberately duller than every
     # generated-site color so real Overture context reads as backdrop, not
@@ -1690,7 +1714,7 @@ def shade_faces(face_verts, base_hex, alpha):
     return rgba
 
 
-def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22", linewidth=0.2):
+def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22", linewidth=0.2, sort_zpos=None):
     """Tessellate and draw one real `(solid, kind)` list onto `ax` --
     shared by `render_isometric` and `render_interior_view` so both draw
     real geometry through the exact same shading/coloring path, not two
@@ -1715,6 +1739,11 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22",
     (see that dict's own docstring) reads ghostlier than its neighbors
     within the SAME group, instead of every kind in a group sharing one
     flat opacity regardless of how certain the pipeline actually was.
+
+    `sort_zpos` pins the group's place in mplot3d's back-to-front order. A
+    flat slab otherwise sorts by its nearest point, so a big square drew
+    over the trees and markers standing in it; ground layers pass a z far
+    below grade (the lower, the earlier they're drawn).
     """
     for solid, kind in items:
         try:
@@ -1726,9 +1755,42 @@ def draw_solid_group(ax, items, alpha, bounds_accum=None, edgecolor="#f6f3ed22",
         base_hex = COLORS.get(kind, "#999999")
         rgba = shade_faces(face_verts, base_hex, CONFIDENCE_ALPHA.get(kind, alpha))
         poly = Poly3DCollection(face_verts, facecolors=rgba, edgecolor=edgecolor, linewidth=linewidth)
+        if sort_zpos is not None:
+            poly.set_sort_zpos(sort_zpos)
         ax.add_collection3d(poly)
         if bounds_accum is not None:
             bounds_accum.append(verts)
+
+
+def draw_trees(ax, trees, center=None, radius=None):
+    """P171's trees as low-poly meshes, one collection per tree so mplot3d
+    sorts each against the buildings. Same transforms the GLB instances
+    (pack_glb.tree_instances), with the 20-face crown. `center`/`radius`
+    (local metres) keep only the trees near an interior view."""
+    if center is not None:
+        trees = [t for t in trees if math.hypot(t["x"] - center[0], t["y"] - center[1]) <= radius]
+    if not trees:
+        return
+    crown_p, _ = pack_glb.unit_crown(subdivide=False)
+    trunk_p, _ = pack_glb.unit_trunk()
+    inst = pack_glb.tree_instances(trees)
+    trunk_rgb = mcolors.to_rgb(pack_glb.TREE_TRUNK_COLOR)
+
+    def place(p, scale, trans, rot):
+        yaw = 2 * math.atan2(rot[1], rot[3])
+        c, s = math.cos(yaw), math.sin(yaw)
+        q = p * scale
+        g = np.stack([c * q[:, 0] + s * q[:, 2], q[:, 1], -s * q[:, 0] + c * q[:, 2]], axis=1) + trans
+        return np.stack([g[:, 0], -g[:, 2], g[:, 1]], axis=1).reshape(-1, 3, 3)  # glTF axes back to x east, y north, z up
+
+    for i, t in enumerate(trees):
+        crown = place(crown_p, inst["crown_s"][i], inst["crown_t"][i], inst["rot"][i])
+        trunk = place(trunk_p, inst["trunk_s"][i], inst["trunk_t"][i], inst["rot"][i])
+        shade = 0.85 + 0.3 * pack_glb._hash01(t["id"], "shade")
+        crown_rgb = tuple(min(1.0, v * shade) for v in mcolors.to_rgb(pack_glb.TREE_CROWN_COLORS.get(t["form"], "#3f6b35")))
+        faces = np.concatenate([trunk, crown])
+        rgba = np.concatenate([shade_faces(trunk, trunk_rgb, 1.0), shade_faces(crown, crown_rgb, 0.97)])
+        ax.add_collection3d(Poly3DCollection(faces, facecolors=rgba, edgecolor="none"))
 
 
 def draw_opening_decals(ax, records, alpha=0.95, bounds_accum=None):
@@ -1788,8 +1850,11 @@ def render_isometric(scene, out_path, title):
     # translucent the scene turns to fog -- streets/plazas thinnest (they're
     # ground-plane slabs, least important to see "through"), buildings the
     # most opaque single layer but still see-through against neighbors.
-    add_group(scene["streets"], alpha=0.55, for_bounds=True)
-    add_group(scene["plazas"], alpha=0.6, for_bounds=True)
+    # The ground layers first and in a fixed order (meadow, squares,
+    # streets) -- see draw_solid_group's `sort_zpos`.
+    add_group(scene.get("ground", []), alpha=1.0, sort_zpos=-3000)
+    add_group(scene["streets"], alpha=0.55, for_bounds=True, sort_zpos=-1000)
+    add_group(scene["plazas"], alpha=0.6, for_bounds=True, sort_zpos=-2000)
 
     # A real `interior_walls` layer (only ever non-empty when a caller
     # opted into `include_interior_walls`, see build_scene's own
@@ -1835,6 +1900,7 @@ def render_isometric(scene, out_path, title):
     # lower-alpha layer of the SAME real point).
     add_group(scene.get("activity_glow", []), alpha=0.3, for_bounds=False)
     add_group(scene.get("activity_markers", []), alpha=0.95, for_bounds=True)
+    draw_trees(ax, scene.get("trees", []))
 
     all_verts = np.concatenate(bounds_verts, axis=0)
     xmin, ymin, zmin = all_verts.min(axis=0)
@@ -2326,6 +2392,7 @@ def export_glb(scene, out_path):
     punched = scene.get("punched_openings", False)
     buildings_alpha = 0.97 if punched else (0.35 if interior_walls else 0.82)
     for group, alpha, solids_key in (
+        ("ground", 1.0, "ground"),  # P172's meadow, opaque: it is the ground
         ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", buildings_alpha, "buildings"),
         ("interior_walls", 0.95, "interior_walls"),
         # Real warm panes behind punched WINDOW voids (empty unless
@@ -2384,7 +2451,9 @@ def export_glb(scene, out_path):
         # per B-rep face (12k-18k). Runs last: add_emissive_glow finds its
         # panes by node name, and packing merges the nodes. See pack_glb.py.
         before, after = pack_glb.pack_file(out_path, elements_by_name=elements)
-        print(f"wrote {out_path} (packed {before} primitives into {after})")
+        # P171's trees, instanced: two meshes however many trees.
+        n_trees = pack_glb.add_trees_file(out_path, scene.get("trees", []))
+        print(f"wrote {out_path} (packed {before} primitives into {after}, plus {n_trees} instanced trees)")
     except Exception as e:
         print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
 

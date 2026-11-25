@@ -131,6 +131,8 @@ mod tests {
                 label: "P133 opinion fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

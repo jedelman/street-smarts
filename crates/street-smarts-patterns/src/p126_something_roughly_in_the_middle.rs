@@ -320,6 +320,8 @@ impl PatternOperator for P126SomethingRoughlyInTheMiddle {
             entity_provenance: std::collections::BTreeMap::new(),
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }
@@ -348,6 +350,8 @@ mod tests {
                 label: "P126 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

@@ -13,6 +13,7 @@
 
 export const PATTERNS = {
   37: { name: "House Cluster", gist: "each cluster of houses set apart by common land" },
+  51: { name: "Green Streets", gist: "grass, with paving stones set in for the wheels" },
   52: { name: "Network of Paths and Cars", gist: "the path system is the spine" },
   53: { name: "Main Gateways", gist: "a marker where the paths that enter the site cross its edge" },
   61: { name: "Small Public Squares", gist: "small enough to feel intimate, not desolate" },
@@ -28,7 +29,12 @@ export const PATTERNS = {
   160: { name: "Building Edge", gist: "an edge deep enough for seats and bay windows" },
   161: { name: "Sunny Place", gist: "a sheltered, sunny spot just outside" },
   166: { name: "Gallery Surround", gist: "covered walks at the upper stories" },
+  171: { name: "Tree Places", gist: "trees planted to make places: avenues, squares, groves, a spreading tree" },
+  172: { name: "Garden Growing Wild", gist: "the open ground grows as meadow, with no bare earth" },
 };
+
+// P171's forms, as the tree's own kind names them.
+const TREE_NOUNS = { avenue: "tree in an avenue", square: "tree ringing a square", umbrella: "spreading tree", grove: "tree in a grove" };
 
 const NUMBER = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 
@@ -57,6 +63,13 @@ export function patternsOf(el) {
     case "streets":
       if (has(/^(path|loop|localloop)_/)) [52, 98, 120].forEach(add);
       if (has(/_p61_link_/)) add(61);
+      if (/_grass$/.test(kind)) add(51); // render.py's kind for path_network's grass_pavers surface
+      break;
+    case "trees":
+      if (has(/^p171_/)) add(171);
+      break;
+    case "ground":
+      if (has(/_p172_meadow$/)) add(172);
       break;
     case "plazas": // open space: whoever carved it
       if (has(/_P107_courtyard/)) add(107);
@@ -92,6 +105,8 @@ const article = (w) => (/^[aeiou]/i.test(w) ? "an" : "a");
 /** What it is, as a noun phrase without an article: "courtyard", "four-story building". */
 export function nounOf(el) {
   const k = el.kind || "";
+  if (el.group === "trees") return TREE_NOUNS[k] || "tree";
+  if (/_grass$/.test(k)) return `${nounOf({ ...el, kind: k.slice(0, -6) })} of grass and paving stones`;
   const p = patternsOf(el);
   const storied = (word) => (el.floors > 0 && el.floors <= 12 ? `${NUMBER[el.floors]}-story ${word}` : word);
   switch (k) {
@@ -102,6 +117,7 @@ export function nounOf(el) {
     case "common": return p.includes(161) ? "sunny place" : "common";
     case "pocket": return "activity pocket";
     case "undecided": return "patch of undecided ground";
+    case "meadow": return "meadow";
     case "local": return "local street";
     case "pedestrian": return "pedestrian street";
     case "arterial": return "arterial road";
@@ -137,6 +153,7 @@ export function touchable(el) {
 export function promptOf(el) {
   const n = nounOf(el);
   const k = el.kind || "";
+  if (el.group === "trees") return `Perch in the ${n}`;
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Sit in the ${n}`;
   if (k === "roof_garden") return "Peck around the roof garden";
   if (k === "canopy_arcade" || k === "canopy_gallery") return `Perch on the ${n}`;
@@ -170,8 +187,10 @@ export function answerOf(el) {
 export function arrivalOf(el) {
   const k = el.kind || "";
   const n = nounOf(el);
+  if (el.group === "trees") return `Up in ${article(n)} ${n}.`;
+  if (k === "meadow") return "Into the meadow.";
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Into ${article(n)} ${n}.`;
-  if (/^(local|pedestrian|arterial|street)$/.test(k)) return `Onto ${article(n)} ${n}.`;
+  if (/^(local|pedestrian|arterial|street)(_grass)?$/.test(k)) return `Onto ${article(n)} ${n}.`;
   if (k === "roof_garden") return "Down into a roof garden.";
   if (k === "roof") return "Up on a roof.";
   if (k === "canopy_arcade" || k === "canopy_gallery") return `Up on ${article(n)} ${n}.`;
