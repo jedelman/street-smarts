@@ -3,8 +3,9 @@
 //
 // The data is the GLB's own detail table (render.frontage_detail, written by
 // pack_glb.add_detail): walls, each opening on them, and shop fronts, which are
-// a public wall's share around each of its ground-floor doors. Where a window
-// is, where a door is, which walls face a street or a square: data. What kind
+// a public wall's share around each of its ground-floor doors (most of them
+// P87 Individually Owned Shops' own doors). Where a window is, where a door
+// is, which walls face a street or a square: data. What kind
 // of shop stands at a door, its paint, awning and sign: ours, seeded by the
 // shop's id so it never changes between visits, after the Ghent Streets
 // explorer's storefronts (jason-edelman.org/ghent-streets/explorer): its kits,
@@ -53,8 +54,13 @@ const BAY = 3.3; // the explorer's pier spacing
 // How far away each kind of part is still drawn (metres from the camera to its
 // chunk), and how big its chunks are: big where a kind is seen from everywhere
 // (fewer draw calls), small where it's only drawn up close (tighter culling).
-const REACH = { frames: 900, glass: 900, display: 260, awnings: 220, mid: 180, letters: 160, near: 70, icons: 60 };
-const CHUNK = { frames: 400, glass: 400, display: 220, awnings: 220, mid: 160, letters: 220, near: 90, icons: 220 };
+// A storefront thins out with distance: its sign band, cornice and door read
+// from 150 m ("mid"), its piers, bulkheads and trims from 75 m ("detail"),
+// its capitals, brass and props only up close ("near").
+const REACH = { windows: 900, glass: 260, display: 200, awnings: 150, mid: 150, letters: 130, detail: 75, near: 45, icons: 45 };
+const CHUNK = { windows: 400, glass: 200, display: 200, awnings: 160, mid: 160, letters: 200, detail: 60, near: 50, icons: 120 };
+const FRAME_M = 0.08; // a window's painted frame, drawn by its own quad's shader
+const FRAME_COLOR = "#e8dfc8";
 
 // The explorer's seeded random (FNV-1a into mulberry32), so a shop always looks the same.
 function rngFor(seed) {
@@ -74,7 +80,7 @@ const pickOf = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 /** The GLB's detail table as typed arrays, or null. */
 export async function readDetail(parser, table) {
   const d = table && table.detail;
-  if (!d || d.version !== 1) return null;
+  if (!d || d.version !== 2) return null;
   const [w, o] = await Promise.all([
     parser.getDependency("bufferView", d.walls.bufferView),
     parser.getDependency("bufferView", d.openings.bufferView),
@@ -226,6 +232,30 @@ function iconsAtlas() {
   return { map: texture(c), rects };
 }
 
+/**
+ * One quad per window: the instance colour fills the middle (glass, or a door's
+ * leaf) and a painted frame `FRAME_M` wide runs round the edge, so a window is
+ * drawn once rather than a frame quad and a glass quad on top of it.
+ */
+function framedMaterial() {
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uFrame = { value: FRAME_M };
+    shader.uniforms.uTrim = { value: new THREE.Color(FRAME_COLOR) };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vWin, vSize;")
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+        vWin = uv;
+        vSize = vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vWin, vSize;\nuniform float uFrame;\nuniform vec3 uTrim;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+        vec2 d = min(vWin, 1.0 - vWin) * vSize;
+        diffuseColor.rgb = mix(diffuseColor.rgb, uTrim, step(min(d.x, d.y), uFrame));`);
+  };
+  return m;
+}
+
 /** A material whose map is read through each instance's own rectangle of an atlas. */
 function atlasMaterial(Kind, opts) {
   const m = new Kind(opts);
@@ -238,7 +268,16 @@ function atlasMaterial(Kind, opts) {
 }
 
 // ---------------------------------------------------------------- instances, in chunks
-const BOX = new THREE.BoxGeometry(1, 1, 1);
+// A unit box without its back (against the wall, local -z) and bottom faces,
+// which nobody sees: 8 triangles instead of 12.
+const BOX = (() => {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const keep = g.groups.filter((_, i) => i !== 3 && i !== 5); // faces: +x, -x, +y, -y, +z, -z
+  const index = keep.flatMap((grp) => Array.from(g.index.array.slice(grp.start, grp.start + grp.count)));
+  g.setIndex(index);
+  g.clearGroups();
+  return g;
+})();
 const QUAD = new THREE.PlaneGeometry(1, 1);
 
 class Parts {
@@ -277,6 +316,7 @@ class Parts {
         im.computeBoundingSphere();
         im.matrixAutoUpdate = false;
         im.userData.reach = kind.reach;
+        im.userData.kind = name;
         if (kind.order) im.renderOrder = kind.order;
         scene.add(im);
         meshes.push(im);
@@ -297,11 +337,12 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
   const letters = lettersAtlas(), stripes = stripesAtlas(paintOf), insides = insidesAtlas(), icons = iconsAtlas();
   const lambert = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const parts = new Parts({
-    frames: { geometry: QUAD, material: lambert, reach: REACH.frames },
+    windows: { geometry: QUAD, material: framedMaterial(), reach: REACH.windows },
     glass: { geometry: QUAD, material: new THREE.MeshBasicMaterial({ color: 0xffffff }), reach: REACH.glass },
     display: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: insides.map }), uv: true, reach: REACH.display },
-    awnings: { geometry: BOX, material: atlasMaterial(THREE.MeshLambertMaterial, { color: 0xffffff, map: stripes.map }), uv: true, reach: REACH.awnings },
+    awnings: { geometry: QUAD, material: atlasMaterial(THREE.MeshLambertMaterial, { color: 0xffffff, map: stripes.map, side: THREE.DoubleSide }), uv: true, reach: REACH.awnings },
     mid: { geometry: BOX, material: lambert, reach: REACH.mid },
+    detail: { geometry: BOX, material: lambert, reach: REACH.detail },
     near: { geometry: BOX, material: lambert, reach: REACH.near },
     letters: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: letters.map, transparent: true, alphaTest: 0.35, depthWrite: false }), uv: true, reach: REACH.letters, order: 1 },
     icons: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: icons.map, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide }), uv: true, reach: REACH.icons },
@@ -346,16 +387,15 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
   const glassCol = new THREE.Color(), lit = new THREE.Color("#f2c27a");
   for (let i = 0; i < detail.nOpenings; i++) {
     const o = i * 6;
-    const wi = O[o], door = (O[o + 1] & 1) === 1, floor = O[o + 1] >> 1;
+    const wi = O[o], door = (O[o + 1] & 3) !== 0, floor = O[o + 1] >> 2; // kind: 0 window, 1 door, 2 P87 shop door
     const along = O[o + 2] / 100, bottom = O[o + 3] / 100, width = O[o + 4] / 100, height = O[o + 5] / 100;
     if (floor === 0 && inShop(wi, along)) continue;
     const w = walls[wi] || (walls[wi] = wallAt(wi));
     const r = rngFor(`${wi}:${i}`);
-    const trim = GHENT_TRIMS[Math.floor(w.building) % GHENT_TRIMS.length];
     const cy = bottom + height / 2;
-    add("frames", w, along, cy, 0.02, width + 0.16, height + 0.16, 1, trim);
+    const framed = (color) => add("windows", w, along, cy, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, color);
     if (door) {
-      add("frames", w, along, bottom + (height - 0.02) / 2, 0.03, width, height - 0.02, 1, w.courtyard ? "#5a3a26" : "#3a2a1e");
+      framed(w.courtyard ? "#5a3a26" : "#3a2a1e"); // the leaf, framed
       add("glass", w, along, bottom + height * 0.72, 0.04, width * 0.55, height * 0.32, 1, "#d8b77a");
       continue;
     }
@@ -364,22 +404,23 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
       add("display", w, along, cy, 0.035, width, height, 1, col.setScalar(0.92), insides.rects.rooms);
     } else {
       glassCol.set(w.courtyard ? "#3d5260" : "#2f3e48").multiplyScalar(0.85 + 0.3 * r());
-      add("glass", w, along, cy, 0.035, width, height, 1, floor > 0 && r() < 0.14 ? lit : glassCol);
+      framed(floor > 0 && r() < 0.14 ? lit : glassCol);
     }
-    add("near", w, along, bottom - 0.03, 0.06, width + 0.22, 0.06, 0.14, trim); // the sill
   }
 
   // ---- the shop fronts (after the explorer's buildRun)
   const shops = [];
   const lastKit = new Map();
   for (const { row } of [...shopsByWall.values()].flat()) {
-    const [wi, lo, hi, doorAt, doorWidth, , underArcade] = row;
+    const [wi, lo, hi, doorAt, doorWidth, , underArcade, p87] = row;
     const w = walls[wi] || (walls[wi] = wallAt(wi));
     const id = `${detail.strings[w.building] || w.building}:${wi}:${lo.toFixed(1)}`;
     const rng = rngFor(id);
-    let ki = Math.floor(rng() * KITS.length);
-    if (lastKit.get(wi) === ki) ki = (ki + 1 + Math.floor(rng() * (KITS.length - 1))) % KITS.length; // neighbours differ
-    lastKit.set(wi, ki);
+    // Neighbours differ: no kit repeats within two doors along a wall.
+    const recent = lastKit.get(wi) || [];
+    const choices = KITS.map((_, k) => k).filter((k) => !recent.includes(k));
+    const ki = choices[Math.floor(rng() * choices.length)];
+    lastKit.set(wi, [ki, ...recent].slice(0, 2));
     const kit = KITS[ki];
     const paint = pickOf(rng, kit.paints), trim = kit.id === "studio" ? "#d9d6cf" : pickOf(rng, GHENT_TRIMS);
     const brick = pickOf(rng, GHENT_BRICKS);
@@ -409,24 +450,26 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
     const piers = new Set(bounds.filter((x) => x <= e0 - 0.3 || x >= e1 + 0.3));
     piers.add(e0 - 0.18); piers.add(e1 + 0.18);
     for (const x of piers) {
-      add("mid", w, X(x), ST / 2, 0.09, 0.36, ST, 0.22, pier);
+      add("detail", w, X(x), ST / 2, 0.09, 0.36, ST, 0.22, pier);
       if (!awning) add("near", w, X(x), ST - 0.1, 0.18, 0.3, 0.26, 0.3, trim); // capitals, where no awning hides them
     }
     for (const [a0, b0] of spans) {
       const a = a0 + 0.2, b = b0 - 0.2, sw = b - a, cx = X((a + b) / 2);
       if (sw < 0.6) continue;
-      add("mid", w, cx, 0.275, 0.06, sw, 0.55, 0.14, bulk === "brick" ? brick : paint); // bulkhead
+      add("detail", w, cx, 0.275, 0.06, sw, 0.55, 0.14, bulk === "brick" ? brick : paint); // bulkhead
       if (bulk === "panel") add("near", w, cx, 0.28, 0.14, sw - 0.2, 0.34, 0.02, trim);
-      add("mid", w, cx, 0.58, 0.08, sw + 0.1, 0.07, 0.24, trim); // sill
+      add("detail", w, cx, 0.58, 0.08, sw + 0.1, 0.07, 0.24, trim); // sill
       add("display", w, cx, (GLASS_TOP + 0.62) / 2, 0.035, sw, GLASS_TOP - 0.62, 1, col.setScalar(1), insides.rects[kit.inside]);
       if (sw > 2.4) add("near", w, cx, (GLASS_TOP + 0.62) / 2, 0.06, 0.07, GLASS_TOP - 0.62, 0.08, paint); // mullion
-      add("mid", w, cx, GLASS_TOP + 0.04, 0.06, sw + 0.05, 0.08, 0.12, paint);
+      add("detail", w, cx, GLASS_TOP + 0.04, 0.06, sw + 0.05, 0.08, 0.12, paint);
       add("glass", w, cx, ST - 0.26, 0.035, sw, 0.42, 1, "#4a3826"); // transom
       if (awning) {
         const d = 1.25;
-        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d / 2, 0.14 + Math.cos(awnTilt) * d / 2, sw + 0.15, 0.03, d,
-          col.setScalar(1), stripes.rect(ki), awnTilt);
-        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d - 0.12, 0.14 + Math.cos(awnTilt) * d, sw + 0.15, 0.24, 0.02,
+        // The canvas: a quad laid along the slope (a plane faces +z; tipped by
+        // -(90° - tilt) about x it faces up and out, falling away from the wall).
+        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d / 2, 0.14 + Math.cos(awnTilt) * d / 2, sw + 0.15, d, 1,
+          col.setScalar(1), stripes.rect(ki), awnTilt - Math.PI / 2);
+        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d - 0.12, 0.14 + Math.cos(awnTilt) * d, sw + 0.15, 0.24, 1,
           col.setScalar(0.92), stripes.rect(ki)); // the valance
       }
     }
@@ -435,7 +478,7 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
     add("mid", w, X(at), 1.12, 0.03, doorLeaf, 2.24, 0.06, paint);
     add("glass", w, X(at), 1.45, 0.065, doorLeaf * 0.66, 1.2, 1, "#d8b77a");
     add("near", w, X(at) + 0.36 * w.flip, 1.05, 0.08, 0.06, 0.06, 0.08, "#b8913f"); // brass
-    add("mid", w, X(at), 2.3, 0.06, entryW, 0.1, 0.12, trim);
+    add("detail", w, X(at), 2.3, 0.06, entryW, 0.1, 0.12, trim);
     add("glass", w, X(at), (2.36 + ST) / 2, 0.035, entryW, ST - 2.36, 1, "#4a3826");
     const side = (entryW - doorLeaf) / 2 - 0.08;
     if (side > 0.2) for (const sd of [-1, 1]) {
@@ -451,7 +494,7 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
     const bx = X(Math.min(L - 0.3, e1 + 0.18));
     add("near", w, bx, 2.4, 0.72, 0.05, 0.05, 1.05, "#1d1b19");
     add("near", w, bx, 2.22, 0.25, 0.04, 0.4, 0.04, "#1d1b19");
-    add("mid", w, bx, 2.08, 0.82, 0.03, 0.46, 0.62, paint);
+    add("detail", w, bx, 2.08, 0.82, 0.03, 0.46, 0.62, paint);
     for (const sd of [-1, 1]) add("icons", w, bx + sd * 0.018 * w.flip, 2.08, 0.82, 0.5, 0.36, 1, "#ffffff", icons.rects[kit.icon], 0, sd * Math.PI / 2);
     // On the pavement in front: the kit's own props.
     const props = kit.props;
@@ -487,7 +530,7 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
       add("near", w, x, 0.72, 0.5, 0.56, 0.48, 0.56, "#55704a");
     }
     const front = new THREE.Vector3().copy(w.A).addScaledVector(w.u, X(at)).addScaledVector(w.n, 1.6);
-    shops.push({ kit: kit.id, door: front, wall: wi });
+    shops.push({ kit: kit.id, door: front, wall: wi, p87: p87 === 1, building: detail.strings[w.building] || null });
   }
 
   const meshes = parts.build(scene);

@@ -105,6 +105,7 @@ STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
 MEADOW_TOP_M = -0.02  # P172's meadow lies just below grade: it is the ground
 MEADOW_THICKNESS_M = 0.08  # everything else stands on, and shows only where nothing does
+DOOR_KINDS = ("door", "shop_door")  # a building's own door, and a P87 shop's (OpeningKind::ShopDoor)
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
 OPENING_DECAL_OFFSET_M = 0.03  # how far a window/door decal sits proud of
 # the wall's own outward face -- enough to avoid z-fighting the wall's own
@@ -572,7 +573,8 @@ def frontage_detail(nbhd, origin_lng, origin_lat):
     `SHOP_MAX_M` (12.5 m, the Ghent Streets explorer's cap on a storefront
     run), at least `SHOP_MIN_M`. So where shops open is the pipeline's
     (P221 places doors, P110 moves the main entrance to the street side,
-    P100 adds doors on pedestrian streets); what kind of shop each is, and
+    P100 adds doors on pedestrian streets, and P87 Individually Owned Shops
+    divides the rest into small shops with doors of their own); what kind of shop each is, and
     how it's painted, is the walk's own seeded choice, not data.
 
     Returns {"walls": [...], "openings": [...], "shops": [...]}, local metres
@@ -662,7 +664,7 @@ def frontage_detail(nbhd, origin_lng, origin_lat):
     # Shop fronts: each ground-floor door on a public outer wall, with its share of the wall.
     doors_by_wall = {}
     for o in openings:
-        if o["kind"] == "door" and o["floor"] == 0 and walls[o["wall"]]["public"]:
+        if o["kind"] in DOOR_KINDS and o["floor"] == 0 and walls[o["wall"]]["public"]:
             doors_by_wall.setdefault(o["wall"], []).append(o)
     for w, doors in doors_by_wall.items():
         L = walls[w]["length"]
@@ -679,7 +681,7 @@ def frontage_detail(nbhd, origin_lng, origin_lat):
                           for t0, t1 in arcades.get((walls[w]["building"], walls[w]["ring_index"]), []))
             shops.append({"id": f"{walls[w]['building']}:{w}:{k}", "wall": w, "lo": lo, "hi": hi,
                           "door": door["along"], "door_width": door["width"], "door_height": door["height"],
-                          "arcade": covered > 0.5 * (hi - lo)})
+                          "arcade": covered > 0.5 * (hi - lo), "p87": door["kind"] == "shop_door"})
     return {"walls": walls, "openings": openings, "shops": shops}
 
 
@@ -939,7 +941,7 @@ def opening_records(building, origin_lng, origin_lat, skip_ring_indices=frozense
         placement = opening_placement(ring, ring_sign, o)
         if placement is None:
             continue
-        is_door = o["kind"] == "door"
+        is_door = o["kind"] in DOOR_KINDS
         color_key = "opening_door" if is_door else ("opening_window_courtyard" if on_hole else "opening_window")
         records.append((placement, color_key))
     return records
@@ -1030,7 +1032,7 @@ def window_glow_solids(building, origin_lng, origin_lat, skip_ring_indices=froze
 
     glow_solids = []
     for o in openings:
-        if o.get("kind") == "door":
+        if o.get("kind") in DOOR_KINDS:
             continue
         on_hole = o.get("on_hole")
         if not on_hole and o.get("floor", 0) >= 1 and o["ring_index"] in skip_ring_indices:
@@ -2193,7 +2195,7 @@ def interior_view_candidates(nbhd, origin_lng, origin_lat, max_views=2):
         outer_sign = polygon_signed_area2_m2(outer_xy)
         window_dirs = []
         for o in b.get("openings") or []:
-            if o.get("on_hole") or o.get("kind") == "door" or o.get("floor", 0) != 0:
+            if o.get("on_hole") or o.get("kind") in DOOR_KINDS or o.get("floor", 0) != 0:
                 continue
             placement = opening_placement(outer_xy, outer_sign, o)
             if placement is None:
@@ -2933,7 +2935,7 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
             half_w = max(o["width_m"], 0.3) / 2
             p1 = (mx - ux * half_w, my - uy * half_w)
             p2 = (mx + ux * half_w, my + uy * half_w)
-            is_door = o["kind"] == "door"
+            is_door = o["kind"] in DOOR_KINDS
             if is_door:
                 color = DOOR_COLOR
             else:
@@ -2962,7 +2964,7 @@ def render_largest_building_floors(nbhd, origin_lng, origin_lat, out_path):
         draw_scale_bar(ax, xlim, ylim)
         label = "ground floor" if floor == 0 else f"floor {floor + 1}"
         n_windows = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "window")
-        n_doors = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] == "door")
+        n_doors = sum(1 for o in openings_by_floor.get(floor, []) if o["kind"] in DOOR_KINDS)
         title = f"{label}\n{n_windows} windows, {n_doors} doors"
         if len(cells) >= 2:
             # Real dimensions, not just a wall diagram -- band_depth_m

@@ -27,7 +27,7 @@ def detail_problems(gltf, bin_chunk, table):
     d = table.get("detail")
     if not d:
         return []
-    if d.get("version") != 1:
+    if d.get("version") != 2:
         return [f"detail version {d.get('version')}"]
     views = gltf["bufferViews"]
     out = []

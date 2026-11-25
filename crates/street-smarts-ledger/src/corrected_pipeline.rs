@@ -40,6 +40,7 @@ use street_smarts_patterns::p171_tree_places::{P171Params, P171TreePlaces};
 use street_smarts_patterns::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
+use street_smarts_patterns::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
 use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
 use street_smarts_patterns::p164_street_windows::{P164Params, P164StreetWindows};
 use street_smarts_patterns::p165_opening_to_the_street::{P165OpeningToTheStreet, P165Params};
@@ -200,6 +201,8 @@ pub fn run_corrected_pipeline_via_ledger(
     // entrance positions. See pipeline.rs's own step 28 doc.
     try_run(store, &P102FamilyOfEntrances, "*", &P102Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P160BuildingEdge, "*", &P160Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Many very small shop fronts, each with its own ShopDoor. See pipeline.rs's own step 29a.
+    try_run(store, &P87IndividuallyOwnedShops, "*", &P87Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Adds a small real south-facing open space next to a building that
     // lacks one. Runs after every other stage except P126 -- see
     // pipeline.rs's own step 30 doc for why (and the real P60 Accessible

@@ -256,6 +256,15 @@
 //!      free reorder like the others above. Not fatal if no door has room
 //!      for a niche on either side. See p160_building_edge's own module
 //!      doc.
+//!   29a. P87 Individually Owned Shops (once, site-scale): divides every
+//!      ground-floor outer wall that faces a street or square (a street's
+//!      right-of-way or a square within 12 m, straight out, before another
+//!      building) into ~5 m shop fronts and gives each one without a door its
+//!      own `OpeningKind::ShopDoor`, between existing openings or in place
+//!      of a window. After P160 (and P110/P165 before it) so the building's
+//!      own entrance and windows are settled; before P161, whose sunny places
+//!      would otherwise count as squares. See p87_individually_owned_shops's
+//!      own module doc.
 //!   30. P161 Sunny Place (once, site-scale): adds a small, real,
 //!      south-facing OpenSpace (reusing `OpenSpaceKind::Common` -- no
 //!      dedicated "Sunny" variant exists, see p161_sunny_place's own
@@ -318,6 +327,7 @@ use crate::p102_family_of_entrances::{P102FamilyOfEntrances, P102Params};
 use crate::p110_main_entrance::{P110MainEntrance, P110Params};
 use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
 use crate::p171_tree_places::{P171Params, P171TreePlaces};
+use crate::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
 use crate::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p160_building_edge::{P160BuildingEdge, P160Params};
@@ -762,6 +772,14 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub160) = P160BuildingEdge.apply(&nbhd, "*", &P160Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub160);
         trace.push(P160BuildingEdge.name());
+    }
+
+    // P87 Individually Owned Shops (once, site-scale): every ground floor
+    // that faces a street or square divided into ~5 m shop fronts, each with
+    // its own ShopDoor. See step 29a.
+    if let Ok(sub87) = P87IndividuallyOwnedShops.apply(&nbhd, "*", &P87Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub87);
+        trace.push(P87IndividuallyOwnedShops.name());
     }
 
     // P161 Sunny Place (once, site-scale): adds a small real south-facing

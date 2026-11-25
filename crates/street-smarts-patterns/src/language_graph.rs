@@ -215,6 +215,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank -- a genuine, non-free dependency (PATTERN_ORDERING_AUDIT.md §4.8), unlike P118/P119/P133 above",
     },
     PatternNode {
+        id: "p87_individually_owned_shops", alexander_number: Some(87),
+        requires: &["p110_main_entrance", "p165_opening_to_the_street", "path_network", "p61_small_public_squares"],
+        completes: &[],
+        why: "divides every ground floor that faces a street or square into very small shop fronts, each with its own ShopDoor. After P110 (the building's own entrance settled) and P165 (its windows placed, so doors fit between them), and before P161, whose sunny places would otherwise count as squares to face. ShopDoor isn't Door, so P110 and P102 don't see these",
+    },
+    PatternNode {
         id: "p161_sunny_place", alexander_number: Some(161),
         requires: &["p107_wings_of_light"],
         completes: &[],

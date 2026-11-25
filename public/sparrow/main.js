@@ -83,6 +83,7 @@ const bird = {
 };
 const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
+let shopTouchables = [];
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
 let tour = null; // { stops: [...], i, waitUntil }
 let focus = null, focusScore = Infinity;
@@ -136,7 +137,7 @@ let present = [];
   benchSet = buildBenches(scene, benches);
   people = populate();
   indexTouchables();
-  present = [...new Set(site.elements.flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
+  present = [...new Set([...site.elements, ...shopTouchables].flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
   try { for (const n of JSON.parse(localStorage.getItem(metKey()) || "[]")) if (present.includes(n)) met.add(n); } catch { /* fresh */ }
   updateMet();
   spawn();
@@ -499,7 +500,14 @@ function indexTouchables() {
     kind: "bench", group: "props", bench: b, center: new THREE.Vector3(b.x, b.y + 0.48, b.z),
     box: new THREE.Box3(new THREE.Vector3(b.x - 0.8, b.y, b.z - 0.8), new THREE.Vector3(b.x + 0.8, b.y + 0.5, b.z + 0.8)),
   }));
-  for (const el of [...site.elements, ...benchEls]) {
+  // Shop fronts: look in (a P87 shop names its pattern).
+  const shopEls = (frontages ? frontages.shops : []).map((s) => ({
+    group: "shops", kind: s.kit, p87: s.p87, source: s.building,
+    center: new THREE.Vector3(s.door.x, 1.2, s.door.z),
+    box: new THREE.Box3(new THREE.Vector3(s.door.x - 1.2, 0, s.door.z - 1.2), new THREE.Vector3(s.door.x + 1.2, 2.6, s.door.z + 1.2)),
+  }));
+  shopTouchables = shopEls;
+  for (const el of [...site.elements, ...benchEls, ...shopEls]) {
     if (!el.center || !(touchable(el) || el.kind === "bench")) continue;
     const b = el.box;
     for (let x = Math.floor(b.min.x / CELL); x <= Math.floor(b.max.x / CELL); x++)

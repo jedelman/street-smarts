@@ -17,6 +17,7 @@ export const PATTERNS = {
   52: { name: "Network of Paths and Cars", gist: "the path system is the spine" },
   53: { name: "Main Gateways", gist: "a marker where the paths that enter the site cross its edge" },
   61: { name: "Small Public Squares", gist: "small enough to feel intimate, not desolate" },
+  87: { name: "Individually Owned Shops", gist: "many very small shops along the street, each with its own door" },
   95: { name: "Building Complex", gist: "a cluster of buildings, not one tower on a lot" },
   98: { name: "Circulation Realms", gist: "distinct walking and driving zones" },
   107: { name: "Wings of Light", gist: "no point inside far from an outside wall" },
@@ -31,6 +32,12 @@ export const PATTERNS = {
   166: { name: "Gallery Surround", gist: "covered walks at the upper stories" },
   171: { name: "Tree Places", gist: "trees planted to make places: avenues, squares, groves, a spreading tree" },
   172: { name: "Garden Growing Wild", gist: "the open ground grows as meadow, with no bare earth" },
+};
+
+// The walk's shop kinds (frontages.js KITS), as nouns.
+const SHOP_NOUNS = {
+  coffee: "coffee shop", books: "bookshop", bistro: "bistro", studio: "design studio", bakery: "bakery",
+  grocer: "grocer's", florist: "florist's", hardware: "hardware store", records: "record shop", tailor: "tailor's",
 };
 
 // P171's forms, as the tree's own kind names them.
@@ -71,6 +78,9 @@ export function patternsOf(el) {
     case "ground":
       if (has(/_p172_meadow$/)) add(172);
       break;
+    case "shops": // a shop front at a door: P87's own door, or the building's
+      if (el.p87) add(87);
+      break;
     case "plazas": // open space: whoever carved it
       if (has(/_P107_courtyard/)) add(107);
       else if (has(/_P95_courtyard/)) add(95);
@@ -106,6 +116,7 @@ const article = (w) => (/^[aeiou]/i.test(w) ? "an" : "a");
 export function nounOf(el) {
   const k = el.kind || "";
   if (el.group === "trees") return TREE_NOUNS[k] || "tree";
+  if (el.group === "shops") return SHOP_NOUNS[k] || "shop";
   if (/_grass$/.test(k)) return `${nounOf({ ...el, kind: k.slice(0, -6) })} of grass and paving stones`;
   const p = patternsOf(el);
   const storied = (word) => (el.floors > 0 && el.floors <= 12 ? `${NUMBER[el.floors]}-story ${word}` : word);
@@ -145,6 +156,7 @@ export function nounOf(el) {
 
 /** The things worth a glint and a prompt (not every wall). */
 export function touchable(el) {
+  if (el.group === "shops") return true;
   return /^(plaza|common|pocket|undecided|roof_garden|canopy_arcade|canopy_gallery|wall_niche)$/.test(el.kind || "")
     || (el.group === "activity" && (el.kind || "").startsWith("activity_"));
 }
@@ -154,6 +166,7 @@ export function promptOf(el) {
   const n = nounOf(el);
   const k = el.kind || "";
   if (el.group === "trees") return `Perch in the ${n}`;
+  if (el.group === "shops") return `Look in the ${n}`;
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Sit in the ${n}`;
   if (k === "roof_garden") return "Peck around the roof garden";
   if (k === "canopy_arcade" || k === "canopy_gallery") return `Perch on the ${n}`;
@@ -170,6 +183,10 @@ export function answerOf(el) {
     : n.startsWith("roof of") ? `The ${n}.`
     : `${article(n)[0].toUpperCase()}${article(n).slice(1)} ${n}.`;
   const lines = [head];
+  if (el.group === "shops") {
+    // Which shop it is, its paint and sign, are the walk's; where its door is, is the pipeline's.
+    lines.push(el.p87 ? "Which shop is ours; its door is the pipeline's." : "At the building's own door; which shop is ours.");
+  }
   const nums = patternsOf(el);
   if (nums[0] === 52) {
     // The path network pulls from three patterns; the spine one leads.
