@@ -21,6 +21,12 @@ const params = new URLSearchParams(location.search);
 const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
 const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
 const STATS = params.has("stats");
+// Hero mode: embedded in the landing page. It runs the tour as attract mode and
+// takes no input until the page hands it over ("Hop in"); see index.html's #hero.
+const HERO = params.has("hero");
+let active = !HERO;
+document.body.classList.toggle("hero", HERO);
+const toPage = (msg) => { if (HERO && parent !== window) parent.postMessage({ source: "street-smarts-walk", ...msg }, location.origin); };
 const COARSE = matchMedia("(pointer: coarse)").matches;
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (id) => document.getElementById(id);
@@ -53,7 +59,7 @@ function fail(msg) {
   l.classList.remove("hidden");
   l.innerHTML = `<p class="err">${msg}</p>`;
 }
-const setLoading = (msg) => { $("loading-msg").textContent = msg; };
+const setLoading = (msg, p) => { $("loading-msg").textContent = msg; if (p != null) toPage({ type: "progress", p }); };
 
 // ---------------------------------------------------------------- the log
 const MAX_LINES = COARSE ? 4 : 7, FADE_MS = COARSE ? 6500 : 9000;
@@ -87,7 +93,7 @@ let present = [];
 (async function boot() {
   try {
     const [s, v] = await Promise.all([
-      loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`)),
+      loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
       fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []),
     ]);
     site = s;
@@ -122,7 +128,33 @@ let present = [];
   $("loading").classList.add("hidden");
   if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
+  toPage({ type: "ready" });
 })();
+
+// The landing page drives a hero: hand over input, take it back, pause while scrolled away.
+addEventListener("message", (e) => {
+  if (!HERO || e.origin !== location.origin || !e.data || e.data.source !== "street-smarts-hero") return;
+  const type = e.data.type;
+  if (type === "activate" && !active) {
+    active = true;
+    document.body.classList.add("active");
+    lastInputT = t;
+    hintGone = false;
+    $("hint").classList.remove("gone");
+    setTimeout(hideHint, 9000);
+  } else if (type === "deactivate" && active) {
+    active = false;
+    document.body.classList.remove("active");
+    for (const k in keys) keys[k] = false;
+    holdUp = holdDown = false;
+    attractAt = t + 8;
+  } else if (type === "pause" && site) {
+    renderer.setAnimationLoop(null);
+  } else if (type === "resume" && site) {
+    last = performance.now();
+    renderer.setAnimationLoop(frame);
+  }
+});
 
 function metKey() { return `street-smarts-met:${GLB_URL}`; }
 
@@ -240,6 +272,7 @@ let wantHop = false; // edge-triggered: Space / A / ▲
 
 function gatherIntent() {
   intent.move.set(0, 0, 0);
+  if (!active) { intent.fast = intent.up = intent.down = intent.hop = false; wantHop = false; if (goal) steerToGoal(); return; }
   // Camera-relative: forward is away from the camera.
   _fwd.set(-Math.sin(director.yaw), 0, -Math.cos(director.yaw));
   _right.set(Math.cos(director.yaw), 0, -Math.sin(director.yaw));
@@ -410,6 +443,7 @@ function probeGround() {
 
 // ---------------------------------------------------------------- patterns met
 function meet(el) {
+  if (!active) return; // the attract tour isn't you meeting anything
   for (const n of patternsOf(el)) {
     if (met.has(n) || !present.includes(n)) continue;
     met.add(n);
@@ -602,7 +636,7 @@ function startTour() {
   tour = { stops, i: -1, waitUntil: 0 };
   $("tour").setAttribute("aria-pressed", "true");
   $("tour").textContent = "Stop the tour";
-  logLine("Follow me.", "note");
+  if (active) logLine("Follow me.", "note");
   nextStop();
 }
 function nextStop() {
@@ -620,7 +654,9 @@ function nextStop() {
   goal = { point: p, el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
   tour.waitUntil = Infinity;
 }
+let attractAt = 4.8; // after the crane
 function tourTick() {
+  if (HERO && !active && !tour && !REDUCED && t > attractAt) startTour();
   if (!tour) return;
   if (!goal && t > tour.waitUntil) nextStop();
 }
@@ -629,7 +665,8 @@ function endTour(msg) {
   goal = null;
   $("tour").setAttribute("aria-pressed", "false");
   $("tour").textContent = "Show me around";
-  if (msg) logLine(msg, "note");
+  if (msg && active) logLine(msg, "note");
+  if (!active) attractAt = t + 4; // go round again
 }
 
 // ---------------------------------------------------------------- inside (cluster interiors)
@@ -718,7 +755,9 @@ const director = (() => {
       }
       [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, 0.14, dt);
       [pitch, pitchV] = smoothDamp(pitch, pitchT, pitchV, 0.14, dt);
-      const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1);
+      const attract = HERO && !active; // the hero's attract tour: higher and wider, so the place reads
+      if (attract) pitchT += (0.28 - pitchT) * Math.min(1, dt * 0.8);
+      const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1) * (attract ? 2.4 : 1);
       [dist, distV] = smoothDamp(dist, base * zoom, distV, 0.35, dt);
       const eyesT = zoom < 0.42 ? 1 : 0;
       eyes += (eyesT - eyes) * Math.min(1, dt * 6);
@@ -980,6 +1019,7 @@ function frame() {
 
 // ---------------------------------------------------------------- input
 function pollPad() {
+  if (!active) return;
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const p = pads && [...pads].find((x) => x && x.connected);
   if (!p) return;
@@ -1004,6 +1044,8 @@ function setupUI() {
 
   addEventListener("keydown", (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (!active) return;
+    if (HERO && e.code === "Escape") { toPage({ type: "done" }); return; }
     if (!e.repeat) {
       if (e.code === "Space") wantHop = true;
       if (e.code === "KeyE" || e.code === "Enter") interact();
@@ -1024,6 +1066,7 @@ function setupUI() {
   const pts = new Map();
   let pinch = 0;
   canvas.addEventListener("pointerdown", (e) => {
+    if (!active) return;
     canvas.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false });
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); }
@@ -1051,7 +1094,7 @@ function setupUI() {
   };
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointercancel", up);
-  canvas.addEventListener("wheel", (e) => { e.preventDefault(); director.zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+  canvas.addEventListener("wheel", (e) => { if (!active) return; e.preventDefault(); director.zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   const hold = (el, on) => {
@@ -1077,7 +1120,8 @@ function setupUI() {
   }
   if (STATS) $("stats").hidden = false;
   $("hint").textContent = COARSE ? "Tap to go · drag to look · ▲ to fly" : "WASD to hop · hold Space to fly · drag to look · E to touch · T for a tour";
-  setTimeout(hideHint, 14000);
+  if (active) setTimeout(hideHint, 14000);
+  else { hintGone = true; $("hint").classList.add("gone"); }
 }
 function hideHint() {
   if (hintGone) return;
