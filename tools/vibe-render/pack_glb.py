@@ -457,6 +457,66 @@ def add_trees_file(path, trees):
     return len(trees)
 
 
+# --- Street-level detail ------------------------------------------------------
+#
+# render.frontage_detail's walls, openings and shop fronts, for the walk to
+# build windows and storefronts from (instanced, and only near the camera).
+# Two binary tables and a short list, referenced from the root's
+# `extras.streetSmarts.detail`:
+#   walls     float32 x 9: ax, az, dx, dz, nx, nz, length, flags, building
+#             (glTF axes: x east, z south; a wall runs from (ax, az) along
+#             (dx, dz) for `length` metres, facing (nx, nz); flags 1 = public,
+#             2 = on a courtyard; building = index into `strings`)
+#   openings  uint16 x 6: wall, kind | floor << 1 (kind 0 window, 1 door),
+#             along, bottom, width, height (centimetres)
+#   shops     rows of [wall, lo, hi, door, door_width, door_height, arcade]
+#             (metres along the wall; arcade 1 when a P119 arcade covers it)
+# About 120 KB for clean_baseline's 9,784 openings.
+
+def add_detail(gltf, bin_chunk, detail):
+    walls, openings, shops = detail.get("walls") or [], detail.get("openings") or [], detail.get("shops") or []
+    if not walls:
+        return gltf, bin_chunk
+    blob = bytearray(bin_chunk)
+    table = gltf["nodes"][0]["extras"]["streetSmarts"]
+    strings = table["strings"]
+    def intern(text):
+        if text not in strings:
+            strings.append(text)
+        return strings.index(text)
+
+    def add_view(arr):
+        blob.extend(b"\0" * (-len(blob) % 4))
+        gltf["bufferViews"].append({"buffer": 0, "byteOffset": len(blob), "byteLength": arr.nbytes})
+        blob.extend(arr.tobytes())
+        return len(gltf["bufferViews"]) - 1
+
+    w = np.array([[x["ax"], -x["ay"], x["dx"], -x["dy"], x["nx"], -x["ny"], x["length"],
+                   (1 if x["public"] else 0) | (2 if x["on_hole"] else 0), intern(x["building"])] for x in walls], np.float32)
+    cm = lambda v: int(min(65535, max(0, round(v * 100))))
+    o = np.array([[x["wall"], (1 if x["kind"] == "door" else 0) | (x["floor"] << 1),
+                   cm(x["along"]), cm(x["z"]), cm(x["width"]), cm(x["height"])] for x in openings], np.uint16)
+    r2 = lambda v: round(float(v), 2)
+    table["detail"] = {
+        "version": 1,
+        "walls": {"bufferView": add_view(w), "count": len(walls),
+                  "fields": ["ax", "az", "dx", "dz", "nx", "nz", "length", "flags", "building"]},
+        "openings": {"bufferView": add_view(o), "count": len(openings),
+                     "fields": ["wall", "kindFloor", "along", "bottom", "width", "height"]},
+        "shops": {"fields": ["wall", "lo", "hi", "door", "doorWidth", "doorHeight", "arcade"],
+                  "rows": [[x["wall"], r2(x["lo"]), r2(x["hi"]), r2(x["door"]), r2(x["door_width"]), r2(x["door_height"]),
+                            1 if x.get("arcade") else 0] for x in shops]},
+    }
+    gltf["buffers"][0]["byteLength"] = len(blob)
+    return gltf, bytes(blob)
+
+
+def add_detail_file(path, detail):
+    gltf, bin_chunk = read_glb(path)
+    gltf, bin_chunk = add_detail(gltf, bin_chunk, detail)
+    write_glb(path, gltf, bin_chunk)
+
+
 def pack_file(in_path, out_path=None, elements_by_name=None):
     gltf, bin_chunk = read_glb(in_path)
     before = sum(len(m["primitives"]) for m in gltf.get("meshes", []))

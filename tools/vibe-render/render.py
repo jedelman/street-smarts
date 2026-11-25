@@ -537,6 +537,152 @@ def polygon_signed_area2_m2(ring_xy):
     return total
 
 
+SHOP_MAX_M = 12.5  # the longest single storefront run, after the Ghent Streets explorer's own cap
+SHOP_MIN_M = 3.0  # shorter than this and a door's share of a wall isn't a shop front
+SHOP_END_MARGIN_M = 0.35  # a storefront stops this short of a wall's corner (the explorer's margin)
+FRONTAGE_PROBE_M = (1.5, 3.0, 4.5, 6.0, 8.0, 10.0, 12.0)  # how far out a wall looks for a street or square
+
+
+def _in_ring(x, y, ring):
+    inside = False
+    n = len(ring)
+    for i in range(n):
+        x1, y1 = ring[i]
+        x2, y2 = ring[(i + 1) % n]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
+
+
+def _seg_dist(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    t = 0.0 if L2 < 1e-12 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def frontage_detail(nbhd, origin_lng, origin_lat):
+    """The walk's street-level detail, as data: every wall that carries an
+    opening, every opening on it (all floors), and the shop fronts.
+
+    A wall is *public* when, looking straight out from its middle, a street's
+    right-of-way or a square comes within 12 m before another building does.
+    A *shop front* is a public outer wall's share around one of its
+    ground-floor doors: half way to the next door each side, at most
+    `SHOP_MAX_M` (12.5 m, the Ghent Streets explorer's cap on a storefront
+    run), at least `SHOP_MIN_M`. So where shops open is the pipeline's
+    (P221 places doors, P110 moves the main entrance to the street side,
+    P100 adds doors on pedestrian streets); what kind of shop each is, and
+    how it's painted, is the walk's own seeded choice, not data.
+
+    Returns {"walls": [...], "openings": [...], "shops": [...]}, local metres
+    (x east, y north, z up); pack_glb.add_detail writes it into the GLB.
+    """
+    def ring_xy(r):
+        return ring_to_xy(r, origin_lng, origin_lat)
+
+    def with_bbox(ring):
+        xs = [p[0] for p in ring]
+        ys = [p[1] for p in ring]
+        return ring, (min(xs), min(ys), max(xs), max(ys))
+
+    footprints = []
+    for b in nbhd.get("buildings", []):
+        holes = [ring_xy(h) for h in b["polygon"].get("holes") or []]
+        footprints.append((with_bbox(ring_xy(b["polygon"]["outer"])), holes))
+    squares = [with_bbox(ring_xy(o["polygon"]["outer"])) for o in nbhd.get("open_space", [])
+               if o.get("kind") in ("plaza", "common", "pocket") and len(o["polygon"]["outer"]) >= 4]
+    streets = []
+    for st in nbhd.get("streets", []):
+        pts = [project(p["lng"], p["lat"], origin_lng, origin_lat) for p in st.get("centerline", [])]
+        if len(pts) >= 2:
+            streets.append((pts, (st.get("row_width_m") or 4.0) / 2.0))
+
+    def inside(pt, ringbox):
+        ring, (x0, y0, x1, y1) = ringbox
+        return x0 <= pt[0] <= x1 and y0 <= pt[1] <= y1 and _in_ring(pt[0], pt[1], ring)
+
+    def public(mx, my, nx, ny):
+        for d in FRONTAGE_PROBE_M:
+            pt = (mx + nx * d, my + ny * d)
+            if any(inside(pt, outer) and not any(_in_ring(pt[0], pt[1], h) for h in holes) for outer, holes in footprints):
+                return False  # another building (or this one, round a corner) comes first
+            if any(inside(pt, sq) for sq in squares):
+                return True
+            for pts, half in streets:
+                if any(_seg_dist(pt[0], pt[1], *a, *b) <= half + 0.5 for a, b in zip(pts, pts[1:])):
+                    return True
+        return False
+
+    walls, openings, shops = [], [], []
+    for b in nbhd.get("buildings", []):
+        ops = b.get("openings") or []
+        if not ops:
+            continue
+        rings = {False: ring_xy(b["polygon"]["outer"])}
+        holes = b["polygon"].get("holes") or []
+        if holes:
+            rings[True] = ring_xy(holes[0])
+        wall_of = {}
+        for o in sorted(ops, key=lambda o: (bool(o.get("on_hole")), o["ring_index"], o["floor"], o["t"])):
+            on_hole = bool(o.get("on_hole"))
+            ring = rings.get(on_hole)
+            if not ring or o["ring_index"] >= len(ring):
+                continue
+            key = (on_hole, o["ring_index"])
+            if key not in wall_of:
+                i = o["ring_index"]
+                (ax, ay), (bx, by) = ring[i], ring[(i + 1) % len(ring)]
+                length = math.hypot(bx - ax, by - ay)
+                if length < 0.5:
+                    wall_of[key] = None
+                    continue
+                dx, dy = (bx - ax) / length, (by - ay) / length
+                sign = polygon_signed_area2_m2(ring)
+                nx, ny = (dy, -dx) if sign >= 0 else (-dy, dx)
+                mx, my = ax + dx * length / 2, ay + dy * length / 2
+                wall_of[key] = len(walls)
+                walls.append({"building": b["id"], "on_hole": on_hole, "ring_index": i, "ax": ax, "ay": ay, "dx": dx, "dy": dy,
+                              "nx": nx, "ny": ny, "length": length,
+                              "public": (not on_hole) and public(mx, my, nx, ny)})
+            w = wall_of[key]
+            if w is None:
+                continue
+            openings.append({"wall": w, "kind": o["kind"], "floor": o["floor"],
+                             "along": o["t"] * walls[w]["length"],
+                             "z": o["floor"] * FLOOR_TO_FLOOR_M + o["sill_height_m"],
+                             "width": max(o["width_m"], 0.1),
+                             "height": max(o["head_height_m"] - o["sill_height_m"], 0.1)})
+    # Ground-floor canopies (P119 arcades) per wall: a shop front under one needs no awning.
+    arcades = {}
+    for bi, b in enumerate(nbhd.get("buildings", [])):
+        for c in b.get("canopies") or []:
+            if c.get("floor", 0) == 0 and not c.get("on_hole"):
+                arcades.setdefault((b["id"], c["ring_index"]), []).append((c["t_start"], c["t_end"]))
+    # Shop fronts: each ground-floor door on a public outer wall, with its share of the wall.
+    doors_by_wall = {}
+    for o in openings:
+        if o["kind"] == "door" and o["floor"] == 0 and walls[o["wall"]]["public"]:
+            doors_by_wall.setdefault(o["wall"], []).append(o)
+    for w, doors in doors_by_wall.items():
+        L = walls[w]["length"]
+        doors.sort(key=lambda o: o["along"])
+        for k, door in enumerate(doors):
+            lo = SHOP_END_MARGIN_M if k == 0 else (doors[k - 1]["along"] + door["along"]) / 2
+            hi = L - SHOP_END_MARGIN_M if k == len(doors) - 1 else (door["along"] + doors[k + 1]["along"]) / 2
+            if hi - lo > SHOP_MAX_M:  # centred on the door, as far as the wall allows
+                lo = max(lo, min(door["along"] - SHOP_MAX_M / 2, hi - SHOP_MAX_M))
+                hi = lo + SHOP_MAX_M
+            if hi - lo < SHOP_MIN_M or not (lo + 0.6 <= door["along"] <= hi - 0.6):
+                continue
+            covered = sum(max(0.0, min(hi, t1 * L) - max(lo, t0 * L))
+                          for t0, t1 in arcades.get((walls[w]["building"], walls[w]["ring_index"]), []))
+            shops.append({"id": f"{walls[w]['building']}:{w}:{k}", "wall": w, "lo": lo, "hi": hi,
+                          "door": door["along"], "door_width": door["width"], "door_height": door["height"],
+                          "arcade": covered > 0.5 * (hi - lo)})
+    return {"walls": walls, "openings": openings, "shops": shops}
+
+
 def opening_placement(ring_xy, ring_sign, o):
     """Real placement for one `Opening` -- edge point (`ring_index` + `t`),
     vertical position (`floor * FLOOR_TO_FLOOR_M + sill_height_m`), and
@@ -1556,6 +1702,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         "streets": street_solids,
         "ground": ground_solids,
         "trees": trees,
+        "frontage": frontage_detail(nbhd, origin_lng, origin_lat),
         "activity_markers": activity_solids,
         "activity_glow": activity_glow_solids,
         "context": context_solids,
@@ -2453,7 +2600,13 @@ def export_glb(scene, out_path):
         before, after = pack_glb.pack_file(out_path, elements_by_name=elements)
         # P171's trees, instanced: two meshes however many trees.
         n_trees = pack_glb.add_trees_file(out_path, scene.get("trees", []))
-        print(f"wrote {out_path} (packed {before} primitives into {after}, plus {n_trees} instanced trees)")
+        # Walls, openings and shop fronts as a table: the walk builds the
+        # street-level detail from it, instanced (pack_glb.add_detail).
+        detail = scene.get("frontage") or {}
+        pack_glb.add_detail_file(out_path, detail)
+        print(f"wrote {out_path} (packed {before} primitives into {after}, plus {n_trees} instanced trees, "
+              f"{len(detail.get('openings', []))} openings on {len(detail.get('walls', []))} walls, "
+              f"{len(detail.get('shops', []))} shop fronts)")
     except Exception as e:
         print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
 
