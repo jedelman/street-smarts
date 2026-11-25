@@ -196,7 +196,7 @@ function spawn() {
 }
 
 function placeBird(at) {
-  const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50);
+  const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50, false); // start on the ground, not in a crown
   bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.groundY, at.z);
   bird.vel.set(0, 0, 0);
   bird.air = false;
@@ -217,10 +217,10 @@ function firstHit(far, withTrees = true) {
   if (tr && (!best || tr.distance < best.distance)) { tr.el = trees.elementOfHit(tr); best = tr; }
   return best;
 }
-function castDown(x, y, z, far = 400) {
+function castDown(x, y, z, far = 400, withTrees = true) {
   _ray.origin.set(x, y, z);
   _ray.direction.set(0, -1, 0);
-  return firstHit(far);
+  return firstHit(far, withTrees);
 }
 function castRay(origin, dir, far, withTrees = true) {
   _ray.origin.copy(origin);
