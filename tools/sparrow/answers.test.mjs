@@ -108,3 +108,26 @@ test("the governor steps down when slow, settles, and never leaves its range", (
   assert.equal(median([5, 1, 9]), 5);
   assert.equal(median([4, 1, 9, 2]), 3);
 });
+
+test("trees, the meadow and green streets: P171, P172, P51", () => {
+  // Real ids from clean_baseline (seed 42).
+  assert.deepEqual(patternsOf(el("trees", "umbrella", "p171_umbrella_0291")), [171]);
+  assert.deepEqual(patternsOf(el("trees", "grove", "p171_grove_1500")), [171]);
+  assert.deepEqual(patternsOf(el("trees", "grove", "someone_elses_tree")), [], "an id that names no pattern names none");
+  assert.equal(nounOf(el("trees", "square", "p171_square_0400")), "tree ringing a square");
+  assert.equal(nounOf(el("trees", "avenue", "p171_avenue_0001")), "tree in an avenue");
+  assert.equal(arrivalOf(el("trees", "umbrella", "p171_umbrella_0291")), "Up in a spreading tree.");
+  assert.equal(promptOf(el("trees", "grove", "p171_grove_1500")), "Perch in the tree in a grove");
+  assert.equal(touchable(el("trees", "grove", "p171_grove_1500")), false, "two thousand glints would drown the squares");
+
+  assert.deepEqual(patternsOf(el("ground", "meadow", "site_perimeter_p172_meadow")), [172]);
+  assert.equal(arrivalOf(el("ground", "meadow", "site_perimeter_p172_meadow")), "Into the meadow.");
+
+  const green = el("streets", "local_grass", "path_BLOCK_1_to_BLOCK_4");
+  assert.deepEqual(patternsOf(green), [52, 98, 120, 51]);
+  assert.equal(nounOf(green), "local street of grass and paving stones");
+  assert.equal(arrivalOf(green), "Onto a local street of grass and paving stones.");
+  const lines = answerOf(green);
+  assert.equal(lines[0], "A local street of grass and paving stones.");
+  assert.equal(lines[3], `P51 Green Streets: ${PATTERNS[51].gist}.`);
+});

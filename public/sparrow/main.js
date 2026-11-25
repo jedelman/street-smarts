@@ -12,6 +12,7 @@ import { buildWorld, blobTexture, SUN_DIR } from "./world.js";
 import { buildSparrow } from "./sparrow.js";
 import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
+import { buildTrees } from "./trees.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
@@ -80,7 +81,7 @@ const bird = {
   air: false, onGround: false, speed: 0, under: null, groundAt: 0,
 };
 const keys = Object.create(null);
-let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null;
+let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null;
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
 let tour = null; // { stops: [...], i, waitUntil }
 let focus = null, focusScore = Infinity;
@@ -114,6 +115,19 @@ let present = [];
   shadow.renderOrder = 2;
   scene.add(shadow);
   glints = buildGlints(scene);
+  // P171's trees, before anything that's placed around them (pigeons, benches, people).
+  if (site.trees) {
+    trees = buildTrees(scene, site.trees, site.elements, (x, z, fromY) => {
+      const hit = castDownModel(x, fromY, z, fromY + 5);
+      return hit ? hit.point.y : world.groundY;
+    }, blobTexture());
+    for (const tr of trees.list) {
+      if (!tr.el) continue;
+      tr.el.center = new THREE.Vector3(tr.x, tr.cy, tr.z);
+      tr.el.box = new THREE.Box3(new THREE.Vector3(tr.x - tr.r, tr.ground, tr.z - tr.r), new THREE.Vector3(tr.x + tr.r, tr.top, tr.z + tr.r));
+      tr.el.tree = tr;
+    }
+  }
   pigeons = buildPigeons(scene, pigeonSpots());
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
@@ -126,7 +140,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
   toPage({ type: "ready" });
 })();
@@ -182,7 +196,7 @@ function spawn() {
 }
 
 function placeBird(at) {
-  const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50);
+  const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50, false); // start on the ground, not in a crown
   bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.groundY, at.z);
   bird.vel.set(0, 0, 0);
   bird.air = false;
@@ -190,22 +204,28 @@ function placeBird(at) {
 
 // ---------------------------------------------------------------- collision helpers
 const _ray = new THREE.Ray();
-/** The nearer hit of the model and the benches; a bench hit carries `prop`. */
-function firstHit(far) {
-  const a = site.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far);
+/**
+ * The nearest hit of the model, the benches and the trees, with `el`, the
+ * element it landed on (null for a bench, which carries `prop`).
+ */
+function firstHit(far, withTrees = true) {
+  let best = site.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far);
+  if (best) best.el = site.elementOfHit(best);
   const b = benchSet ? benchSet.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
-  if (b && (!a || b.distance < a.distance)) { b.prop = true; return b; }
-  return a;
+  if (b && (!best || b.distance < best.distance)) { b.prop = true; b.el = null; best = b; }
+  const tr = trees && withTrees ? trees.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
+  if (tr && (!best || tr.distance < best.distance)) { tr.el = trees.elementOfHit(tr); best = tr; }
+  return best;
 }
-function castDown(x, y, z, far = 400) {
+function castDown(x, y, z, far = 400, withTrees = true) {
   _ray.origin.set(x, y, z);
   _ray.direction.set(0, -1, 0);
-  return firstHit(far);
+  return firstHit(far, withTrees);
 }
-function castRay(origin, dir, far) {
+function castRay(origin, dir, far, withTrees = true) {
   _ray.origin.copy(origin);
   _ray.direction.copy(dir);
-  return firstHit(far);
+  return firstHit(far, withTrees);
 }
 /** Only the model (people plan their walks on it, and open sky means no roof). */
 function castDownModel(x, y, z, far) {
@@ -213,7 +233,7 @@ function castDownModel(x, y, z, far) {
   _ray.direction.set(0, -1, 0);
   return site.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far);
 }
-/** Nothing overhead: render.py roofs a footprint's bounding box, so some courtyards (and their markers) are lidded. */
+/** Nothing of the model overhead (a canopy, an upper story). Trees don't count: they're overhead everywhere. */
 function openSky(el, x = el.center.x, z = el.center.z) {
   const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
   const top = hit && site.elementOfHit(hit);
@@ -230,7 +250,10 @@ function collide(dt) {
   bird.pos.addScaledVector(bird.vel, dt);
   seg.start.set(bird.pos.x, bird.pos.y + R + SEG, bird.pos.z);
   seg.end.set(bird.pos.x, bird.pos.y + R, bird.pos.z);
-  for (let pass = 0; pass < 2; pass++) for (const bvh of benchSet ? [site.bvh, benchSet.bvh] : [site.bvh]) {
+  const bvhs = [site.bvh];
+  if (benchSet) bvhs.push(benchSet.bvh);
+  if (trees) bvhs.push(trees.bvh);
+  for (let pass = 0; pass < 2; pass++) for (const bvh of bvhs) {
     cbox.makeEmpty();
     cbox.expandByPoint(seg.start).expandByPoint(seg.end);
     cbox.min.addScalar(-R); cbox.max.addScalar(R);
@@ -417,7 +440,7 @@ let underKey = null, underSince = 0, lastArrival = "", lastArrivalT = -10;
 function probeGround() {
   const hit = castDown(bird.pos.x, bird.pos.y + 0.25, bird.pos.z, 400);
   bird.groundAt = hit ? hit.point.y : world.groundY;
-  const el = hit && !hit.prop ? site.elementOfHit(hit) : null;
+  const el = hit && !hit.prop ? hit.el : null;
   bird.under = el;
   bird.onBench = !!(hit && hit.prop) && bird.pos.y - hit.point.y < 0.05;
   // The shadow sits on whatever is below, fading with height.
@@ -576,9 +599,10 @@ const ndc = new THREE.Vector2();
 function tapAt(x, y) {
   ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hit = site.bvh.raycastFirst(raycaster.ray, THREE.DoubleSide, 0, 2500);
+  _ray.copy(raycaster.ray);
+  const hit = firstHit(2500);
   let point, el = null;
-  if (hit) { point = hit.point.clone(); el = site.elementOfHit(hit); }
+  if (hit) { point = hit.point.clone(); el = hit.el; }
   else {
     // The bare ground plane.
     const dy = raycaster.ray.direction.y;
@@ -589,7 +613,14 @@ function tapAt(x, y) {
   if (tour) endTour("You take it from here.");
   lastInputT = t;
   // Open ground (a square, a street) is somewhere to go; anything else is something to go and touch.
-  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street)$/.test(el.kind);
+  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow)(_grass)?$/.test(el.kind);
+  if (el && el.tree) {
+    // A tree: fly up and perch on top of its crown, then say what it is.
+    const tr = el.tree;
+    goal = { point: new THREE.Vector3(tr.x, tr.top, tr.z), el, stopDist: 0.6, land: true, arrived: () => touch(el) };
+    pingAt(goal.point);
+    return;
+  }
   const target = el && el.group === "activity_glow" ? site.elements.find((e) => e.group === "activity" && e.source === el.source) || el : el;
   if (!isOpen && focus === target) { touch(target); return; } // already in reach
   goal = {
@@ -614,14 +645,14 @@ function pingAt(p) {
 
 // ---------------------------------------------------------------- the tour
 function startTour() {
-  const order = [53, 61, 126, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
+  const order = [53, 61, 126, 171, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
   const stops = [];
   let from = bird.pos.clone();
   const used = new Set();
   for (const n of order) {
     if (!present.includes(n)) continue;
     const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
-      && (touchable(e) || e.group === "streets" || e.kind === "building_shaped")
+      && (touchable(e) || e.group === "streets" || e.kind === "building_shaped" || e.kind === "umbrella")
       && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
     if (!cands.length) continue;
     cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
@@ -798,7 +829,7 @@ const director = (() => {
       const want = dir.length();
       if (want > 0.05 && eyes < 0.5) {
         dir.divideScalar(want);
-        const hit = castRay(head, dir, want);
+        const hit = castRay(head, dir, want, false); // trees pass between you and the camera, as leaves do
         const allowed = hit ? Math.max(0.12, hit.distance - 0.08) : want;
         collided = allowed < collided ? allowed : collided + (allowed - collided) * Math.min(1, dt * 2.5);
         cam.copy(head).addScaledVector(dir, Math.min(want, collided));
@@ -953,7 +984,7 @@ function pigeonSpots() {
     for (let i = 0; i < flock; i++) {
       const x = cx + (rnd() - 0.5) * 1.6, z = cz + (rnd() - 0.5) * 1.6;
       const hit = castDown(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
-      if (hit && site.elementOfHit(hit) === el) spots.push({ x, y: hit.point.y, z });
+      if (hit && hit.el === el) spots.push({ x, y: hit.point.y, z });
     }
   }
   return spots;
@@ -974,6 +1005,7 @@ function frame() {
   probeGround();
   reachScan();
   tourTick();
+  if (trees) trees.update(t, camera);
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });

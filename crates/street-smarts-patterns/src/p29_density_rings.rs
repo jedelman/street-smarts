@@ -282,6 +282,8 @@ impl PatternOperator for P29DensityRings {
             new_activity_nodes: vec![],
             new_boundaries: vec![],
             new_fields: vec![PatternField::Density(field)],
+            new_trees: vec![],
+            new_ground_cover: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids: vec![],
@@ -366,7 +368,8 @@ mod tests {
         Neighborhood {
             id: "test".into(), bbox_wgs84: [-0.01, -0.01, 0.01, 0.01],
             parcels, buildings: vec![], streets: vec![], open_space: vec![],
-            boundaries: vec![], activity_nodes: vec![], pattern_fields: vec![],
+            boundaries: vec![], activity_nodes: vec![], pattern_fields: vec![], trees: vec![],
+            ground_cover: vec![],
             metadata: NeighborhoodMeta {
                 source: "synthetic".into(), fetched_at: "test".into(), license: "test".into(),
                 layer_provenance: Default::default(), label: "P29 unit fixture".into(),

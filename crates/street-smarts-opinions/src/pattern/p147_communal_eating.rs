@@ -78,6 +78,8 @@ mod tests {
                 layer_provenance: Default::default(), label: "P147 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         };
         match P147CommunalEating.evaluate(&n) {
             OpinionOutput::NoView { reason, .. } => {

@@ -168,6 +168,8 @@ mod tests {
                 layer_provenance: Default::default(), label: "P192 unit fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

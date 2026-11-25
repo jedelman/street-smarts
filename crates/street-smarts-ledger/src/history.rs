@@ -378,6 +378,8 @@ mod tests {
                 label: "history test fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 
@@ -536,6 +538,8 @@ mod tests {
                 label: "block_membership fixture".into(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

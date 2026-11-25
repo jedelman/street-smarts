@@ -281,6 +281,17 @@
 //!      would otherwise miss). Idempotent: a Plaza that already has a
 //!      nearby node from an earlier stage is skipped, not double-served.
 //!      See p126_something_roughly_in_the_middle's own module doc.
+//!   32. P172 Garden Growing Wild (once, site-scale): one
+//!      `OpenSpaceKind::Meadow` on the site's own perimeter ring, under
+//!      everything else ("without bare earth"). After P126 so no stage
+//!      that sums open space ever sees it. See p172_garden_growing_wild's
+//!      own module doc.
+//!   33. P171 Tree Places (once, site-scale): avenues along the streets,
+//!      one spreading tree toward each square's middle, a ring inside
+//!      each square, and groves with clearings on the rest of the meadow,
+//!      all clear of buildings, streets and markers. Last, because trees
+//!      fit the finished plan (the pattern's "shape the buildings to the
+//!      trees" half isn't modeled). See p171_tree_places's own module doc.
 //!
 //! This is the single real orchestration function; `tests/corrected_pipeline.rs`
 //! is the proof it composes end to end on real data, and `examples/dump_pipeline.rs`
@@ -306,6 +317,8 @@ use crate::p100_pedestrian_street::{P100Params, P100PedestrianStreet};
 use crate::p102_family_of_entrances::{P102FamilyOfEntrances, P102Params};
 use crate::p110_main_entrance::{P110MainEntrance, P110Params};
 use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
+use crate::p171_tree_places::{P171Params, P171TreePlaces};
+use crate::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p160_building_edge::{P160BuildingEdge, P160Params};
 use crate::p161_sunny_place::{P161Params, P161SunnyPlace};
@@ -768,6 +781,19 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub126) = P126SomethingRoughlyInTheMiddle.apply(&nbhd, "*", &P126Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub126);
         trace.push(P126SomethingRoughlyInTheMiddle.name());
+    }
+
+    // P172 Garden Growing Wild, then P171 Tree Places (once each,
+    // site-scale): the site's ground grows as meadow, then trees are
+    // planted on it. After everything else, so no earlier stage counts the
+    // meadow as open space or has to step around a tree. See steps 32-33.
+    if let Ok(sub172) = P172GardenGrowingWild.apply(&nbhd, "*", &P172Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub172);
+        trace.push(P172GardenGrowingWild.name());
+    }
+    if let Ok(sub171) = P171TreePlaces.apply(&nbhd, "*", &P171Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub171);
+        trace.push(P171TreePlaces.name());
     }
 
     (nbhd, trace)

@@ -57,6 +57,8 @@ fn four_corner_blocks() -> Neighborhood {
             label: "P52 unit fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 
@@ -221,6 +223,8 @@ fn pentagon_blocks() -> Neighborhood {
             label: "P50 degree-cap fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 
@@ -365,6 +369,8 @@ fn three_blocks_uneven_spacing() -> Neighborhood {
             label: "arterial-length fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 

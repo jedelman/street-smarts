@@ -607,6 +607,8 @@ impl PatternOperator for P95BuildingComplex {
             entity_provenance,
             trace,
             new_fields: vec![],
+            new_trees: vec![],
+            new_ground_cover: vec![],
         })
     }
 }

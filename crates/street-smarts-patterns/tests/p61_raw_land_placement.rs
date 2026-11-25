@@ -49,6 +49,8 @@ fn nbhd(parcels: Vec<Parcel>, open_space: Vec<OpenSpace>) -> Neighborhood {
             label: "P61 raw-placement fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 

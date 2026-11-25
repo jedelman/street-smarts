@@ -31,7 +31,43 @@ pub struct Neighborhood {
     /// unchanged (defaults to `vec![]`).
     #[serde(default)]
     pub pattern_fields: Vec<PatternField>,
+    /// Trees the plan places (P171 Tree Places). Empty until that operator
+    /// runs; every existing fixture round-trips unchanged.
+    #[serde(default)]
+    pub trees: Vec<Tree>,
+    /// What grows on the ground the plan leaves open (P172 Garden Growing
+    /// Wild). Ground, not a place: no opinion that sums open space reads it,
+    /// which is why it isn't an `OpenSpace`. Empty until that operator runs.
+    #[serde(default)]
+    pub ground_cover: Vec<GroundCover>,
     pub metadata: NeighborhoodMeta,
+}
+
+/// One tree the plan places. A point, not a polygon: its crown is drawn from
+/// `crown_radius_m` and `height_m`. `form` names the shape it belongs to, in
+/// Alexander's P171 Tree Places terms: "avenue" (rows along a path),
+/// "square" (a ring inside a square), "umbrella" (one tree that makes a
+/// place) or "grove" (a loose stand). Free-form, same convention as
+/// `Street.surface`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Tree {
+    pub id: String,
+    pub location: crate::geometry::LngLat,
+    pub height_m: f64,
+    pub crown_radius_m: f64,
+    pub form: String,
+}
+
+/// Ground cover over a polygon. `kind` is free-form, same convention as
+/// `Tree.form`: "meadow" (P172's grasses and flowers, intermingled, "without
+/// bare earth"). It lies under everything else the plan places, so its
+/// polygon may be the whole site; renderers draw it just below grade, where
+/// it shows only where nothing else stands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GroundCover {
+    pub id: String,
+    pub polygon: Polygon,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -36,6 +36,8 @@ use street_smarts_patterns::p100_pedestrian_street::{P100Params, P100PedestrianS
 use street_smarts_patterns::p102_family_of_entrances::{P102FamilyOfEntrances, P102Params};
 use street_smarts_patterns::p110_main_entrance::{P110MainEntrance, P110Params};
 use street_smarts_patterns::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
+use street_smarts_patterns::p171_tree_places::{P171Params, P171TreePlaces};
+use street_smarts_patterns::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
 use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
@@ -204,9 +206,14 @@ pub fn run_corrected_pipeline_via_ledger(
     // Green cross-pattern regression this creates).
     try_run(store, &P161SunnyPlace, "*", &P161Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Places a generic Civic activity marker near any real Plaza that
-    // doesn't already have one nearby. Runs LAST. See pipeline.rs's own
+    // doesn't already have one nearby. Last of the stages that read squares
+    // and markers. See pipeline.rs's own
     // step 31 doc.
     try_run(store, &P126SomethingRoughlyInTheMiddle, "*", &P126Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // The site's ground grows as meadow, then trees are planted on it. See
+    // pipeline.rs's own steps 32-33.
+    try_run(store, &P172GardenGrowingWild, "*", &P172Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P171TreePlaces, "*", &P171Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     (cur, commits)
 }

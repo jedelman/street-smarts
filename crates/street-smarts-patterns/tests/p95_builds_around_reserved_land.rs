@@ -84,6 +84,8 @@ fn p95_builds_pads_around_pre_placed_squares_with_zero_overlap() {
         new_activity_nodes: vec![],
         new_boundaries: vec![],
         new_fields: vec![],
+        new_trees: vec![],
+            new_ground_cover: vec![],
         replaced_parcel_ids: vec![],
         replaced_open_space_ids: vec![],
         replaced_building_ids: vec![],

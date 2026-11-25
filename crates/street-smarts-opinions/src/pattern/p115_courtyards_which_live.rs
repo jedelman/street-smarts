@@ -188,6 +188,8 @@ mod tests {
                 layer_provenance: Default::default(),
             },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
     }
 

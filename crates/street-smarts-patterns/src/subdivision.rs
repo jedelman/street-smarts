@@ -69,6 +69,14 @@ pub struct Subdivision {
     /// neighborhood.
     #[serde(default)]
     pub new_fields: Vec<PatternField>,
+    /// New trees (P171 Tree Places). Appended to `Neighborhood.trees` by
+    /// `apply_subdivision`, never replaced.
+    #[serde(default)]
+    pub new_trees: Vec<street_smarts_core::nir::Tree>,
+    /// New ground cover (P172 Garden Growing Wild). Appended to
+    /// `Neighborhood.ground_cover` by `apply_subdivision`.
+    #[serde(default)]
+    pub new_ground_cover: Vec<street_smarts_core::nir::GroundCover>,
     /// IDs of source parcels removed from the neighborhood when applying.
     #[serde(default)]
     pub replaced_parcel_ids: Vec<String>,
@@ -288,7 +296,15 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
     let mut new_pattern_fields = nbhd.pattern_fields.clone();
     new_pattern_fields.extend(sub.new_fields.iter().cloned());
 
+    let mut new_trees = nbhd.trees.clone();
+    new_trees.extend(sub.new_trees.iter().cloned());
+
+    let mut new_ground_cover = nbhd.ground_cover.clone();
+    new_ground_cover.extend(sub.new_ground_cover.iter().cloned());
+
     let mut out = nbhd.clone();
+    out.trees = new_trees;
+    out.ground_cover = new_ground_cover;
     out.parcels = new_parcels;
     out.open_space = new_open_space;
     out.buildings = new_buildings;

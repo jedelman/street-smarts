@@ -48,6 +48,8 @@ fn rect_parcel_neighborhood(width_m: f64, depth_m: f64) -> Neighborhood {
             label: "P95 sliver-pad fixture".into(),
         },
             pattern_fields: vec![],
+            trees: vec![],
+            ground_cover: vec![],
         }
 }
 
