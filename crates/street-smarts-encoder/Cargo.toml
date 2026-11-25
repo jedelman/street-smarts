@@ -8,6 +8,13 @@ description = "Shared ViT encoder + DINO pretraining for street-smarts pattern p
 [workspace]
 
 [dependencies]
+# ferrotorch lives in vendor/ferrotorch, cloned by hand. It was a git submodule
+# (https://github.com/forecast-bio/ferrotorch, pinned at commit
+# bb25b9c22ee2e333841fdd19861ebabae5502d32) until 2026-11-25, when that URL
+# stopped being publicly fetchable and Cloudflare's builds, which always clone
+# submodules, failed on it. This crate isn't a workspace member and nothing
+# the site deploys uses it. To build it, clone ferrotorch at that commit into
+# vendor/ferrotorch (from wherever it now lives).
 ferrotorch-core = { path = "../../vendor/ferrotorch/ferrotorch-core" }
 ferrotorch-nn = { path = "../../vendor/ferrotorch/ferrotorch-nn" }
 ferrotorch-vision = { path = "../../vendor/ferrotorch/ferrotorch-vision" }

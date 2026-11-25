@@ -1,3 +1,0 @@
-[submodule "vendor/ferrotorch"]
-	path = vendor/ferrotorch
-	url = https://github.com/forecast-bio/ferrotorch.git
