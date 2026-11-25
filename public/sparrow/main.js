@@ -1,0 +1,1091 @@
+// Walk/fly through a street-smarts model as a house sparrow.
+//
+// Performance first: the model arrives as ~15 meshes (see model.js), drawn
+// with Lambert materials, no shadows, no environment map, no antialiasing,
+// at a render scale the governor tunes to each device. Fun second, in the
+// spirit of Dream of the Earth: a creature you are, a camera that moves like
+// an operator, things in reach that glint and answer when touched, and a
+// count of the patterns you've met.
+import * as THREE from "three";
+import { loadSite } from "./model.js";
+import { buildWorld, blobTexture, SUN_DIR } from "./world.js";
+import { buildSparrow } from "./sparrow.js";
+import { buildGlints, buildPigeons } from "./life.js";
+import { buildBenches, buildPeople } from "./people.js";
+import { sound } from "./sound.js";
+import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
+import { createGovernor, median, scaleRange } from "./governor.js";
+import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
+
+const params = new URLSearchParams(location.search);
+const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
+const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
+const STATS = params.has("stats");
+const COARSE = matchMedia("(pointer: coarse)").matches;
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = (id) => document.getElementById(id);
+const UP = new THREE.Vector3(0, 1, 0);
+const clamp = THREE.MathUtils.clamp;
+
+// ---------------------------------------------------------------- renderer
+const canvas = $("c");
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: false, powerPreference: "low-power" });
+} catch (e) {
+  fail("This needs WebGL, which this browser didn't offer.");
+  throw e;
+}
+const range = scaleRange(devicePixelRatio, COARSE);
+const governor = createGovernor(range);
+renderer.setPixelRatio(governor.scale);
+renderer.setSize(innerWidth, innerHeight);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 3000);
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function fail(msg) {
+  const l = $("loading");
+  l.classList.remove("hidden");
+  l.innerHTML = `<p class="err">${msg}</p>`;
+}
+const setLoading = (msg) => { $("loading-msg").textContent = msg; };
+
+// ---------------------------------------------------------------- the log
+const MAX_LINES = COARSE ? 4 : 7, FADE_MS = COARSE ? 6500 : 9000;
+function logLine(text, kind = "note") {
+  const box = $("log");
+  const line = document.createElement("div");
+  line.className = `line ${kind}`;
+  line.textContent = text;
+  box.appendChild(line);
+  while (box.children.length > MAX_LINES) box.firstChild.remove();
+  setTimeout(() => line.classList.add("old"), FADE_MS);
+  setTimeout(() => line.remove(), FADE_MS + 1500);
+}
+
+// ---------------------------------------------------------------- state
+const bird = {
+  pos: new THREE.Vector3(), vel: new THREE.Vector3(), heading: 0, turn: 0,
+  air: false, onGround: false, speed: 0, under: null, groundAt: 0,
+};
+const keys = Object.create(null);
+let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null;
+let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
+let tour = null; // { stops: [...], i, waitUntil }
+let focus = null, focusScore = Infinity;
+let t = 0, lastInputT = 0, lastLookT = -10, hintGone = false;
+let views = [], viewIndex = -1;
+const met = new Set();
+let present = [];
+
+// ---------------------------------------------------------------- boot
+(async function boot() {
+  try {
+    const [s, v] = await Promise.all([
+      loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`)),
+      fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    ]);
+    site = s;
+    views = Array.isArray(v) ? v : [];
+  } catch (e) {
+    fail(`Couldn’t load the model (${e && e.message ? e.message : "network error"}). Try reloading.`);
+    return;
+  }
+  for (const m of site.meshes) { m.updateMatrix(); scene.add(m); }
+  world = buildWorld(scene, site.bounds);
+  sparrow = buildSparrow();
+  sparrow.root.scale.setScalar(SIZE);
+  scene.add(sparrow.root);
+  shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.22 * SIZE, 0.22 * SIZE).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, fog: false }),
+  );
+  shadow.renderOrder = 2;
+  scene.add(shadow);
+  glints = buildGlints(scene);
+  pigeons = buildPigeons(scene, pigeonSpots());
+  benches = placeBenches();
+  benchSet = buildBenches(scene, benches);
+  people = populate();
+  indexTouchables();
+  present = [...new Set(site.elements.flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
+  try { for (const n of JSON.parse(localStorage.getItem(metKey()) || "[]")) if (present.includes(n)) met.add(n); } catch { /* fresh */ }
+  updateMet();
+  spawn();
+  director.crane();
+  setupUI();
+  $("loading").classList.add("hidden");
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
+  renderer.setAnimationLoop(frame);
+})();
+
+function metKey() { return `street-smarts-met:${GLB_URL}`; }
+
+/** Start at the main gateway if there is one (where the paths enter), else on the open space nearest the middle. */
+function spawn() {
+  const els = site.elements;
+  const center = site.bounds.getCenter(new THREE.Vector3());
+  const gate = els.find((e) => e.kind === "activity_gateway" && e.group === "activity" && e.center);
+  let at, face;
+  if (gate) {
+    const toward = new THREE.Vector3().subVectors(center, gate.center).setY(0).normalize();
+    at = gate.center.clone().addScaledVector(toward, 1.6); // in reach: the gateway is the first thing that glints
+    face = toward;
+  } else {
+    const open = els.filter((e) => e.group === "plazas" && e.center)
+      .sort((a, b) => a.center.distanceToSquared(center) - b.center.distanceToSquared(center))[0];
+    at = (open ? open.center : center).clone();
+    face = new THREE.Vector3().subVectors(center, at).setY(0);
+    if (face.lengthSq() < 1) face.set(0, 0, 1);
+    face.normalize();
+  }
+  placeBird(at);
+  bird.heading = Math.atan2(face.x, face.z);
+  director.snapBehind();
+}
+
+function placeBird(at) {
+  const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50);
+  bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.groundY, at.z);
+  bird.vel.set(0, 0, 0);
+  bird.air = false;
+}
+
+// ---------------------------------------------------------------- collision helpers
+const _ray = new THREE.Ray();
+/** The nearer hit of the model and the benches; a bench hit carries `prop`. */
+function firstHit(far) {
+  const a = site.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far);
+  const b = benchSet ? benchSet.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
+  if (b && (!a || b.distance < a.distance)) { b.prop = true; return b; }
+  return a;
+}
+function castDown(x, y, z, far = 400) {
+  _ray.origin.set(x, y, z);
+  _ray.direction.set(0, -1, 0);
+  return firstHit(far);
+}
+function castRay(origin, dir, far) {
+  _ray.origin.copy(origin);
+  _ray.direction.copy(dir);
+  return firstHit(far);
+}
+/** Only the model (people plan their walks on it, and open sky means no roof). */
+function castDownModel(x, y, z, far) {
+  _ray.origin.set(x, y, z);
+  _ray.direction.set(0, -1, 0);
+  return site.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far);
+}
+/** Nothing overhead: render.py roofs a footprint's bounding box, so some courtyards (and their markers) are lidded. */
+function openSky(el, x = el.center.x, z = el.center.z) {
+  const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+  const top = hit && site.elementOfHit(hit);
+  return !!top && (top === el || (top.source != null && top.source === el.source));
+}
+
+// The bird's body is a capsule: radius R, from R to R + SEG above its feet.
+// A plump sparrow, about 21 cm tall: real size reads as a speck from a flying camera.
+const SIZE = 1.3;
+const R = 0.055 * SIZE, SEG = 0.05 * SIZE, GRAVITY = 9.8;
+const seg = new THREE.Line3(), cbox = new THREE.Box3(), triPt = new THREE.Vector3(), capPt = new THREE.Vector3();
+const push = new THREE.Vector3(), newPos = new THREE.Vector3();
+function collide(dt) {
+  bird.pos.addScaledVector(bird.vel, dt);
+  seg.start.set(bird.pos.x, bird.pos.y + R + SEG, bird.pos.z);
+  seg.end.set(bird.pos.x, bird.pos.y + R, bird.pos.z);
+  for (let pass = 0; pass < 2; pass++) for (const bvh of benchSet ? [site.bvh, benchSet.bvh] : [site.bvh]) {
+    cbox.makeEmpty();
+    cbox.expandByPoint(seg.start).expandByPoint(seg.end);
+    cbox.min.addScalar(-R); cbox.max.addScalar(R);
+    bvh.shapecast({
+      intersectsBounds: (box) => box.intersectsBox(cbox),
+      intersectsTriangle: (tri) => {
+        const d = tri.closestPointToSegment(seg, triPt, capPt);
+        if (d < R) {
+          push.subVectors(capPt, triPt);
+          if (push.lengthSq() < 1e-12) push.copy(UP); else push.normalize();
+          seg.start.addScaledVector(push, R - d);
+          seg.end.addScaledVector(push, R - d);
+        }
+      },
+    });
+  }
+  newPos.set(seg.end.x, seg.end.y - R, seg.end.z);
+  push.subVectors(newPos, bird.pos);
+  let up = push.y > Math.abs(dt * bird.vel.y * 0.25) && push.y > 1e-5;
+  bird.pos.copy(newPos);
+  if (bird.pos.y < world.groundY) { bird.pos.y = world.groundY; up = true; }
+  if (up) {
+    if (bird.vel.y < 0) bird.vel.y = 0;
+    return true;
+  }
+  if (push.lengthSq() > 1e-12) {
+    push.normalize();
+    bird.vel.addScaledVector(push, -push.dot(bird.vel));
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- moving
+const intent = { move: new THREE.Vector3(), fast: false, up: false, down: false, hop: false };
+const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3();
+let padMove = { x: 0, y: 0 }, padLook = { x: 0, y: 0 }, padUp = false, padDown = false;
+let holdUp = false, holdDown = false;
+let wantHop = false; // edge-triggered: Space / A / ▲
+
+function gatherIntent() {
+  intent.move.set(0, 0, 0);
+  // Camera-relative: forward is away from the camera.
+  _fwd.set(-Math.sin(director.yaw), 0, -Math.cos(director.yaw));
+  _right.set(Math.cos(director.yaw), 0, -Math.sin(director.yaw));
+  let f = 0, r = 0;
+  if (keys.KeyW || keys.ArrowUp) f += 1;
+  if (keys.KeyS || keys.ArrowDown) f -= 1;
+  if (keys.KeyD || keys.ArrowRight) r += 1;
+  if (keys.KeyA || keys.ArrowLeft) r -= 1;
+  f += -padMove.y; r += padMove.x;
+  intent.move.addScaledVector(_fwd, f).addScaledVector(_right, r);
+  if (intent.move.lengthSq() > 1) intent.move.normalize();
+  const manual = intent.move.lengthSq() > 0.01;
+  intent.fast = !!(keys.ShiftLeft || keys.ShiftRight);
+  intent.up = !!(keys.Space || holdUp || padUp);
+  intent.down = !!(keys.KeyC || keys.ControlLeft || keys.KeyQ || holdDown || padDown);
+  intent.hop = wantHop;
+  wantHop = false;
+  if (manual || intent.up || intent.down) {
+    lastInputT = t;
+    if (goal) goal = null;
+    if (tour) endTour("You take it from here.");
+  }
+  if (!manual && goal) steerToGoal();
+}
+
+function takeOff() {
+  if (bird.air) return;
+  bird.air = true;
+  bird.vel.y = Math.max(bird.vel.y, 2.8);
+  sound.flap();
+}
+
+function steerToGoal() {
+  const g = goal;
+  _tmp.subVectors(g.point, bird.pos);
+  const horiz = Math.hypot(_tmp.x, _tmp.z);
+  const reached = horiz < g.stopDist && (bird.air ? Math.abs(_tmp.y) < 1.2 : Math.abs(_tmp.y) < 0.6);
+  if (reached && (!bird.air || g.stopDist > 0.6)) {
+    goal = null;
+    if (bird.air && g.land) { holdDownFor = 2.5; }
+    if (g.arrived) g.arrived();
+    return;
+  }
+  // Stuck on the ground (a wall, a ledge too high): fly over.
+  g.stuckT = (g.stuckT || 0) + 1 / 60;
+  if (!g.lastPos || g.lastPos.distanceToSquared(bird.pos) > 0.02) { g.lastPos = bird.pos.clone(); g.stuckT = 0; }
+  const needFly = _tmp.y > 0.4 || horiz > 24 || g.stuckT > 0.8;
+  if (needFly && !bird.air) takeOff();
+  intent.move.set(_tmp.x, 0, _tmp.z).normalize().multiplyScalar(Math.min(1, horiz / (bird.air ? 5 : 1.2) + 0.15));
+  intent.fast = horiz > (bird.air ? 30 : 12);
+  if (bird.air) {
+    const groundHere = bird.groundAt;
+    const cruise = horiz > 5 ? Math.max(g.point.y, groundHere) + Math.min(8, 2 + horiz * 0.15) : g.point.y + 0.2;
+    // Something in the way ahead (looking level, not up): climb over it.
+    let blocked = null;
+    if (horiz > 2) {
+      _tmp2.set(intent.move.x, 0, intent.move.z).normalize();
+      _tmp.set(bird.pos.x, bird.pos.y + 0.1, bird.pos.z);
+      blocked = castRay(_tmp, _tmp2, Math.min(horiz, 3.5 + bird.speed * 0.5));
+    }
+    intent.up = bird.pos.y < cruise - 0.3 || !!blocked;
+    intent.down = !intent.up && bird.pos.y > cruise + 0.3;
+    if (blocked) intent.move.multiplyScalar(0.35);
+  }
+  // No closer in four seconds: say hello from here and land.
+  if (g.best == null || horiz < g.best - 0.3) { g.best = horiz; g.bestT = t; }
+  else if (t - g.bestT > 4) {
+    goal = null;
+    holdDownFor = 3;
+    if (g.arrived) g.arrived();
+  }
+}
+
+let holdDownFor = 0;
+const before = new THREE.Vector3();
+function physics(dt) {
+  if (holdDownFor > 0) { holdDownFor -= dt; if (bird.air) intent.down = true; }
+  const maxSpeed = bird.air ? (intent.fast ? 15 : 7.5) : (intent.fast ? 4.2 : 2.0);
+  const resp = bird.air ? 2.6 : 10;
+  const k = Math.min(1, resp * dt);
+  bird.vel.x += (intent.move.x * maxSpeed - bird.vel.x) * k;
+  bird.vel.z += (intent.move.z * maxSpeed - bird.vel.z) * k;
+  if (bird.air) {
+    const vyT = intent.up ? 3.4 : intent.down ? -4.5 : -0.55; // let go and you glide down
+    bird.vel.y += (vyT - bird.vel.y) * Math.min(1, 3.5 * dt);
+    if (intent.up && Math.random() < dt * 2) sound.flap();
+  } else {
+    bird.vel.y -= GRAVITY * dt;
+    if (intent.hop) {
+      if (bird.onGround) { bird.vel.y = 2.3; sound.hop(); }
+      else takeOff(); // a second hop in the air takes flight
+    } else if (intent.up && !bird.onGround && bird.vel.y < 0.5) takeOff();
+  }
+  before.copy(bird.pos);
+  const travel = bird.vel.length() * dt;
+  const steps = Math.min(12, Math.max(2, Math.ceil(travel / (R * 0.7))));
+  let grounded = false;
+  for (let i = 0; i < steps; i++) grounded = collide(dt / steps) || grounded;
+  bird.onGround = grounded;
+  // Up a kerb or a slab edge: the capsule can't climb 15–30 cm, so hop it.
+  const wanted = Math.hypot(bird.vel.x, bird.vel.z) * dt;
+  const moved = Math.hypot(bird.pos.x - before.x, bird.pos.z - before.z);
+  if (!bird.air && wanted > 0.002 && moved < wanted * 0.4 && intent.move.lengthSq() > 0.01) stepUp();
+  if (bird.air && grounded && bird.vel.y <= 0.05 && !intent.up) {
+    bird.air = false;
+    sparrow.land();
+    sound.land();
+  }
+  // Keep inside the world and under the sky's lid.
+  const c = site.bounds.getCenter(_tmp);
+  const lim = Math.max(site.bounds.max.x - site.bounds.min.x, site.bounds.max.z - site.bounds.min.z) * 1.2 + 60;
+  _tmp2.set(bird.pos.x - c.x, 0, bird.pos.z - c.z);
+  if (_tmp2.length() > lim) { _tmp2.setLength(lim); bird.pos.x = c.x + _tmp2.x; bird.pos.z = c.z + _tmp2.z; }
+  bird.pos.y = Math.min(bird.pos.y, site.bounds.max.y + 120);
+  // Heading follows where you're going.
+  const hs = Math.hypot(bird.vel.x, bird.vel.z);
+  bird.speed = hs;
+  if (hs > 0.15) {
+    const target = Math.atan2(bird.vel.x, bird.vel.z);
+    const d = angleTo(bird.heading, target);
+    const step = d * Math.min(1, dt * (bird.air ? 4 : 12));
+    bird.turn += (step / Math.max(dt, 1e-3) - bird.turn) * Math.min(1, dt * 6);
+    bird.heading += step;
+  } else bird.turn *= Math.max(0, 1 - dt * 6);
+}
+
+function stepUp() {
+  _fwd.set(bird.vel.x, 0, bird.vel.z).normalize();
+  const hit = castDown(bird.pos.x + _fwd.x * (R + 0.08), bird.pos.y + 0.42, bird.pos.z + _fwd.z * (R + 0.08), 0.44);
+  if (!hit || Math.abs(hit.face.normal.y) < 0.6) return;
+  const rise = hit.point.y - bird.pos.y;
+  if (rise < 0.02 || rise > 0.4) return;
+  bird.pos.y = hit.point.y + 0.004;
+  bird.pos.addScaledVector(_fwd, 0.04);
+  bird.vel.y = 0;
+  sparrow.land();
+  sound.hop();
+}
+
+// ---------------------------------------------------------------- ground underfoot, arrivals
+let underKey = null, underSince = 0, lastArrival = "", lastArrivalT = -10;
+function probeGround() {
+  const hit = castDown(bird.pos.x, bird.pos.y + 0.25, bird.pos.z, 400);
+  bird.groundAt = hit ? hit.point.y : world.groundY;
+  const el = hit && !hit.prop ? site.elementOfHit(hit) : null;
+  bird.under = el;
+  bird.onBench = !!(hit && hit.prop) && bird.pos.y - hit.point.y < 0.05;
+  // The shadow sits on whatever is below, fading with height.
+  const h = bird.pos.y - bird.groundAt;
+  shadow.position.set(bird.pos.x, bird.groundAt + 0.006, bird.pos.z);
+  shadow.material.opacity = clamp(1 - h / 6, 0, 1);
+  shadow.scale.setScalar(1 + h * 0.15);
+  shadow.visible = director.eyes < 0.5;
+  // Stepping onto something new: say so, once it has settled.
+  if (!bird.onGround || bird.air) return;
+  const key = bird.onBench ? "bench" : el ? `${el.kind}|${el.source}` : null;
+  if (key !== underKey) { underKey = key; underSince = t; return; }
+  if ((!el && !bird.onBench) || t - underSince < 0.35 || underSince < 0) return;
+  underSince = -1; // said
+  if (el && !bird.onBench) meet(el);
+  const line = bird.onBench ? "Up on a bench." : arrivalOf(el);
+  if (line && (line !== lastArrival || t - lastArrivalT > 12)) {
+    logLine(line, "arrive");
+    lastArrival = line;
+    lastArrivalT = t;
+  }
+}
+
+// ---------------------------------------------------------------- patterns met
+function meet(el) {
+  for (const n of patternsOf(el)) {
+    if (met.has(n) || !present.includes(n)) continue;
+    met.add(n);
+    try { localStorage.setItem(metKey(), JSON.stringify([...met])); } catch { /* not kept */ }
+    logLine(`New: P${n} ${PATTERNS[n].name} (${met.size} of ${present.length})`, "new");
+    sound.chime(n);
+    updateMet();
+  }
+}
+function updateMet() {
+  $("met-count").textContent = `${met.size} / ${present.length}`;
+  const list = $("met-list");
+  list.innerHTML = "";
+  for (const n of present) {
+    const li = document.createElement("li");
+    if (met.has(n)) li.innerHTML = `<b>P${n}</b> ${PATTERNS[n].name}<span>${PATTERNS[n].gist}</span>`;
+    else { li.className = "unmet"; li.innerHTML = `<b>P${n}</b> <span>not met yet</span>`; }
+    list.appendChild(li);
+  }
+}
+
+// ---------------------------------------------------------------- reach, glints, the prompt
+const CELL = 8;
+const grid = new Map();
+function indexTouchables() {
+  const benchEls = benches.map((b) => ({
+    kind: "bench", group: "props", bench: b, center: new THREE.Vector3(b.x, b.y + 0.48, b.z),
+    box: new THREE.Box3(new THREE.Vector3(b.x - 0.8, b.y, b.z - 0.8), new THREE.Vector3(b.x + 0.8, b.y + 0.5, b.z + 0.8)),
+  }));
+  for (const el of [...site.elements, ...benchEls]) {
+    if (!el.center || !(touchable(el) || el.kind === "bench")) continue;
+    const b = el.box;
+    for (let x = Math.floor(b.min.x / CELL); x <= Math.floor(b.max.x / CELL); x++)
+      for (let z = Math.floor(b.min.z / CELL); z <= Math.floor(b.max.z / CELL); z++) {
+        const k = `${x},${z}`;
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(el);
+      }
+  }
+}
+const REACH = { open: [0.6, 1.2], marker: [1.8, 3.2], canopy: [1.3, 3.4], garden: [0.9, 1.5], nook: [1.1, 2.6] };
+const reachOf = (el) => (el.kind === "bench" ? [0.9, 0.6] : /^(plaza|common|pocket|undecided)$/.test(el.kind) ? REACH.open
+  : el.kind === "roof_garden" ? REACH.garden : el.kind === "wall_niche" ? REACH.nook
+  : el.kind.startsWith("canopy") ? REACH.canopy : REACH.marker);
+function anchorOf(el, out) {
+  const b = el.box;
+  if (/^(plaza|common|pocket|undecided)$/.test(el.kind)) {
+    // A big space: glint where you are in it, near you.
+    out.set(clamp(bird.pos.x, b.min.x + 0.3, b.max.x - 0.3), b.max.y + 0.35, clamp(bird.pos.z, b.min.z + 0.3, b.max.z - 0.3));
+    if (out.distanceTo(bird.pos) < 0.6) out.copy(el.center).setY(b.max.y + 0.35);
+    return out;
+  }
+  if (el.group === "activity") return out.set(el.center.x, b.max.y + 0.25, el.center.z);
+  return out.copy(el.center).setY(b.max.y + 0.05);
+}
+function reachScan() {
+  const cx = Math.floor(bird.pos.x / CELL), cz = Math.floor(bird.pos.z / CELL);
+  const seen = new Set(), found = [];
+  _fwd.set(Math.sin(bird.heading), 0, Math.cos(bird.heading));
+  for (let x = cx - 1; x <= cx + 1; x++) for (let z = cz - 1; z <= cz + 1; z++) {
+    for (const el of grid.get(`${x},${z}`) || []) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      const b = el.box, [reach, vReach] = reachOf(el);
+      const dx = Math.max(b.min.x - bird.pos.x, 0, bird.pos.x - b.max.x);
+      const dz = Math.max(b.min.z - bird.pos.z, 0, bird.pos.z - b.max.z);
+      const dh = Math.hypot(dx, dz);
+      const dy = Math.max(b.min.y - bird.pos.y - 0.1, 0, bird.pos.y - b.max.y - 0.1);
+      if (dh > reach || dy > vReach) continue;
+      if (el.kind === "bench" && bird.onBench) continue;
+      _tmp.subVectors(el.center, bird.pos).setY(0);
+      const facing = _tmp.lengthSq() > 0.01 ? _tmp.normalize().dot(_fwd) : 1;
+      const big = /^(plaza|common|pocket|undecided)$/.test(el.kind) ? 0.9 : 0;
+      found.push({ el, score: dh + dy * 0.3 + big - facing * 0.3 });
+    }
+  }
+  found.sort((a, b) => a.score - b.score);
+  // Hold steady: keep the current focus unless something is clearly better.
+  const cur = found.find((f) => f.el === focus);
+  let next = found[0] ? found[0].el : null;
+  if (cur && found[0] && cur.score < found[0].score + 0.35) next = focus;
+  if (next !== focus) { focus = next; showPrompt(); }
+  const spots = [];
+  for (const f of found.slice(0, 8)) {
+    const a = anchorOf(f.el, new THREE.Vector3());
+    spots.push({ x: a.x, y: a.y, z: a.z, focus: f.el === focus });
+  }
+  glints.set(spots, t, governor.scale);
+}
+function showPrompt() {
+  const p = $("prompt");
+  if (!focus) { p.hidden = true; return; }
+  p.hidden = false;
+  $("prompt-text").textContent = focus.kind === "bench" ? "Hop up on the bench" : promptOf(focus);
+}
+
+// ---------------------------------------------------------------- touching things
+let flare = 0, flareEl = null;
+function touch(el) {
+  if (!el) { sparrow.chirp(); sound.chirp(); return; } // nothing in reach: a chirp anyway
+  if (el.kind === "bench") { hopOnto(el.bench); return; }
+  lastInputT = t;
+  const lines = answerOf(el);
+  logLine(lines[0], "what");
+  for (const l of lines.slice(1)) logLine(l, "pattern");
+  meet(el);
+  const k = el.kind;
+  if (/^(plaza|common|pocket|undecided)$/.test(k) || k === "wall_niche") {
+    sparrow.sit(true); sound.sit();
+    setTimeout(() => { sparrow.chirp(); sound.chirp(); }, 700);
+  } else if (k === "roof_garden") {
+    sound.rustle();
+    sparrow.peck();
+    setTimeout(() => sparrow.peck(), 450);
+    setTimeout(() => sparrow.peck(), 900);
+  } else if (k.startsWith("activity_")) {
+    sparrow.chirp(); sound.chirp();
+    setTimeout(() => sound.chime(el.index), 180);
+    flare = 1; flareEl = el;
+  } else {
+    sparrow.chirp(); sound.chirp();
+  }
+  if (el.center) director.lookAt(el);
+}
+function interact() { touch(focus); }
+
+// ---------------------------------------------------------------- tap to go
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function tapAt(x, y) {
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = site.bvh.raycastFirst(raycaster.ray, THREE.DoubleSide, 0, 2500);
+  let point, el = null;
+  if (hit) { point = hit.point.clone(); el = site.elementOfHit(hit); }
+  else {
+    // The bare ground plane.
+    const dy = raycaster.ray.direction.y;
+    if (dy >= -1e-3) return;
+    const s = (world.groundY - raycaster.ray.origin.y) / dy;
+    point = raycaster.ray.at(s, new THREE.Vector3());
+  }
+  if (tour) endTour("You take it from here.");
+  lastInputT = t;
+  // Open ground (a square, a street) is somewhere to go; anything else is something to go and touch.
+  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street)$/.test(el.kind);
+  const target = el && el.group === "activity_glow" ? site.elements.find((e) => e.group === "activity" && e.source === el.source) || el : el;
+  if (!isOpen && focus === target) { touch(target); return; } // already in reach
+  goal = {
+    point, el: target,
+    stopDist: isOpen ? 0.25 : 1.0,
+    land: true,
+    arrived: () => { if (!isOpen) touch(target); },
+  };
+  pingAt(point);
+}
+const ping = { mesh: null, t: -10 };
+function pingAt(p) {
+  if (!ping.mesh) {
+    ping.mesh = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: "#ffe2a0", transparent: true, depthWrite: false, fog: false }));
+    ping.mesh.renderOrder = 3;
+    scene.add(ping.mesh);
+  }
+  ping.mesh.position.copy(p).y += 0.02;
+  ping.t = t;
+}
+
+// ---------------------------------------------------------------- the tour
+function startTour() {
+  const order = [53, 61, 126, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
+  const stops = [];
+  let from = bird.pos.clone();
+  const used = new Set();
+  for (const n of order) {
+    if (!present.includes(n)) continue;
+    const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
+      && (touchable(e) || e.group === "streets" || e.kind === "building_shaped")
+      && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
+    if (!cands.length) continue;
+    cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
+    const el = cands.find((c) => !used.has(c)) || cands[0];
+    used.add(el);
+    stops.push(el);
+    from = el.center;
+    if (stops.length >= 9) break;
+  }
+  if (views.length) stops.push(...views.slice(0, 2).map((v, i) => ({ view: i })));
+  if (!stops.length) return;
+  tour = { stops, i: -1, waitUntil: 0 };
+  $("tour").setAttribute("aria-pressed", "true");
+  $("tour").textContent = "Stop the tour";
+  logLine("Follow me.", "note");
+  nextStop();
+}
+function nextStop() {
+  tour.i++;
+  if (tour.i >= tour.stops.length) { endTour("That’s the tour. Fly on."); return; }
+  const s = tour.stops[tour.i];
+  if (s.view != null) { peekInside(s.view); tour.waitUntil = t + 5; goal = null; return; }
+  const el = s;
+  const p = el.box.max.y > 1.5 && el.kind !== "building_shaped" ? anchorOf(el, new THREE.Vector3()) : el.center.clone();
+  if (el.kind === "building_shaped") {
+    // A building: go to its foot on the side nearest you.
+    const b = el.box;
+    p.set(clamp(bird.pos.x, b.min.x - 1.2, b.max.x + 1.2), b.min.y, clamp(bird.pos.z, b.min.z - 1.2, b.max.z + 1.2));
+  }
+  goal = { point: p, el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
+  tour.waitUntil = Infinity;
+}
+function tourTick() {
+  if (!tour) return;
+  if (!goal && t > tour.waitUntil) nextStop();
+}
+function endTour(msg) {
+  tour = null;
+  goal = null;
+  $("tour").setAttribute("aria-pressed", "false");
+  $("tour").textContent = "Show me around";
+  if (msg) logLine(msg, "note");
+}
+
+// ---------------------------------------------------------------- inside (cluster interiors)
+function parseMeters(s) { const [x, y, z] = s.trim().split(/\s+/).map(parseFloat); return new THREE.Vector3(x, y, z); }
+function peekInside(i) {
+  const v = views[i];
+  if (!v) return;
+  viewIndex = i;
+  const target = parseMeters(v.camera_target);
+  const fade = $("fade");
+  fade.classList.add("on");
+  setTimeout(() => {
+    const hit = castDown(target.x, target.y + 0.5, target.z, 6);
+    bird.pos.set(target.x, hit ? hit.point.y + 0.01 : target.y - 1.5, target.z);
+    bird.vel.set(0, 0, 0);
+    bird.air = false;
+    const orbit = v.camera_orbit.trim().split(/\s+/).map(parseFloat);
+    bird.heading = THREE.MathUtils.degToRad(orbit[0]) + Math.PI;
+    director.snapBehind();
+    logLine("Inside, on the ground floor.", "arrive");
+    fade.classList.remove("on");
+  }, 350);
+}
+
+// ---------------------------------------------------------------- the camera director
+const director = (() => {
+  let yaw = 0, yawT = 0, yawV = 0, pitch = 0.3, pitchT = 0.3, pitchV = 0;
+  let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0, collided = Infinity;
+  const look = new THREE.Vector3(), lookV = new THREE.Vector3(), lookT = new THREE.Vector3();
+  const cam = new THREE.Vector3(), head = new THREE.Vector3(), dir = new THREE.Vector3(), eye = new THREE.Vector3();
+  let shot = null;
+  const damp3 = (v, vv, target, st, dt) => {
+    for (const c of ["x", "y", "z"]) [v[c], vv[c]] = smoothDamp(v[c], target[c], vv[c], st, dt);
+  };
+  const play = (frame, { dur = 3, blendIn = 0.6, blendOut = 1, start = false } = {}) => { shot = { t0: t, dur, blendIn, blendOut, frame, start }; };
+  return {
+    get yaw() { return yaw; },
+    get eyes() { return eyes; },
+    snapBehind() {
+      yaw = yawT = bird.heading + Math.PI;
+      look.copy(bird.pos).y += 0.1;
+      lookV.set(0, 0, 0);
+    },
+    drag(dx, dy) {
+      yawT -= dx * 0.006;
+      pitchT = clamp(pitchT + dy * 0.004, bird.air ? -0.6 : -0.12, 1.35);
+      lastLookT = t; lastInputT = t;
+    },
+    zoomBy(f) { zoom = clamp(zoom * f, 0.3, 45); lastInputT = t; },
+    /** Swoop down from above the whole site to the bird. */
+    crane() {
+      if (REDUCED) return;
+      const b = site.bounds, c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+      const from = new THREE.Vector3(c.x + s.x * 0.45, b.max.y + Math.max(s.x, s.z) * 0.45, c.z + s.z * 0.55);
+      play(() => ({ pos: from, look: c, fov: 55 }), { dur: 4.2, blendIn: 0, blendOut: 3.4, start: true });
+    },
+    /** Frame you and the thing you touched, from the side. */
+    lookAt(el) {
+      if (REDUCED) return;
+      const target = anchorOf(el, new THREE.Vector3());
+      play(() => {
+        const mid = new THREE.Vector3().addVectors(bird.pos, target).multiplyScalar(0.5);
+        const span = Math.hypot(target.x - bird.pos.x, target.z - bird.pos.z);
+        const side = new THREE.Vector3(-(target.z - bird.pos.z), 0, target.x - bird.pos.x);
+        if (side.lengthSq() < 1e-4) side.set(Math.cos(yaw), 0, -Math.sin(yaw));
+        side.normalize();
+        if (side.dot(dir.set(-Math.sin(yaw), 0, -Math.cos(yaw))) > 0) side.negate(); // stay on the camera's side
+        const d = clamp(span * 1.3 + 0.9, 1.1, 10);
+        return { pos: mid.clone().addScaledVector(side, d).addScaledVector(UP, 0.35 + d * 0.3), look: mid, fov: 56 };
+      }, { dur: 3.2, blendIn: 0.7, blendOut: 1.1 });
+    },
+    update(dt) {
+      const air = bird.air;
+      const speed01 = clamp(bird.speed / (air ? 15 : 4.2), 0, 1);
+      const following = t - lastLookT > 1.4 && bird.speed > 0.35;
+      if (following) {
+        const k = 1 - Math.exp(-dt * (air ? 1.6 : 0.9));
+        yawT += angleTo(yawT, bird.heading + Math.PI) * k;
+        if (air) pitchT += (0.18 - pitchT) * k * 0.5;
+      }
+      const idle = t - lastInputT > 9 && bird.speed < 0.05 && !goal && !tour;
+      if (idle && !REDUCED) {
+        const camDir = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+        const facingSun = Math.max(0, -(Math.sin(camDir) * SUN_DIR.x + Math.cos(camDir) * SUN_DIR.z));
+        yawT += dt * 0.07 * (1 - 0.7 * facingSun);
+      }
+      [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, 0.14, dt);
+      [pitch, pitchV] = smoothDamp(pitch, pitchT, pitchV, 0.14, dt);
+      const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1);
+      [dist, distV] = smoothDamp(dist, base * zoom, distV, 0.35, dt);
+      const eyesT = zoom < 0.42 ? 1 : 0;
+      eyes += (eyesT - eyes) * Math.min(1, dt * 6);
+
+      lookT.copy(bird.pos).y += 0.1;
+      lookT.x += Math.sin(bird.heading) * (air ? 0.6 * speed01 : 0.06);
+      lookT.z += Math.cos(bird.heading) * (air ? 0.6 * speed01 : 0.06);
+      damp3(look, lookV, lookT, air ? 0.2 : 0.1, dt);
+
+      dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+      cam.copy(look).addScaledVector(dir, dist);
+      let fovT = air ? (REDUCED ? 62 : fovFor(speed01)) : 62;
+      let rollT = air && !REDUCED ? bankFor(bird.turn, speed01) : 0;
+      const lookAt = look.clone();
+
+      if (eyes > 0.01) {
+        sparrow.eyeWorld(eye);
+        cam.lerp(eye, eyes);
+        lookAt.lerp(eye.clone().addScaledVector(dir, -4), eyes);
+        fovT += (72 - fovT) * eyes;
+      }
+      if (shot) {
+        const age = t - shot.t0;
+        if (age > shot.dur) shot = null;
+        else {
+          const s = shot.frame();
+          const w = shot.start ? 1 : shotWeight(age, shot.dur, shot.blendIn, shot.blendOut);
+          if (shot.start && age > 0.05) shot.start = false;
+          cam.lerp(s.pos, w);
+          lookAt.lerp(s.look, w);
+          fovT += (s.fov - fovT) * w;
+          rollT *= 1 - w;
+        }
+      }
+      // Don't let walls come between you and the camera: pull in at once, ease back out.
+      head.copy(bird.pos).y += 0.1;
+      dir.subVectors(cam, head);
+      const want = dir.length();
+      if (want > 0.05 && eyes < 0.5) {
+        dir.divideScalar(want);
+        const hit = castRay(head, dir, want);
+        const allowed = hit ? Math.max(0.12, hit.distance - 0.08) : want;
+        collided = allowed < collided ? allowed : collided + (allowed - collided) * Math.min(1, dt * 2.5);
+        cam.copy(head).addScaledVector(dir, Math.min(want, collided));
+      }
+      cam.y = Math.max(cam.y, world.groundY + 0.04);
+      [fov, fovV] = smoothDamp(fov, fovT, fovV, 0.6, dt);
+      [roll, rollV] = smoothDamp(roll, rollT, rollV, 0.45, dt);
+      camera.position.copy(cam);
+      camera.lookAt(lookAt);
+      camera.rotateZ(roll);
+      const near = clamp(camera.position.distanceTo(head) * 0.25, 0.01, 0.4);
+      if (Math.abs(camera.fov - fov) > 0.05 || Math.abs(camera.near - near) / camera.near > 0.15) {
+        camera.fov = fov;
+        camera.near = near;
+        camera.updateProjectionMatrix();
+      }
+      sparrow.root.visible = eyes < 0.6;
+    },
+  };
+})();
+
+// ---------------------------------------------------------------- benches and people
+/**
+ * Benches where the patterns ask for sitting: around each P126 "something
+ * roughly in the middle", along the edges of P61 squares, facing the sun in
+ * P161 sunny places, and one in each larger courtyard and common. Only on open
+ * ground under open sky, and only where a whole bench (and room in front of it)
+ * fits. Not data: the pipeline places no benches.
+ */
+function placeBenches() {
+  const out = [];
+  const max = COARSE ? 36 : 70;
+  const open = /^(plaza|common|pocket)$/;
+  const groundOf = (x, z) => {
+    const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+    const top = hit && site.elementOfHit(hit);
+    return top && open.test(top.kind) ? hit.point.y : null;
+  };
+  const tryBench = (x, z, yaw) => {
+    if (out.length >= max || out.some((b) => (b.x - x) ** 2 + (b.z - z) ** 2 < 4)) return false;
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    let y = -Infinity;
+    for (const [lx, lz] of [[-0.85, -0.3], [0.85, -0.3], [-0.85, 0.3], [0.85, 0.3], [0, 1.1], [0, 0]]) {
+      const g = groundOf(x + lx * c + lz * s, z - lx * s + lz * c);
+      if (g == null) return false;
+      y = Math.max(y, g);
+    }
+    // Nothing standing in the bench's way at knee and shoulder height.
+    for (const h of [0.3, 1.0]) {
+      for (const [dx, dz] of [[c, -s], [-c, s]]) {
+        const hit = castRay(_tmp.set(x, y + h, z), _tmp2.set(dx, 0, dz), 0.9);
+        if (hit) return false;
+      }
+    }
+    out.push({ x, y, z, yaw });
+    return true;
+  };
+  const facing = (fx, fz) => Math.atan2(fx, fz);
+  const els = site.elements.filter((e) => e.center);
+  for (const m of els.filter((e) => e.group === "activity" && patternsOf(e).includes(126) && openSky(e))) {
+    const a0 = (m.index * 2.399) % (Math.PI * 2);
+    for (let k = 0; k < 3; k++) {
+      const a = a0 + (k * Math.PI * 2) / 3;
+      tryBench(m.center.x + Math.sin(a) * 3.2, m.center.z + Math.cos(a) * 3.2, facing(-Math.sin(a), -Math.cos(a)));
+    }
+  }
+  for (const sq of els.filter((e) => e.group === "plazas" && patternsOf(e).includes(61))) {
+    const r = Math.min(sq.box.max.x - sq.box.min.x, sq.box.max.z - sq.box.min.z) * 0.33;
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + 0.3;
+      tryBench(sq.center.x + Math.sin(a) * r, sq.center.z + Math.cos(a) * r, facing(-Math.sin(a), -Math.cos(a)));
+    }
+  }
+  for (const sp of els.filter((e) => e.group === "plazas" && patternsOf(e).includes(161))) {
+    tryBench(sp.center.x, sp.center.z, facing(SUN_DIR.x, SUN_DIR.z)); // facing the sun
+  }
+  const area = (e) => (e.box.max.x - e.box.min.x) * (e.box.max.z - e.box.min.z);
+  for (const e of els.filter((e) => e.group === "plazas" && /^(plaza|common)$/.test(e.kind) && area(e) > 120).sort((a, b) => area(b) - area(a))) {
+    const a = (e.index * 1.7) % (Math.PI * 2);
+    tryBench(e.center.x + Math.sin(a) * 2, e.center.z + Math.cos(a) * 2, a);
+  }
+  return out;
+}
+
+/** People: a third on the benches, some talking by the markers, the rest walking between squares, markers, streets and benches. */
+function populate() {
+  let seed = 1234567;
+  const rng = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const spots = [], groups = [];
+  for (const e of site.elements) {
+    if (!e.center) continue;
+    if (e.group === "plazas" && /^(plaza|common|pocket)$/.test(e.kind) && openSky(e)) spots.push({ x: e.center.x, y: e.box.max.y, z: e.center.z });
+    if (e.group === "activity" && openSky(e)) {
+      groups.push({ x: e.center.x, y: e.box.min.y, z: e.center.z });
+      spots.push({ x: e.center.x + 1.8, y: e.box.min.y, z: e.center.z + 1.8 });
+    }
+    if (e.group === "streets") {
+      // A few points along each street, where it's open to the sky.
+      for (let k = 0; k < 10; k++) {
+        const x = e.box.min.x + rng() * (e.box.max.x - e.box.min.x), z = e.box.min.z + rng() * (e.box.max.z - e.box.min.z);
+        const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+        if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
+      }
+    }
+  }
+  if (!spots.length && !benches.length) return null;
+  const count = Math.min(COARSE ? 36 : 72, Math.max(8, benches.length * 2 + groups.length * 2 + Math.floor(spots.length / 2)));
+  return buildPeople(scene, {
+    benches, spots, groups, count, rng,
+    clearLine: (a, b) => {
+      const y = Math.max(a.y, b.y) + 0.9;
+      const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+      if (len < 0.5) return true;
+      _ray.origin.set(a.x, y, a.z);
+      _ray.direction.set(dx / len, 0, dz / len);
+      return !firstHit(len);
+    },
+    groundAt: (x, z, nearY) => {
+      const hit = castDownModel(x, nearY + 2.5, z, 6);
+      return hit ? hit.point.y : world.groundY;
+    },
+  });
+}
+
+/** Up onto the bench's seat, beside whoever's sitting. */
+function hopOnto(b) {
+  const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+  // The end of the bench nearer you.
+  const side = (bird.pos.x - b.x) * c - (bird.pos.z - b.z) * s > 0 ? 0.68 : -0.68;
+  bird.pos.set(b.x + side * c + 0.05 * s, b.y + 0.49, b.z - side * s + 0.05 * c);
+  bird.vel.set(0, 0, 0);
+  bird.air = false;
+  bird.heading = b.yaw;
+  sparrow.land();
+  sound.hop();
+  setTimeout(() => { sparrow.chirp(); sound.chirp(); }, 350);
+}
+
+// ---------------------------------------------------------------- pigeons live on the open spaces
+function pigeonSpots() {
+  const open = site.elements.filter((e) => e.group === "plazas" && e.center && e.kind !== "undecided");
+  const spots = [];
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const budget = COARSE ? 40 : 70;
+  open.sort((a, b) => (b.box.max.x - b.box.min.x) * (b.box.max.z - b.box.min.z) - (a.box.max.x - a.box.min.x) * (a.box.max.z - a.box.min.z));
+  for (const el of open) {
+    if (spots.length >= budget) break;
+    const flock = 2 + Math.floor(rnd() * 3);
+    const cx = el.center.x + (rnd() - 0.5) * (el.box.max.x - el.box.min.x) * 0.4;
+    const cz = el.center.z + (rnd() - 0.5) * (el.box.max.z - el.box.min.z) * 0.4;
+    for (let i = 0; i < flock; i++) {
+      const x = cx + (rnd() - 0.5) * 1.6, z = cz + (rnd() - 0.5) * 1.6;
+      const hit = castDown(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+      if (hit && site.elementOfHit(hit) === el) spots.push({ x, y: hit.point.y, z });
+    }
+  }
+  return spots;
+}
+
+// ---------------------------------------------------------------- the frame
+let last = performance.now(), frameMs = [], lastGovern = performance.now(), statsAt = 0, startedAt = performance.now();
+function frame() {
+  const now = performance.now();
+  const raw = now - last;
+  last = now;
+  if (raw < 250 && now - startedAt > 2500 && !document.hidden) frameMs.push(raw);
+  const dt = Math.min(raw / 1000, 0.05);
+  t += dt;
+  pollPad();
+  gatherIntent();
+  physics(dt);
+  probeGround();
+  reachScan();
+  tourTick();
+  sparrow.root.position.copy(bird.pos);
+  sparrow.root.rotation.y = bird.heading;
+  sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });
+  if (bird.speed > 0.3 || bird.air) sparrow.sit(false);
+  sparrow.root.updateMatrixWorld(true);
+  if (people && people.update(dt, t, bird, camera.position).crumb) {
+    logLine("Someone on the bench drops you a crumb.", "note");
+    sparrow.peck();
+    setTimeout(() => { sparrow.peck(); sound.chirp(); }, 500);
+  }
+  const burst = pigeons.update(dt, t, bird, camera.position);
+  if (burst) { sound.flutter(); if (Math.random() < 0.5) setTimeout(() => sound.coo(), 400); }
+  director.update(dt);
+  world.follow(camera);
+  // Markers breathe; a touched one flares.
+  flare = Math.max(0, flare - dt * 0.8);
+  for (const m of site.meshes) {
+    if (!m.userData.glow) continue;
+    const base = m.userData.halo ? 0.6 : 0.25;
+    m.material.emissiveIntensity = base + 0.12 * Math.sin(t * 1.7) + flare * (m.userData.halo ? 1.2 : 0.8);
+  }
+  if (ping.mesh) {
+    const a = t - ping.t;
+    ping.mesh.visible = a < 0.9 && !!goal;
+    ping.mesh.scale.setScalar(1 + a * 2.5);
+    ping.mesh.material.opacity = Math.max(0, 1 - a / 0.9);
+  }
+  if (now - lastGovern > 2000) {
+    lastGovern = now;
+    if (frameMs.length > 20) {
+      const s = governor.step(median(frameMs));
+      if (s !== renderer.getPixelRatio()) { renderer.setPixelRatio(s); renderer.setSize(innerWidth, innerHeight); }
+    }
+    frameMs = [];
+  }
+  renderer.render(scene, camera);
+  if (STATS && now - statsAt > 500) {
+    statsAt = now;
+    const info = renderer.info.render;
+    $("stats").textContent = `${(1000 / Math.max(1, raw)).toFixed(0)} fps · ${info.calls} draws · ${(info.triangles / 1000).toFixed(0)}k tris · scale ${governor.scale}`;
+  }
+}
+
+// ---------------------------------------------------------------- input
+function pollPad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const p = pads && [...pads].find((x) => x && x.connected);
+  if (!p) return;
+  const dz = (v) => (Math.abs(v) < 0.15 ? 0 : v);
+  padMove = { x: dz(p.axes[0] || 0), y: dz(p.axes[1] || 0) };
+  padLook = { x: dz(p.axes[2] || 0), y: dz(p.axes[3] || 0) };
+  if (padLook.x || padLook.y) director.drag(padLook.x * 14, padLook.y * 10);
+  const b = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
+  if (b(0) && !padUp) wantHop = true;
+  padUp = b(0);
+  padDown = b(1);
+  if (b(2) && !pollPad.x) interact();
+  pollPad.x = b(2);
+  if (b(3) && !pollPad.y) (tour ? endTour("You take it from here.") : startTour());
+  pollPad.y = b(3);
+}
+
+function setupUI() {
+  const firstGesture = () => { sound.unlock(); removeEventListener("pointerdown", firstGesture); removeEventListener("keydown", firstGesture); };
+  addEventListener("pointerdown", firstGesture);
+  addEventListener("keydown", firstGesture);
+
+  addEventListener("keydown", (e) => {
+    if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (!e.repeat) {
+      if (e.code === "Space") wantHop = true;
+      if (e.code === "KeyE" || e.code === "Enter") interact();
+      if (e.code === "KeyM") toggleMute();
+      if (e.code === "KeyT") (tour ? endTour("You take it from here.") : startTour());
+      if (e.code === "KeyF") { if (bird.air) holdDownFor = 3; else takeOff(); }
+      if (e.code === "KeyV") director.zoomBy(director.eyes > 0.5 ? 3 : 0.2);
+      if (e.code === "Escape") { if (tour) endTour(""); goal = null; }
+    }
+    if (/^(Space|Arrow|Key[WASDCQEF])/.test(e.code)) e.preventDefault();
+    keys[e.code] = true;
+    hideHint();
+  });
+  addEventListener("keyup", (e) => { keys[e.code] = false; });
+  addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+
+  // Pointers: drag to look, tap to go, pinch or wheel to zoom.
+  const pts = new Map();
+  let pinch = 0;
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (Math.hypot(p.x - p.x0, p.y - p.y0) > 7) p.moved = true;
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch > 0 && d > 0) director.zoomBy(pinch / d);
+      pinch = d;
+      return;
+    }
+    if (p.moved) { director.drag(dx, dy); hideHint(); }
+  });
+  const up = (e) => {
+    const p = pts.get(e.pointerId);
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = 0;
+    if (p && !p.moved && performance.now() - p.t0 < 400 && pts.size === 0 && e.type === "pointerup") { tapAt(e.clientX, e.clientY); hideHint(); }
+  };
+  canvas.addEventListener("pointerup", up);
+  canvas.addEventListener("pointercancel", up);
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); director.zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  const hold = (el, on) => {
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); on(true); if (el.id === "btn-up") wantHop = true; hideHint(); });
+    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(ev, () => on(false));
+  };
+  hold($("btn-up"), (v) => { holdUp = v; });
+  hold($("btn-down"), (v) => { holdDown = v; });
+  $("prompt").addEventListener("click", interact);
+  $("tour").addEventListener("click", () => (tour ? endTour("You take it from here.") : startTour()));
+  $("mute").addEventListener("click", toggleMute);
+  $("mute").setAttribute("aria-pressed", String(sound.muted));
+  $("help-btn").addEventListener("click", () => { $("help").hidden = !$("help").hidden; });
+  $("help").addEventListener("click", () => { $("help").hidden = true; });
+  $("met").addEventListener("click", () => { $("met-panel").hidden = !$("met-panel").hidden; });
+  if (views.length) {
+    $("inside").hidden = false;
+    $("inside").addEventListener("click", () => peekInside((viewIndex + 1) % views.length));
+  }
+  for (const a of document.querySelectorAll("[data-model]")) {
+    const isCurrent = (a.dataset.model === "cluster" && !params.get("glb")) || (params.get("glb") || "").includes(a.dataset.model);
+    a.setAttribute("aria-current", isCurrent ? "page" : "false");
+  }
+  if (STATS) $("stats").hidden = false;
+  $("hint").textContent = COARSE ? "Tap to go · drag to look · ▲ to fly" : "WASD to hop · hold Space to fly · drag to look · E to touch · T for a tour";
+  setTimeout(hideHint, 14000);
+}
+function hideHint() {
+  if (hintGone) return;
+  hintGone = true;
+  $("hint").classList.add("gone");
+}
+function toggleMute() {
+  const m = sound.toggle();
+  $("mute").setAttribute("aria-pressed", String(m));
+  $("mute").textContent = m ? "♪ off" : "♪";
+}
