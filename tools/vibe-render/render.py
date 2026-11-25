@@ -95,6 +95,8 @@ from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 
+import pack_glb
+
 M_PER_DEG_LAT = 110_540.0
 M_PER_DEG_LNG = 111_320.0
 
@@ -1053,6 +1055,43 @@ def load_context_buildings(path, origin_lng, origin_lat):
     return solids
 
 
+class Piece(tuple):
+    """A `(solid, kind)` pair that also remembers the source record it was
+    built from (`origin`: {"id", "typology"}). It unpacks as a plain 2-tuple,
+    so every `for solid, kind in ...` loop is unchanged. Only `export_glb`
+    reads `origin`: it goes into the GLB so the walk page can say which
+    patterns placed a solid (their names are in the record ids, e.g.
+    `..._p61_new_sq0`, `..._P95_courtyard_p0.3`, `site_perimeter_p53_gateway`)."""
+
+    def __new__(cls, solid, kind, origin):
+        piece = super().__new__(cls, (solid, kind))
+        piece.origin = origin
+        return piece
+
+
+class Provenance:
+    """Tags the pieces each source record adds to some lists. Call mark()
+    first thing in each iteration of a loop over records (before any
+    `continue`), then close() right after the loop: whatever a list gained
+    between one mark and the next came from that mark's record."""
+
+    def __init__(self, *lists):
+        self.lists, self.marks = lists, []
+
+    def mark(self, record, **extra):
+        self.marks.append(([len(lst) for lst in self.lists], {"id": record.get("id"), **extra}))
+
+    def close(self):
+        ends = [len(lst) for lst in self.lists]
+        for k, (starts, origin) in enumerate(self.marks):
+            stops = self.marks[k + 1][0] if k + 1 < len(self.marks) else ends
+            for lst, a, b in zip(self.lists, starts, stops):
+                for i in range(a, b):
+                    solid, kind = lst[i]
+                    lst[i] = Piece(solid, kind, origin)
+        self.marks = []
+
+
 def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_real_openings=False):
     """`include_interior_walls`: real, opt-in -- OFF by default so every
     existing scenario (clean_baseline included, since p127_intimacy_
@@ -1146,7 +1185,9 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # calls around work already happening, no extra passes.
     t_extrude = t_refill = t_openings = t_roof = t_interior = t_punch = t_glow = 0.0
 
+    building_prov = Provenance(building_solids, canopy_records, wall_niche_records, interior_wall_solids, window_glow_records)
     for b in nbhd.get("buildings", []):
+        building_prov.mark(b, typology=b.get("typology"), floors=b.get("floors"))
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
@@ -1369,6 +1410,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # just because P107 never got around to shaping the pad into a real
     # Building.
     for p in parcels:
+        building_prov.mark(p)
         if p.get("use_category") not in ("p95_building_pad", "p95_pad_with_building"):
             continue
         if p["id"] in building_ids_with_real_shape:
@@ -1380,6 +1422,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
             solid = extrude_polygon(part["outer"], part.get("holes", []), height, origin_lng, origin_lat)
             if solid is not None:
                 building_solids.append((solid, "building_unshaped"))
+    building_prov.close()
 
     # Plazas / open space -- thin colored slabs at ground level. A P124
     # pocket gets one of these too (its own real footprint, distinctly
@@ -1388,17 +1431,22 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # refill is what makes the adjacent building's upper floors read as
     # intact mass instead of a floor-to-roof slot.
     plaza_solids = []
+    plaza_prov = Provenance(plaza_solids)
     for o in nbhd.get("open_space", []):
+        plaza_prov.mark(o)
         parts = o["polygon"].get("parts") or [{"outer": o["polygon"]["outer"], "holes": o["polygon"].get("holes", [])}]
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), PLAZA_THICKNESS_M, origin_lng, origin_lat)
             if solid is not None:
                 kind = o.get("kind") if o.get("kind") in ("undecided", "common", "pocket") else "plaza"
                 plaza_solids.append((solid, kind))
+    plaza_prov.close()
 
     # Streets -- thin ribbons along the centerline, buffered by row_width_m.
     street_solids = []
+    street_prov = Provenance(street_solids)
     for s in nbhd.get("streets", []):
+        street_prov.mark(s)
         line = s.get("centerline", [])
         if len(line) < 2:
             continue
@@ -1421,6 +1469,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                 street_solids.append((solid, s.get("classification") or "street"))
             except Exception:
                 pass
+    street_prov.close()
 
     # Activity nodes -- real point markers (P61 Small Public Squares, P124
     # Activity Pockets both produce these) that this renderer never drew at
@@ -1441,7 +1490,9 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
     # alpha (see render_isometric/render_interior_view/export_glb) rather
     # than a CONFIDENCE_ALPHA override, since this is a rendering choice
     # about a real point's glow, not a provenance/confidence signal.
+    activity_prov = Provenance(activity_solids, activity_glow_solids)
     for a in nbhd.get("activity_nodes", []):
+        activity_prov.mark(a)
         loc = a.get("location")
         if not loc:
             continue
@@ -1464,6 +1515,7 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
             activity_glow_solids.append((glow, f"activity_{kind}"))
         except Exception as e:
             print(f"  ! activity glow build failed: {e}", file=sys.stderr)
+    activity_prov.close()
 
     _t0 = time.perf_counter()
     context_solids = load_context_buildings(context_path, origin_lng, origin_lat) if context_path else []
@@ -2269,6 +2321,7 @@ def export_glb(scene, out_path):
     """
     asm = cq.Assembly()
     n_added = 0
+    elements = {}  # node name -> what it is and where it came from, for pack_glb
     interior_walls = scene.get("interior_walls", [])
     punched = scene.get("punched_openings", False)
     buildings_alpha = 0.97 if punched else (0.35 if interior_walls else 0.82)
@@ -2295,15 +2348,20 @@ def export_glb(scene, out_path):
         ("activity", 0.95, "activity_markers"),
         ("context", 0.45, "context"),  # matches render_isometric's own context alpha -- backdrop, not the model
     ):
-        for solid, kind in scene.get(solids_key, []):
+        for piece in scene.get(solids_key, []):
+            solid, kind = piece
             r, g, b = mcolors.to_rgb(COLORS.get(kind, "#999999"))
             n_added += 1
             # Same real per-kind override render_isometric's own
             # draw_solid_group uses -- see CONFIDENCE_ALPHA's own
             # docstring.
             solid_alpha = CONFIDENCE_ALPHA.get(kind, alpha)
+            name = f"{group}_{n_added}_{kind}"
+            origin = getattr(piece, "origin", None) or {}
+            elements[name] = {"group": group, "kind": kind, "source": origin.get("id"),
+                             "typology": origin.get("typology"), "floors": origin.get("floors")}
             try:
-                asm.add(solid, name=f"{group}_{n_added}_{kind}", color=cq.Color(r, g, b, solid_alpha))
+                asm.add(solid, name=name, color=cq.Color(r, g, b, solid_alpha))
             except Exception as e:
                 print(f"  ! glb: skipped a {group} piece: {e}", file=sys.stderr)
 
@@ -2322,7 +2380,11 @@ def export_glb(scene, out_path):
         # `window_glow` empty, so this is a no-op read+return for them).
         if scene.get("window_glow"):
             add_emissive_glow(out_path, name_suffix="_window_glow")
-        print(f"wrote {out_path}")
+        # One mesh per material, so a browser draws ~15 calls instead of one
+        # per B-rep face (12k-18k). Runs last: add_emissive_glow finds its
+        # panes by node name, and packing merges the nodes. See pack_glb.py.
+        before, after = pack_glb.pack_file(out_path, elements_by_name=elements)
+        print(f"wrote {out_path} (packed {before} primitives into {after})")
     except Exception as e:
         print(f"  ! GLB export failed for {out_path}: {e}", file=sys.stderr)
 
