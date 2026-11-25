@@ -64,22 +64,23 @@ cd public && python3 -m http.server 8000
 
 ## Deploy
 
-### Auto-deploy (recommended)
+### Auto-deploy
 
-A GitHub Actions workflow at `.github/workflows/deploy.yml` builds and deploys on every push to `main`. **One-time setup:** add two secrets to the `street-smarts` repo's Settings → Secrets and variables → Actions:
+Cloudflare Workers Builds deploys every push to `main` to https://street-smarts.jason-edelman.org (since 2026-11-25). The repo is connected to the `street-smarts` Worker in the Cloudflare dashboard (Workers & Pages → street-smarts → Settings → Build):
 
-- `CLOUDFLARE_API_TOKEN` — copy the same value from the `jason-edelman.org` repo
-- `CLOUDFLARE_ACCOUNT_ID` — `543fde7feabd0af945bfae926ceea7ad`
+- build command: `bash scripts/cloudflare-build.sh` (installs Rust and wasm-pack, builds the WASM app, renders the vibe-render gallery into `public/`)
+- deploy command: `npx wrangler deploy`
+- Python comes from `.python-version` (3.11, for cadquery)
 
-After that, `git push` deploys to `street-smarts.<jedelman-subdomain>.workers.dev`.
+No secrets live in GitHub. `.github/workflows/ci.yml` builds and runs every gate (tests, vibe-render, packed GLBs, perceptual hash, bundle budget) on each PR and push, but doesn't deploy.
 
 ### Manual deploy
 
 From a machine with wrangler authenticated to the jedelman Cloudflare account:
 
 ```bash
-./scripts/build.sh
-wrangler deploy             # → street-smarts.<your-subdomain>.workers.dev
+bash scripts/cloudflare-build.sh
+npx wrangler deploy
 ```
 
 ## License
