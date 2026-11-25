@@ -74,6 +74,9 @@ jobs:
       - name: Test
         run: cargo test --workspace --release
 
+      - name: Test the walk page's pure modules (answers, camera, governor)
+        run: node --test 'tools/sparrow/*.test.mjs'
+
       - name: Build WASM
         run: |
           wasm-pack build crates/street-smarts-web \
@@ -99,6 +102,9 @@ jobs:
           test -f public/vibe-render/cluster_interior.glb
           test -f public/vibe-render/cluster_interior_interior_views.json
           echo "All required outputs present."
+
+      - name: GLBs are packed (one draw call per material, not per face)
+        run: tools/vibe-render/.venv/bin/python3 tools/vibe-render/check_packed.py public/vibe-render/*.glb
 
       - name: Visual regression check (isometric renders)
         # HARDENING_SPEC.md §4 -- perceptual-hash gate, not just a human
