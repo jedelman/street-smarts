@@ -13,6 +13,7 @@ import { buildSparrow } from "./sparrow.js";
 import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
+import { buildFrontages } from "./frontages.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
@@ -81,7 +82,7 @@ const bird = {
   air: false, onGround: false, speed: 0, under: null, groundAt: 0,
 };
 const keys = Object.create(null);
-let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null;
+let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
 let tour = null; // { stops: [...], i, waitUntil }
 let focus = null, focusScore = Infinity;
@@ -128,6 +129,8 @@ let present = [];
       tr.el.tree = tr;
     }
   }
+  // Every window, and storefronts at the doors that open onto a street or square.
+  if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE });
   pigeons = buildPigeons(scene, pigeonSpots());
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
@@ -140,7 +143,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
   toPage({ type: "ready" });
 })();
@@ -935,6 +938,11 @@ function populate() {
       }
     }
   }
+  // Shop doors: people stop by.
+  for (const s of frontages ? frontages.shops : []) {
+    const hit = castDownModel(s.door.x, site.bounds.max.y + 20, s.door.z, site.bounds.max.y + 60);
+    if (hit) spots.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
+  }
   if (!spots.length && !benches.length) return null;
   const count = Math.min(COARSE ? 36 : 72, Math.max(8, benches.length * 2 + groups.length * 2 + Math.floor(spots.length / 2)));
   return buildPeople(scene, {
@@ -1006,6 +1014,7 @@ function frame() {
   reachScan();
   tourTick();
   if (trees) trees.update(t, camera);
+  if (frontages) frontages.update(camera);
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });

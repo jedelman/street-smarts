@@ -11,6 +11,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { MeshBVH } from "three-mesh-bvh";
 import { readElements } from "./answers.js";
 import { takeTrees } from "./trees.js";
+import { readDetail } from "./frontages.js";
 
 const NAME = /^(.*?)_(\d+)_(.*)$/; // render.py's f"{group}_{n}_{kind}"
 // Kinds that keep their translucency here: the halos, and the ghostly
@@ -27,8 +28,10 @@ export async function loadSite(url, onProgress) {
   gltf.scene.traverse((o) => { if (o.userData && o.userData.streetSmarts) table = o.userData.streetSmarts; });
   // P171's trees are instanced; they're drawn and collided apart (trees.js).
   const trees = table ? takeTrees(gltf.scene, readElements(table)) : null;
+  // Walls, openings and shop fronts, for the street-level detail (frontages.js).
+  const detail = table ? await readDetail(gltf.parser, table).catch(() => null) : null;
   const parts = table ? packedParts(gltf, table) : looseParts(gltf);
-  return { ...assemble(parts), trees };
+  return { ...assemble(parts), trees, detail };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }
