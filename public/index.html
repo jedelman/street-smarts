@@ -652,6 +652,65 @@
     font-size: 0.9rem;
     font-style: italic;
   }
+  /* ---- The hero: the live walk, full-bleed, inert until "Hop in" so the page
+     still scrolls on a phone. See public/sparrow/main.js's hero mode. ---- */
+  #hero {
+    position: relative; height: clamp(440px, 84vh, 940px); height: clamp(440px, 84svh, 940px); overflow: hidden;
+    background: linear-gradient(180deg, #7aa3d6 0%, #c9b8c4 45%, #f3d3ab 100%);
+  }
+  #hero iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; display: block; }
+  #hero.active iframe { pointer-events: auto; }
+  /* Over the walk until "Hop in": a phone's swipe scrolls the page (Chrome honors the walk's own
+     touch-action: none through an iframe with pointer-events: none, so the iframe alone isn't enough). */
+  .hero-shield { position: absolute; inset: 0; z-index: 1; touch-action: pan-y; }
+  #hero.active .hero-shield { display: none; }
+  .hero-title {
+    position: absolute; z-index: 2; top: 0; left: 0; right: 0; pointer-events: none;
+    padding: clamp(1.2rem, 4vw, 2.6rem) clamp(1rem, 5vw, 3.5rem) 4.5rem;
+    background: linear-gradient(180deg, rgba(246, 243, 237, 0.86) 0%, rgba(246, 243, 237, 0.55) 55%, rgba(246, 243, 237, 0) 100%);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .hero-title h1 { font-size: clamp(2.1rem, 5vw, 3.3rem); margin: 0; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; }
+  .hero-title .tag { margin: 0.3rem 0 0; color: var(--muted); font-style: italic; }
+  .hero-title .hero-lede { max-width: 33rem; margin: 0.8rem 0 0; font-size: clamp(1rem, 1.7vw, 1.16rem); }
+  #hero.active .hero-title { opacity: 0; transform: translateY(-0.6rem); }
+  .hero-actions {
+    position: absolute; z-index: 3; right: clamp(1rem, 4vw, 2.4rem); bottom: clamp(1rem, 4vw, 2rem);
+    display: flex; flex-direction: column; align-items: flex-end; gap: 0.45rem;
+  }
+  .hero-actions .hop {
+    font: inherit; font-size: 1.08rem; font-weight: 600; cursor: pointer;
+    background: var(--ink); color: var(--bg); border: 0; border-radius: 999px; padding: 0.8rem 1.5rem;
+    box-shadow: 0 6px 22px rgba(26, 24, 20, 0.28);
+  }
+  .hero-actions .hop:hover { background: #3a2f27; }
+  .hero-actions .hop:focus-visible, .hero-actions a:focus-visible, .hero-actions button:focus-visible { outline: 2px solid var(--vision-accent); outline-offset: 3px; }
+  .hero-actions .small {
+    font: inherit; font-size: 0.82rem; color: var(--ink); text-decoration: none; cursor: pointer;
+    background: rgba(246, 243, 237, 0.82); border: 1px solid rgba(26, 24, 20, 0.12); border-radius: 999px; padding: 0.3rem 0.75rem;
+  }
+  .hero-actions .note { cursor: default; color: var(--muted); }
+  .hero-actions .done { display: none; }
+  #hero.active .hero-actions { top: clamp(0.8rem, 2vw, 1.2rem); bottom: auto; flex-direction: row; }
+  #hero.active .hop, #hero.active .note { display: none; }
+  #hero.active .done { display: inline-block; }
+  @media (max-width: 640px) {
+    .hero-title .hero-lede { font-size: 0.98rem; }
+    .hero-title { padding-bottom: 3rem; }
+  }
+
+  /* What you're looking at: three lines under the hero. */
+  .look { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; margin: 0 0 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line); }
+  .look h2 { font-size: 1rem; margin: 0 0 0.3rem; }
+  .look p { margin: 0; font-size: 0.94rem; color: var(--muted); line-height: 1.5; }
+  @media (max-width: 640px) { .look { grid-template-columns: 1fr; gap: 0.9rem; } }
+  header .scenario-label { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  details.caveat-more { margin: 0 0 1rem; }
+  details.caveat-more summary { cursor: pointer; color: var(--muted); font-size: 0.92rem; }
+  details.caveat-more[open] summary { margin-bottom: 0.6rem; }
+  .walk-cta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.4rem 0 1rem; }
+  .walk-cta a { color: var(--bg); background: var(--ink); text-decoration: none; border-radius: 999px; padding: 0.4rem 0.9rem; font-size: 0.92rem; }
+  .walk-cta a.secondary { color: var(--ink); background: transparent; border: 1px solid var(--line); }
 </style>
 <!-- Google's <model-viewer> custom element, pinned to an exact version --
      interactive glTF/GLB viewer (orbit/zoom/pan, no page-authored WebGL
@@ -673,11 +732,33 @@
      credited anyway per this project's own convention). -->
 </head>
 <body>
-<div class="wrap">
 
-  <header>
+<section id="hero" aria-label="A live 3D walk through the Military Circle site">
+  <iframe id="hero-frame" title="Live 3D walk through the Military Circle site, as a sparrow" tabindex="-1"></iframe>
+  <div class="hero-shield" aria-hidden="true"></div>
+  <div class="hero-title">
     <h1>street-smarts</h1>
     <p class="tag">A Christopher Alexander provocation engine for neighborhood imagination. v0.1.</p>
+    <p class="hero-lede">The Military Circle site in Norfolk, VA, run through Alexander's pattern language. You're a sparrow: hop in, touch what glints, and it tells you which pattern put it there.</p>
+  </div>
+  <div class="hero-actions">
+    <button type="button" class="hop" id="hero-hop">Hop in</button>
+    <button type="button" class="small done" id="hero-done">Done</button>
+    <a class="small" href="/walk.html?glb=/vibe-render/clean_baseline.glb">Full screen &#8599;</a>
+    <span class="small note" id="hero-note">Live 3D, about 3 MB</span>
+  </div>
+</section>
+
+<div class="wrap">
+
+  <section class="look" aria-label="What you're looking at">
+    <div><h2>Real ground</h2><p>Military Circle, Norfolk: 25 City GIS parcels, 97.7 acres, with today's neighbors from Overture Maps around the edge.</p></div>
+    <div><h2>Generated, not drawn</h2><p>Every street, square, building, roof garden and arcade comes out of the pattern pipeline, regenerated on every deploy.</p></div>
+    <div><h2>Ask it</h2><p>Touch anything and it names the pattern that placed it, read from the pipeline's own record. The people, benches and pigeons are ours; the benches sit where the patterns ask for sitting.</p></div>
+  </section>
+
+  <header>
+    <p class="scenario-label">Scenario for the chorus, map and generator below:</p>
     <nav id="fixture-nav">
       <button data-fixture="proposal" class="active">Eastside Commons — Proposal</button>
       <button data-fixture="baseline">Eastside Commons — Baseline (current)</button>
@@ -686,6 +767,12 @@
 
   <section id="vibe-gallery">
     <h2 style="margin:0 0 .5rem;font-size:1.3rem;">3D vibe-render gallery</h2>
+    <div class="walk-cta">
+      <a href="/walk.html?glb=/vibe-render/clean_baseline.glb">Walk the whole site &#8599;</a>
+      <a class="secondary" href="/walk.html">Walk one cluster, with interiors &#8599;</a>
+    </div>
+    <details class="caveat-more">
+    <summary>How these renders are made</summary>
     <p class="caveat">
       Massing renders regenerated on every deploy, straight from the corrected pattern pipeline —
       extruded polygon massing blocks (via cadquery/OpenCascade), still a gut check on <em>scale and
@@ -701,6 +788,7 @@
       data only, no interior partition (see the largest-building floor plan below, and
       <code>tools/vibe-render/render.py</code> in the repo for the full caveats).
     </p>
+    </details>
 
     <figure class="render">
       <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
@@ -2009,5 +2097,41 @@
   })();
 </script>
 
+<script>
+  // The hero: load the walk (unless the connection asks us not to), hand it input on
+  // "Hop in", take it back on "Done", Escape or scrolling away, and pause it offscreen.
+  (function () {
+    var box = document.getElementById("hero"), frame = document.getElementById("hero-frame");
+    var hop = document.getElementById("hero-hop"), done = document.getElementById("hero-done"), note = document.getElementById("hero-note");
+    if (!box || !frame) return;
+    var SRC = "/walk.html?hero&glb=/vibe-render/clean_baseline.glb";
+    var conn = navigator.connection || {};
+    var thrifty = conn.saveData || /(^|-)2g$/.test(conn.effectiveType || "");
+    function send(type) { if (frame.contentWindow) frame.contentWindow.postMessage({ source: "street-smarts-hero", type: type }, location.origin); }
+    function load() { if (!frame.getAttribute("src")) frame.setAttribute("src", SRC); hop.textContent = "Hop in"; }
+    function setActive(on) {
+      box.classList.toggle("active", on);
+      send(on ? "activate" : "deactivate");
+      frame.tabIndex = on ? 0 : -1;
+      if (on) frame.focus(); else hop.focus({ preventScroll: true });
+    }
+    if (thrifty) { hop.textContent = "Load the 3D walk"; note.textContent = "Live 3D, about 3 MB (you're saving data)"; }
+    else load();
+    hop.addEventListener("click", function () { if (!frame.getAttribute("src")) { load(); return; } setActive(true); });
+    done.addEventListener("click", function () { setActive(false); });
+    addEventListener("message", function (e) {
+      if (e.origin !== location.origin || !e.data || e.data.source !== "street-smarts-walk") return;
+      if (e.data.type === "ready") box.classList.add("ready");
+      if (e.data.type === "done") setActive(false);
+    });
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(function (entries) {
+        var visible = entries[0].isIntersecting;
+        send(visible ? "resume" : "pause");
+        if (!visible && box.classList.contains("active")) setActive(false);
+      }, { threshold: 0.08 }).observe(box);
+    }
+  })();
+</script>
 </body>
 </html>

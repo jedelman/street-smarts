@@ -225,7 +225,9 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
           armA = [0.05 + Math.max(0, Math.sin(p.sway * 1.7)) * 0.5, 0.05];
         }
         Q.setFromEuler(E.set(0, p.yaw, 0));
-        M.compose(p.pos, Q, SC.setScalar(p.h));
+        // Someone walking right through the camera fills the frame: don't draw them that close.
+        const tooClose = p.pos.distanceToSquared(camPos) < 1.4 * 1.4;
+        M.compose(p.pos, Q, SC.setScalar(tooClose ? 0 : p.h));
         H0.copy(M).multiply(T.makeTranslation(0, hipsY, 0)).multiply(R.makeRotationX(lean));
         for (let k = 0; k < 2; k++) {
           A.copy(H0).multiply(T.makeTranslation(k ? 0.09 : -0.09, 0, 0)).multiply(R.makeRotationX(hipA[k])); // the hip

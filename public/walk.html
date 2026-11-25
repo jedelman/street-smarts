@@ -110,6 +110,14 @@
   #stats { position: fixed; z-index: 12; right: max(0.75rem, env(safe-area-inset-right)); top: 50%; font: 0.72rem ui-monospace, monospace; background: rgba(0,0,0,0.55); padding: 0.2rem 0.5rem; border-radius: 4px; }
   #stats[hidden] { display: none; }
 
+  /* Hero mode (?hero, embedded in the landing page): no chrome until the page hands over input. */
+  body.hero .hud, body.hero #help, body.hero #met-panel, body.hero #stats { display: none !important; }
+  body.hero:not(.active) #pad, body.hero:not(.active) #prompt, body.hero:not(.active) #hint { display: none !important; }
+  body.hero:not(.active) canvas { cursor: default; }
+  body.hero #hint { top: max(0.9rem, env(safe-area-inset-top)); }
+  body.hero #log { width: min(26rem, calc(100vw - 13rem)); }
+  body.hero #loading { background: linear-gradient(180deg, #7aa3d6 0%, #c9b8c4 45%, #f3d3ab 100%); }
+
   /* Narrow screens: the two button rows stack instead of colliding (last, so it wins). */
   @media (max-width: 640px) {
     .top-right { top: calc(max(0.75rem, env(safe-area-inset-top)) + 2.6rem); left: max(0.75rem, env(safe-area-inset-left)); right: auto; justify-content: flex-start; max-width: none; }
