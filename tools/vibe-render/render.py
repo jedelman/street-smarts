@@ -1323,8 +1323,15 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
 
     building_prov = Provenance(building_solids, canopy_records, wall_niche_records, interior_wall_solids, window_glow_records)
     for b in nbhd.get("buildings", []):
+        # The footprint (m², every part, less courtyards), so the walk can size a building's
+        # homes and desks from its floor uses (sparrow/flows.js).
+        _parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
+        area = sum(polygon_area_m2(ring_to_xy(pt["outer"], origin_lng, origin_lat))
+                   - sum(polygon_area_m2(ring_to_xy(h, origin_lng, origin_lat)) for h in pt.get("holes") or [])
+                   for pt in _parts)
         building_prov.mark(b, typology=b.get("typology"), floors=b.get("floors"),
-                           uses="".join(u[:1] for u in b.get("floor_uses") or []) or None)  # P9: "pwwll", ground floor first
+                           uses="".join(u[:1] for u in b.get("floor_uses") or []) or None,  # P9: "pwwll", ground floor first
+                           area=round(max(0.0, area)))
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
@@ -2656,7 +2663,7 @@ def export_glb(scene, out_path):
             origin = getattr(piece, "origin", None) or {}
             elements[name] = {"group": group, "kind": kind, "source": origin.get("id"),
                              "typology": origin.get("typology"), "floors": origin.get("floors"),
-                             "uses": origin.get("uses")}
+                             "uses": origin.get("uses"), "area": origin.get("area")}
             try:
                 asm.add(solid, name=name, color=cq.Color(r, g, b, solid_alpha))
             except Exception as e:

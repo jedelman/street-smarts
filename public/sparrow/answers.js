@@ -50,9 +50,10 @@ const NUMBER = ["", "one", "two", "three", "four", "five", "six", "seven", "eigh
 export function readElements(table) {
   if (!table || table.version !== 1) return [];
   const s = (i) => (i >= 0 ? table.strings[i] : null);
-  return table.elements.map(([g, k, src, typ, floors, uses], index) => ({
+  return table.elements.map(([g, k, src, typ, floors, uses, area], index) => ({
     index, group: s(g), kind: s(k), source: s(src), typology: s(typ), floors: floors ?? null,
     uses: uses == null ? null : s(uses), // P9's floor uses, ground floor first: "pwwll"
+    area: area ?? null, // the building's footprint, m² (render.py); older models don't carry it
   }));
 }
 

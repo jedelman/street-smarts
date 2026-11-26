@@ -158,7 +158,7 @@ def pack(gltf, bin_chunk, elements_by_name=None, opaque_alpha=OPAQUE_ALPHA):
         node = nodes[node_index]
         rec = element_of(node.get("name"), elements_by_name)
         e = len(elements)
-        elements.append([intern(rec.get(k)) for k in ("group", "kind", "source", "typology")] + [rec.get("floors"), intern(rec.get("uses"))])
+        elements.append([intern(rec.get(k)) for k in ("group", "kind", "source", "typology")] + [rec.get("floors"), intern(rec.get("uses")), rec.get("area")])
         rot = world[:3, :3]
         normal_m = np.linalg.inv(rot).T
         for prim in gltf["meshes"][node["mesh"]]["primitives"]:
@@ -195,7 +195,7 @@ def pack(gltf, bin_chunk, elements_by_name=None, opaque_alpha=OPAQUE_ALPHA):
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"name": "street-smarts", "children": [], "extras": {"streetSmarts": {
-            "version": 1, "fields": ["group", "kind", "source", "typology", "floors", "uses"],
+            "version": 1, "fields": ["group", "kind", "source", "typology", "floors", "uses", "area"],
             "strings": strings, "elements": elements}}}],
         "meshes": [],
         "materials": [],
@@ -404,7 +404,7 @@ def add_trees(gltf, bin_chunk, trees):
         return strings.index(s)
     base = len(table["elements"])
     for t in trees:
-        table["elements"].append([intern("trees"), intern(t["form"]), intern(t["id"]), -1, None, -1])
+        table["elements"].append([intern("trees"), intern(t["form"]), intern(t["id"]), -1, None, -1, None])
 
     def add_accessor(arr, ctype, atype, target=None, minmax=False):
         blob.extend(b"\0" * (-len(blob) % 4))
