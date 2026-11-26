@@ -36,13 +36,14 @@ export const PATTERNS = {
   166: { name: "Gallery Surround", gist: "covered walks at the upper stories" },
   171: { name: "Tree Places", gist: "trees planted to make places: avenues, squares, groves, a spreading tree" },
   172: { name: "Garden Growing Wild", gist: "the open ground grows as meadow, with no bare earth" },
+  64: { name: "Pools and Streams", gist: "the rain kept above ground, in ponds and streams you can walk beside" },
 };
 
 // The walk's businesses (shopfronts.js BUSINESSES), as nouns.
 const SHOP_NOUNS = Object.fromEntries(BUSINESSES.map((b) => [b.id, b.noun]));
 
 // P171's forms, as the tree's own kind names them.
-const TREE_NOUNS = { avenue: "tree in an avenue", square: "tree ringing a square", umbrella: "spreading tree", grove: "tree in a grove" };
+const TREE_NOUNS = { avenue: "tree in an avenue", square: "tree ringing a square", umbrella: "spreading tree", grove: "tree in a grove", cypress: "bald cypress" };
 
 const NUMBER = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 
@@ -77,9 +78,11 @@ export function patternsOf(el) {
       break;
     case "trees":
       if (has(/^p171_/)) add(171);
+      if (has(/^p64_/)) add(64);
       break;
     case "ground":
       if (has(/_p172_meadow$/)) add(172);
+      if (has(/^p64_/)) add(64);
       break;
     case "transit": // P34's track, platform and canopy
       if (has(/p34/)) add(34);
@@ -137,6 +140,9 @@ export function nounOf(el) {
     case "pocket": return "activity pocket";
     case "undecided": return "patch of undecided ground";
     case "meadow": return "meadow";
+    case "pond": return "pond";
+    case "marsh": return "marsh";
+    case "stream": return "stream";
     case "track_bed": return "light rail track, grass between the rails";
     case "rail": return "rail";
     case "platform": return "light rail platform";
@@ -248,6 +254,8 @@ export function arrivalOf(el) {
   const n = nounOf(el);
   if (el.group === "trees") return `Up in ${article(n)} ${n}.`;
   if (k === "meadow") return "Into the meadow.";
+  if (k === "marsh") return "Into the marsh, among the rushes.";
+  if (k === "pond" || k === "stream") return `Down on the ${k}'s water.`;
   if (k === "platform") return "Onto the platform.";
   if (k === "track_bed" || k === "rail") return "Onto the tracks. Mind the tram.";
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Into ${article(n)} ${n}.`;

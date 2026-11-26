@@ -251,8 +251,14 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "grows one Meadow on the site's own perimeter ring, under everything else. After every pattern that sums open space (P126 is the last of them) so none of them counts a site-sized meadow",
     },
     PatternNode {
+        id: "p64_pools_and_streams", alexander_number: Some(64),
+        requires: &["p172_garden_growing_wild"],
+        completes: &["p172_garden_growing_wild"],
+        why: "keeps the site's rain above ground: ponds where P172's meadow has room (clear of every building, street, square, common and marker), a marsh round each, bald cypress in the shallows, streams between close ponds. After P172 (the meadow is the site's extent) and before P171, which keeps its trees out of the water",
+    },
+    PatternNode {
         id: "p171_tree_places", alexander_number: Some(171),
-        requires: &["p172_garden_growing_wild", "path_network", "p61_small_public_squares"],
+        requires: &["p172_garden_growing_wild", "p64_pools_and_streams", "path_network", "p61_small_public_squares"],
         completes: &["p172_garden_growing_wild"],
         why: "plants avenues along path_network's streets, rings and spreading trees in P61's squares, and groves on P172's meadow, clear of every building and marker. Last, because trees fit the finished plan",
     },

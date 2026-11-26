@@ -53,6 +53,7 @@ pub mod p126_something_roughly_in_the_middle;
 pub mod p171_tree_places;
 pub mod p87_individually_owned_shops;
 pub mod p9_scattered_work;
+pub mod p64_pools_and_streams;
 pub mod p34_interchange;
 pub mod p172_garden_growing_wild;
 pub mod cascade_contracts;

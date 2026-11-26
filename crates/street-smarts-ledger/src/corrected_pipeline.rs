@@ -42,6 +42,7 @@ use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133Staircas
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
 use street_smarts_patterns::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
 use street_smarts_patterns::p9_scattered_work::{P9ScatteredWork, P9Params};
+use street_smarts_patterns::p64_pools_and_streams::{P64Params, P64PoolsAndStreams};
 use street_smarts_patterns::pipeline::{site_p21_params, site_p29_params, site_p96_params};
 use street_smarts_patterns::p34_interchange::{P34Interchange, P34Params};
 use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
@@ -223,6 +224,7 @@ pub fn run_corrected_pipeline_via_ledger(
     // The site's ground grows as meadow, then trees are planted on it. See
     // pipeline.rs's own steps 32-33.
     try_run(store, &P172GardenGrowingWild, "*", &P172Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P64PoolsAndStreams, "*", &P64Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P171TreePlaces, "*", &P171Params::defaults().as_map(), seed, &mut cur, &mut commits);
 
     (cur, commits)

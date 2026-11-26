@@ -812,7 +812,7 @@
       <div class="stat"><b data-n="desks">9,400</b><span>desks, on the floors P9 gives to work: offices, studios and workshops, and a lunch crowd for the shops below</span></div>
       <div class="stat"><b data-n="both">$96M</b><span>a year the homes and desks would spend in shops, if all of it stayed here: <span data-n="spend">$38M</span> from homes, <span data-n="deskSpend">$59M</span> from desks</span></div>
       <div class="stat"><b data-n="shops">740</b><span>shop fronts along <span data-n="frontageKm">4.1</span> km of street, <span data-n="p87">699</span> of them P87's own small doors</span></div>
-      <div class="stat"><b data-n="trees">2,229</b><span>trees, and a meadow on the open ground. No parking lots.</span></div>
+      <div class="stat"><b data-n="trees">2,023</b><span>trees, <span data-n="cypress">137</span> of them bald cypress, in a meadow with <span data-n="ponds">8</span> ponds and <span data-n="wetlandHa">3.1</span> hectares of wetland, the rain kept above ground (P64 Pools and Streams). No parking lots.</span></div>
     </div>
 
     <h3>How many ground floors can the people upstairs carry?</h3>
@@ -882,6 +882,7 @@
         <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment (BLS, 2023, middle income fifth where published).</li>
         <li><b>Live, work, play:</b> each floor's use is P9 Scattered Work's, from the pipeline: ground floors with shop doors are play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest), ground floors without them are workshops, and upper floors are homes with work added a floor at a time until it reaches 30% of the floor area, a share inside the report's band. The report's shares are of real estate inventory by square footage. Its optimal mix, found by a random-forest model balancing place-based GDP and value per square foot, averages 42.0% work (90% band 23.8&ndash;61.7%), 31.8% living (22.8&ndash;46.6%) and 26.2% play (17.0&ndash;31.0%); downtowns are 69.7% work, 15.9% living and 14.5% play. It sets aside suburban WalkUPs, &ldquo;redevelopment of edge cities&rdquo; among them, which is what this site would be. The grocery threshold is from the same report.</li>
         <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for shops (strip retail, $205&ndash;290), $298 for homes (multifamily, $220&ndash;375) and $318 for work (secondary offices, $265&ndash;370). Assessments needn't match cost; land isn't counted.</li>
+        <li><b>Water:</b> P64 Pools and Streams puts ponds where the open ground has room, each in a ring of marsh, bald cypress in the shallows, and streams along the fewest links that join them. There was no natural pond to keep (the site was a mall and its parking), so this is a stormwater wetland: the pattern's own call to keep rainwater above ground. No grading, depth or drainage is modeled; the site's levels aren't in the data.</li>
         <li><b>Heights:</b> El Born's, not Alexander's: the pipeline caps ordinary buildings at six floors (P21's own default is four, and the P21 opinion marks the plan down for it), with a few widely spaced exceptions at eight.</li>
         <li><b>Not modeled:</b> visitors, competition from nearby stores, office attendance below five days a week, the site's own streets, utilities and landscaping, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
         <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres. The city's site page and its 2020 announcement of the RFQ say about 74 for the mall, its parking and outparcels. The RFQ itself says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
@@ -975,7 +976,7 @@
       <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>The whole Military Circle site (<code>MILITARY_CIRCLE_ASSEMBLED</code>: 25 Norfolk City GIS parcels, no existing entitlements), run through the pipeline in this order, which is written from <code>language_graph::LANGUAGE</code> on every deploy so it can't drift: <!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P9 → P161 → P126 → P172 → P171<!-- PIPELINE_CHAIN:END -->. Checked against satellite imagery (<code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code>). The grey massing around it is today's neighbors, from Overture Maps (OpenStreetMap and Microsoft ML Buildings, ODbL-1.0).</p>
+        <p>The whole Military Circle site (<code>MILITARY_CIRCLE_ASSEMBLED</code>: 25 Norfolk City GIS parcels, no existing entitlements), run through the pipeline in this order, which is written from <code>language_graph::LANGUAGE</code> on every deploy so it can't drift: <!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P9 → P161 → P126 → P172 → P64 → P171<!-- PIPELINE_CHAIN:END -->. Checked against satellite imagery (<code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code>). The grey massing around it is today's neighbors, from Overture Maps (OpenStreetMap and Microsoft ML Buildings, ODbL-1.0).</p>
         <div class="svg-grid">
           <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
@@ -1272,6 +1273,8 @@
         supported: num(Math.round(supported / 10) * 10), outside: num(Math.round(outside / 10) * 10),
         gap: money(Math.round(gap / 1e7) * 1e7), granbyX: (gap / A.granby).toFixed(1),
         stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
+        cypress: n.cypress == null ? "no" : num(n.cypress), ponds: n.ponds == null ? "no" : num(n.ponds),
+        wetlandHa: n.water_m2 == null ? "no" : ((n.water_m2 + n.marsh_m2) / 10000).toFixed(1),
         bankNet: "$" + Math.round(rentPsf(A.capital.bank) - A.runPsf), publicNet: "$" + Math.round(rentPsf(A.capital.public) - A.runPsf),
         devNet: "$" + Math.round(rentPsf(A.capital.developer) - A.runPsf),
         landPsf: "$" + Math.round(landPsf(floorSf)), tdcPsf: "$" + Math.round(costPsf / 5) * 5,
@@ -1356,7 +1359,7 @@
     }
     ["stack-free", "stack-city"].forEach(function (id) { document.getElementById(id).addEventListener("input", renderStack); });
     // Measured 2026-11-26, until the live figures arrive.
-    n = { floor_area_m2: 441725, upper_floor_area_m2: 371175, live_m2: 237885, work_m2: 133290, play_m2: 70550, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082, trees: 2229, station_path_m: 133 };
+    n = { floor_area_m2: 441725, upper_floor_area_m2: 371175, live_m2: 237885, work_m2: 133290, play_m2: 70550, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082, trees: 2023, cypress: 137, ponds: 8, water_m2: 12558, marsh_m2: 18197, station_path_m: 133 };
     fill();
     fetch("/vibe-render/clean_baseline_numbers.json").then(function (r) { return r.ok ? r.json() : null; })
       .then(function (m) { if (m && m.version === 1) { n = m; fill(); } }).catch(function () {});

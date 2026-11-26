@@ -109,6 +109,10 @@ PLATFORM_HEIGHT_M = 0.35  # a low-floor light rail platform (plausible, not HRT'
 CANOPY_HEIGHT_M = 3.4
 MEADOW_TOP_M = -0.02  # P172's meadow lies just below grade: it is the ground
 MEADOW_THICKNESS_M = 0.08  # everything else stands on, and shows only where nothing does
+# P64's wetland sits on the meadow: the marsh at grade, open water a little
+# above it (so neither fights the meadow for the same depth), all under the
+# streets (0.3 m) a stream passes beneath.
+GROUND_TOP_M = {"meadow": MEADOW_TOP_M, "marsh": 0.0, "pond": 0.03, "stream": 0.03}
 DOOR_KINDS = ("door", "shop_door")  # a building's own door, and a P87 shop's (OpeningKind::ShopDoor)
 FLOOR_TO_FLOOR_M = 3.5  # must match p221_natural_doors_and_windows's own default
 OPENING_DECAL_OFFSET_M = 0.03  # how far a window/door decal sits proud of
@@ -1600,7 +1604,8 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         for part in parts:
             solid = extrude_polygon(part["outer"], part.get("holes", []), MEADOW_THICKNESS_M, origin_lng, origin_lat)
             if solid is not None:
-                ground_solids.append((solid.translate((0, 0, MEADOW_TOP_M - MEADOW_THICKNESS_M)), g.get("kind") or "meadow"))
+                kind = g.get("kind") or "meadow"
+                ground_solids.append((solid.translate((0, 0, GROUND_TOP_M.get(kind, MEADOW_TOP_M) - MEADOW_THICKNESS_M)), kind))
     ground_prov.close()
 
     # Transit (P34 Interchange) -- a green track bed with two rails along each
@@ -1838,6 +1843,9 @@ COLORS = {
     "platform": "#cfc8b8",
     "platform_canopy": "#2f4a52",
     "platform_post": "#2f4a52",
+    "pond": "#3d6d76",  # P64: open water, a dark teal under the sky
+    "stream": "#46798a",
+    "marsh": "#7c8148",  # P64: rushes and sedges, olive against the meadow
     "meadow": "#8ea85f",  # P172: grasses and flowers, a warmer, yellower green
     # than "common" (mown shared lawn) and the tree crowns above it.
     "local": "#6b6259",

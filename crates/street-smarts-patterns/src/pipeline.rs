@@ -309,6 +309,11 @@
 //!      everything else ("without bare earth"). After P126 so no stage
 //!      that sums open space ever sees it. See p172_garden_growing_wild's
 //!      own module doc.
+//!   32a. P64 Pools and Streams (once, site-scale): ponds where the
+//!      meadow has room, clear of every building, street, square, common
+//!      and marker, a marsh round each, bald cypress in the shallows, and
+//!      streams along a spanning tree of the ponds. Before P171, which keeps
+//!      its trees out of the water. See p64_pools_and_streams's module doc.
 //!   33. P171 Tree Places (once, site-scale): avenues along the streets,
 //!      one spreading tree toward each square's middle, a ring inside
 //!      each square, and groves with clearings on the rest of the meadow,
@@ -343,6 +348,7 @@ use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRough
 use crate::p171_tree_places::{P171Params, P171TreePlaces};
 use crate::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
 use crate::p9_scattered_work::{P9ScatteredWork, P9Params};
+use crate::p64_pools_and_streams::{P64Params, P64PoolsAndStreams};
 use crate::p34_interchange::{P34Interchange, P34Params};
 use crate::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
@@ -858,6 +864,12 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub172) = P172GardenGrowingWild.apply(&nbhd, "*", &P172Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub172);
         trace.push(P172GardenGrowingWild.name());
+    }
+    // P64 Pools and Streams: ponds, marsh and bald cypress where the meadow
+    // has room, before P171 plants around them. See p64_pools_and_streams.
+    if let Ok(sub64) = P64PoolsAndStreams.apply(&nbhd, "*", &P64Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub64);
+        trace.push(P64PoolsAndStreams.name());
     }
     if let Ok(sub171) = P171TreePlaces.apply(&nbhd, "*", &P171Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub171);

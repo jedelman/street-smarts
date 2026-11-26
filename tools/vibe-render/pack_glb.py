@@ -295,7 +295,10 @@ TREE_CROWN_COLORS = {  # sRGB; P171's forms, a shade apart so a square's ring re
     "avenue": "#4d7d3e",
     "square": "#5b8c43",
     "umbrella": "#35602e",
+    "cypress": "#a3562b",  # P64's bald cypress, russet: it turns before it drops its needles, as in late November
 }
+# Bald cypress stands tall and narrow, on a trunk that flares at the water.
+CYPRESS_CROWN = (0.72, 1.75)  # crown width and height, in crown radii
 TREE_TRUNK_COLOR = "#5b4433"
 CROWN_SQUASH = 0.9  # crown height over crown width
 TRUNK_BASE_Y = -0.05  # just below the meadow's top, so every trunk meets the ground
@@ -374,10 +377,11 @@ def tree_instances(trees):
     out["rot"] = np.zeros((n, 4), np.float32)
     for i, t in enumerate(trees):
         r, h = t["crown_radius_m"], t["height_m"]
-        cy = h - CROWN_SQUASH * r
+        wide, tall = CYPRESS_CROWN if t["form"] == "cypress" else (1.0, CROWN_SQUASH)
+        cy = h - tall * r
         out["crown_t"][i] = (t["x"], cy, -t["y"])
-        out["crown_s"][i] = (r, CROWN_SQUASH * r, r)
-        tw = 0.14 + 0.05 * r
+        out["crown_s"][i] = (wide * r, tall * r, wide * r)
+        tw = (0.24 + 0.06 * r) if t["form"] == "cypress" else (0.14 + 0.05 * r)
         out["trunk_t"][i] = (t["x"], TRUNK_BASE_Y, -t["y"])
         out["trunk_s"][i] = (tw, cy - TRUNK_BASE_Y, tw)
         yaw = 2 * np.pi * _hash01(t["id"], "yaw")
