@@ -541,7 +541,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 
@@ -593,7 +593,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
         let n = nbhd(vec![b], vec![]);
         let err = P192WindowsOverlookingLife
@@ -653,7 +653,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
 
         // Street at y=10, about 10m north. This is within 25m, so it provides "life".
@@ -706,7 +706,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
 
         let b3 = Building {
@@ -729,7 +729,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
 
         // Street far away.

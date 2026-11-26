@@ -477,7 +477,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 
@@ -512,7 +512,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 
@@ -562,7 +562,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
         let n = nbhd(vec![distant_building], vec![local_street(0.0)]);
         let err = P164StreetWindows

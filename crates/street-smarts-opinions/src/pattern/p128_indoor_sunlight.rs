@@ -294,7 +294,7 @@ mod tests {
             }],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     fn win(ring_index: usize, t: f64) -> Opening {

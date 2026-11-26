@@ -887,7 +887,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     fn courtyard_building(id: &str, outer_side_m: f64, hole_side_m: f64, height_m: f64) -> Building {
@@ -915,7 +915,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     #[test]

@@ -845,7 +845,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     #[test]
@@ -959,7 +959,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b], vec![]);
         let sub = P127IntimacyGradient
             .apply(&n, "*", &P127Params::defaults(), 1)
@@ -1087,7 +1087,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b], vec![]);
         let sub = P127IntimacyGradient
             .apply(&n, "*", &P127Params::defaults(), 1)
@@ -1160,7 +1160,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b], vec![]);
         let sub = P127IntimacyGradient.apply(&n, "*", &P127Params::defaults(), 1).unwrap();
         assert!(!sub.new_buildings[0].interior_cells.is_empty());

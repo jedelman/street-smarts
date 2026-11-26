@@ -244,7 +244,7 @@ mod tests {
                 t: door_t, width_m: door_width_m, sill_height_m: 0.0, head_height_m: 2.1, floor: 0,
             }],
             interior_cells: vec![], wall_thickness_m: Some(0.3), roof: None,
-            roof_segments: vec![], canopies: vec![], wall_niches: vec![],
+            roof_segments: vec![], canopies: vec![], wall_niches: vec![], floor_uses: vec![],
         }
     }
 
@@ -274,7 +274,7 @@ mod tests {
             ]),
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None, floors: Some(1),
             openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None,
-            roof_segments: vec![], canopies: vec![], wall_niches: vec![],
+            roof_segments: vec![], canopies: vec![], wall_niches: vec![], floor_uses: vec![],
         };
         let n = nbhd(vec![b]);
         assert!(P160BuildingEdge.apply(&n, "*", &P160Params::defaults(), 0).is_err());

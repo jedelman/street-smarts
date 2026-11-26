@@ -67,7 +67,7 @@ impl Opinion for P32ShoppingStreet {
                 runtime_ms: timer.elapsed_ms(),
             };
         }
-        let commercial_parcels: Vec<_> = n.parcels.iter().filter(|p| p.use_category.as_deref() == Some("commercial")).collect();
+        let commercial_parcels: Vec<_> = { let uses = crate::uses::Uses::of(n); n.parcels.iter().filter(|p| uses.is_commercial(p)).collect() };
         if commercial_parcels.is_empty() {
             return OpinionOutput::NoView {
                 reason: "No commercial-use parcels to check shopping-street frontage against yet.".into(),

@@ -62,8 +62,9 @@ impl Opinion for P46MarketOfManyShops {
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
 
+        let uses = crate::uses::Uses::of(n);
         let small_commercial: Vec<_> = n.parcels.iter()
-            .filter(|p| p.use_category.as_deref() == Some("commercial") && p.polygon.area_m2() <= MAX_SHOP_AREA_M2)
+            .filter(|p| uses.is_commercial(p) && p.polygon.area_m2() <= MAX_SHOP_AREA_M2)
             .collect();
         if small_commercial.is_empty() {
             return OpinionOutput::NoView {

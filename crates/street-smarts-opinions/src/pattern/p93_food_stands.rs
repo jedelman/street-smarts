@@ -79,7 +79,7 @@ impl Opinion for P93FoodStands {
                 runtime_ms: timer.elapsed_ms(),
             };
         }
-        let commercial: Vec<_> = n.parcels.iter().filter(|p| p.use_category.as_deref() == Some("commercial")).collect();
+        let commercial: Vec<_> = { let uses = crate::uses::Uses::of(n); n.parcels.iter().filter(|p| uses.is_commercial(p)).collect() };
         if commercial.is_empty() {
             return OpinionOutput::NoView {
                 reason: "No commercial-use parcels to check food-stand concentration against yet.".into(),

@@ -22,6 +22,7 @@ pub mod geometric;
 pub mod activist;
 pub mod pattern;
 pub mod registry;
+pub mod uses;
 #[cfg(feature = "vlm")]
 pub mod vlm;
 

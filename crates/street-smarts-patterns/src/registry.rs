@@ -20,6 +20,7 @@ use crate::p124_activity_pockets::P124ActivityPockets;
 use crate::p126_something_roughly_in_the_middle::P126SomethingRoughlyInTheMiddle;
 use crate::p171_tree_places::P171TreePlaces;
 use crate::p87_individually_owned_shops::P87IndividuallyOwnedShops;
+use crate::p9_scattered_work::P9ScatteredWork;
 use crate::p34_interchange::P34Interchange;
 use crate::p172_garden_growing_wild::P172GardenGrowingWild;
 use crate::p116_cascade_of_roofs::P116CascadeOfRoofs;
@@ -145,6 +146,7 @@ pub fn all_operators_v01() -> Vec<Box<dyn DynOperator>> {
         Box::new(P160BuildingEdge),
         Box::new(P34Interchange),
         Box::new(P87IndividuallyOwnedShops),
+        Box::new(P9ScatteredWork),
         Box::new(P161SunnyPlace),
         Box::new(P126SomethingRoughlyInTheMiddle),
         Box::new(P172GardenGrowingWild),

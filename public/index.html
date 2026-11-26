@@ -806,7 +806,7 @@
     <p class="adds-lede">The plan's own measurements, taken on every deploy, run through a few stated assumptions. A sense of scale, not a pro forma.</p>
     <div class="stats">
       <div class="stat"><b data-n="floorSf">3.2M</b><span>square feet of floor space, about <span data-n="mallX">3.5</span>&times; the old mall's 935,000 (54% occupied in 2020)</span></div>
-      <div class="stat"><b data-n="homes">2,300</b><span>homes, if the upper floors are housing: about <span data-n="people">5,300</span> people. All of downtown Norfolk had 4,691 in 2023.</span></div>
+      <div class="stat"><b data-n="homes">2,300</b><span>homes, on the floors P9 Scattered Work gives to living: about <span data-n="people">5,300</span> people. All of downtown Norfolk had 4,691 in 2023.</span></div>
       <div class="stat"><b data-n="shops">740</b><span>shop fronts along <span data-n="frontageKm">4.1</span> km of street, <span data-n="p87">699</span> of them P87's own small doors</span></div>
       <div class="stat"><b data-n="trees">2,229</b><span>trees, and a meadow on the open ground. No parking lots.</span></div>
     </div>
@@ -833,9 +833,10 @@
     <div class="bars" id="adds-bars" aria-hidden="true"></div>
 
     <h3>Against the doom loop</h3>
-    <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that do best mix living, working and playing; downtowns lost value because they were mostly work. Their best mix, by floor area, averages 42% work (anywhere from 24% to 62% can work), 31% living and 26% play. And WalkUPs, they write, are not &ldquo;bedroom communities, where residential tends to be between 80% to 90% of all inventory.&rdquo; This plan is 77% living:</p>
+    <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that do best mix living, working and playing; downtowns lost value because they were mostly work. Their best mix, by floor area, averages 42% work (anywhere from 24% to 62% can work), 32% living and 26% play. And WalkUPs, they write, are not &ldquo;bedroom communities, where residential tends to be between 80% to 90% of all inventory.&rdquo;</p>
+    <p>With homes over shops and nothing else, this plan was 77% living. Now Alexander's P9 Scattered Work gives every floor a use and scatters work through the homes, a floor at a time across every building: &ldquo;Prohibit large concentrations of work without family life around them. Prohibit large concentrations of family life without workplaces around them.&rdquo; It comes to <b data-n="liveP">54</b>% living, <b data-n="workP">30</b>% work and <b data-n="playP">16</b>% play:</p>
     <div class="mix" id="adds-mix" aria-hidden="true"></div>
-    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Unless some of those upper floors become offices, studios and workshops, the plan trades one monoculture for another, with shops that wait all day for people to come home. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station. Some of what the people here need takes more of them, too: a walkable grocery store wants 5,000 to 10,000 homes nearby before it opens, and the plan has about <span data-n="homes">2,300</span>.</p>
+    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Homes over shops alone would have traded it for another monoculture, with shops waiting all day for people to come home. Work on every block changes that: offices, studios and workshops bring a lunch crowd, and could keep the site busy at both ends of the day. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station. Some of what the people here need takes more of them, too: a walkable grocery store wants 5,000 to 10,000 homes nearby before it opens, and the plan has about <span data-n="homes">2,300</span>.</p>
     <p>Their other levers, and what each looks like held in common. More homes for sale, not just for rent: here, limited-equity co-ops and land-trust homes, which keep the gains with the people who live there. Place management, which they mean as business improvement districts: here, the neighborhood running its own streets and squares. Faster permits and incentives for reuse: the city's call. And the tax base: at Norfolk's rate, the plan's buildings would pay about <b data-n="taxM">$11M</b> a year in real estate tax if assessed at what they cost to build, before counting the land.</p>
 
     <h3>The light rail</h3>
@@ -845,13 +846,14 @@
       <summary>How the numbers are built</summary>
       <ul>
         <li><b>Measured from the plan</b> on every deploy (<code>tools/vibe-render/plan_numbers.py</code>): floor area is each building's footprint times its floors; upper floors are that minus the ground floor; shop fronts are the ones the render opens at street-facing doors.</li>
-        <li><b>Homes:</b> upper floors &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). The pipeline assigns no uses; every floor of offices means fewer homes and a bigger lunch crowd. <b>People:</b> 2.27 a household, Norfolk's average.</li>
+        <li><b>Homes:</b> the floors given to living &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). Every floor of offices means fewer homes and a bigger lunch crowd. <b>People:</b> 2.27 a household, Norfolk's average.</li>
         <li><b>Ground floors per resident:</b> Paris, 60,846 ground-floor shops, bars, restaurants and services, 28 per 1,000 residents (Apur's 2023 census); Barcelona, 61,875 ground-floor businesses, 3.7 per 100 (2024), of which 21,167 are shops and 33,740 services; its residents (about 1.67 million) are implied by those two figures. City-wide figures, with visitors' and commuters' spending in them, so a ceiling for what residents alone carry; Barcelona's census credits its density to &ldquo;urban compactness and the large number of visitors.&rdquo;</li>
         <li><b>Rent at cost:</b> the middle of RLB's $205&ndash;290 hard cost for strip retail in Charlotte (Q3 2026; no land, design or financing fees, so low), paid off as a loan, plus $10.33 a square foot a year to run (IREM's 2024 national figure for offices, taxes included; no public retail figure). A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.85%, over 30 years (our term); already paid for is running costs only.</li>
         <li><b>A shop's break-even:</b> rent for 900 sq ft plus Norfolk's living wage for one adult ($47,273, MIT) divided by a 31.1% gross margin, the average for all US retail in 2022 (Census). Margins run from 28% at grocers and 31% at wine shops to 45% at book and hobby stores and 51% at clothing stores. Cafés and restaurants keep about 68% after food and drink, but pay staff: this doesn't model them.</li>
         <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment (BLS, 2023, middle income fifth where published).</li>
-        <li><b>Live, work, play:</b> the plan's upper floors counted as living and its ground floors as play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest). The report's shares are of real estate inventory by square footage. Its optimal mix, found by a random-forest model balancing place-based GDP and value per square foot, averages 42.0% work (90% band 23.8&ndash;61.7%), 31.8% living (22.8&ndash;46.6%) and 26.2% play (17.0&ndash;31.0%); downtowns are 69.7% work, 15.9% living and 14.5% play. It sets aside suburban WalkUPs, &ldquo;redevelopment of edge cities&rdquo; among them, which is what this site would be. The grocery threshold is from the same report.</li>
-        <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for the ground floors (strip retail, $205&ndash;290) and $298 for the upper floors (multifamily, $220&ndash;375). Assessments needn't match cost; land isn't counted.</li>
+        <li><b>Live, work, play:</b> each floor's use is P9 Scattered Work's, from the pipeline: ground floors with shop doors are play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest), ground floors without them are workshops, and upper floors are homes with work added a floor at a time until it reaches 30% of the floor area, a share inside the report's band. The report's shares are of real estate inventory by square footage. Its optimal mix, found by a random-forest model balancing place-based GDP and value per square foot, averages 42.0% work (90% band 23.8&ndash;61.7%), 31.8% living (22.8&ndash;46.6%) and 26.2% play (17.0&ndash;31.0%); downtowns are 69.7% work, 15.9% living and 14.5% play. It sets aside suburban WalkUPs, &ldquo;redevelopment of edge cities&rdquo; among them, which is what this site would be. The grocery threshold is from the same report.</li>
+        <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for shops (strip retail, $205&ndash;290), $298 for homes (multifamily, $220&ndash;375) and $318 for work (secondary offices, $265&ndash;370). Assessments needn't match cost; land isn't counted.</li>
+        <li><b>Heights:</b> El Born's, not Alexander's: the pipeline caps ordinary buildings at six floors (P21's own default is four, and the P21 opinion marks the plan down for it), with a few widely spaced exceptions at eight.</li>
         <li><b>Not modeled:</b> jobs, what office workers would spend nearby, visitors, competition from nearby stores, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
         <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres, the city's RFQ says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
       </ul>
@@ -909,7 +911,7 @@
       <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>The whole Military Circle site (<code>MILITARY_CIRCLE_ASSEMBLED</code>: 25 Norfolk City GIS parcels, no existing entitlements), run through the pipeline in this order, which is written from <code>language_graph::LANGUAGE</code> on every deploy so it can't drift: <!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P161 → P126 → P172 → P171<!-- PIPELINE_CHAIN:END -->. Checked against satellite imagery (<code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code>). The grey massing around it is today's neighbors, from Overture Maps (OpenStreetMap and Microsoft ML Buildings, ODbL-1.0).</p>
+        <p>The whole Military Circle site (<code>MILITARY_CIRCLE_ASSEMBLED</code>: 25 Norfolk City GIS parcels, no existing entitlements), run through the pipeline in this order, which is written from <code>language_graph::LANGUAGE</code> on every deploy so it can't drift: <!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P9 → P161 → P126 → P172 → P171<!-- PIPELINE_CHAIN:END -->. Checked against satellite imagery (<code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code>). The grey massing around it is today's neighbors, from Overture Maps (OpenStreetMap and Microsoft ML Buildings, ODbL-1.0).</p>
         <div class="svg-grid">
           <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
@@ -1136,6 +1138,7 @@
       bcnShops: 21167, bcnServices: 33740, bcnAll: 61875,                  // Barcelona 2024 commercial census
       buildPsf: (205 + 290) / 2, runPsf: 10.33,                            // RLB Q3 2026 (Charlotte strip retail, hard); IREM 2024
       homesBuildPsf: (220 + 375) / 2, taxRate: 1.23 / 100,                 // RLB Q3 2026 (Charlotte multifamily, hard); City of Norfolk
+      officeBuildPsf: (265 + 370) / 2,                                     // RLB Q3 2026 (Charlotte secondary offices, hard)
       walkup: [31.8, 42.0, 26.2], downtown: [15.9, 69.7, 14.5],            // C&W / Places Platform, Reimagining Cities, p. 75 and summary
       shopSf: 900, livingWage: 47273, margin: 0.311,                       // ours; MIT; Census ARTS 2022
       granby: 55e6,                                                        // Downtown Norfolk Council, FY2023
@@ -1164,7 +1167,8 @@
     function fill() {
       var c = A.capital[cap];
       var floorSf = n.floor_area_m2 * SF, upperSf = n.upper_floor_area_m2 * SF;
-      var homes = upperSf * A.usable / A.homeSf, people = homes * A.perHome;
+      var liveSf = (n.live_m2 != null ? n.live_m2 : n.upper_floor_area_m2) * SF, workSf = (n.work_m2 || 0) * SF, playSf = floorSf - liveSf - workSf;
+      var homes = liveSf * A.usable / A.homeSf, people = homes * A.perHome;
       var lo = people * A.paris / 1000, hi = people * A.barcelona / 1000;
       var be = breakEven(c), spend = homes * A.spendPerHome;
       var supported = Math.min(n.shop_fronts, spend / be), outside = n.shop_fronts - supported, gap = outside * be;
@@ -1178,7 +1182,8 @@
         gap: money(Math.round(gap / 1e7) * 1e7), granbyX: (gap / A.granby).toFixed(1),
         stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
         bankNet: "$" + Math.round(rentPsf(A.capital.bank) - A.runPsf), publicNet: "$" + Math.round(rentPsf(A.capital.public) - A.runPsf),
-        taxM: money(((floorSf - upperSf) * A.buildPsf + upperSf * A.homesBuildPsf) * A.taxRate),
+        taxM: money((playSf * A.buildPsf + liveSf * A.homesBuildPsf + workSf * A.officeBuildPsf) * A.taxRate),
+        liveP: num(liveSf / floorSf * 100), workP: num(workSf / floorSf * 100), playP: num(playSf / floorSf * 100),
         bcnShops: num(Math.round(people * A.bcnShops / (A.bcnAll / 0.037) / 10) * 10),
         bcnServices: num(Math.round(people * A.bcnServices / (A.bcnAll / 0.037) / 10) * 10),
         frontShare: num(Math.min(100, n.shop_fronts * A.shopSf / (floorSf - upperSf) * 100)),
@@ -1200,13 +1205,13 @@
         ["Granby sub-district, downtown", "all its retail sales, FY2023", A.granby, money(A.granby), false],
       ]);
       document.querySelectorAll("#adds-up .capital button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.cap === cap)); });
-      var live = upperSf / floorSf * 100, play = 100 - live;
+      var live = liveSf / floorSf * 100, work = workSf / floorSf * 100, play = playSf / floorSf * 100;
       var stack = function (l, w, p) {
         var seg = function (cls, x) { return x > 0 ? '<span class="' + cls + '" style="width:' + x + '%">' + (x >= 9 ? Math.round(x) + "%" : "") + "</span>" : ""; };
         return '<div class="stack">' + seg("live", l) + seg("work", w) + seg("play", p) + "</div>";
       };
       document.getElementById("adds-mix").innerHTML =
-        '<div class="row"><div>This plan<small>upper floors as homes</small></div>' + stack(live, 0, play) + "</div>" +
+        '<div class="row"><div>This plan<small>with P9 Scattered Work</small></div>' + stack(live, work, play) + "</div>" +
         '<div class="row"><div>Their best mix<small>Cushman &amp; Wakefield, mean</small></div>' + stack(A.walkup[0], A.walkup[1], A.walkup[2]) + "</div>" +
         '<div class="row"><div>Downtowns in their study</div>' + stack(A.downtown[0], A.downtown[1], A.downtown[2]) + "</div>" +
         '<div class="key"><i class="live"></i>live<i class="work"></i>work<i class="play"></i>play</div>';

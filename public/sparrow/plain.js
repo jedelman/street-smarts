@@ -30,8 +30,12 @@ const PLAIN = {
   // ---- Alexander's patterns
   p95_building_complex: ({ m }) => `The buildings come in ${m(/(\d+) P95 complexes/)[1]} clusters instead of lone towers. Some hang together better than others.`,
   p106_positive_outdoor_space: ({ n }) => `All ${n("n_open_space")} outdoor spaces here are proper shapes, not scraps left over between buildings.`,
-  p21_four_story_limit: ({ n, m }) =>
-    `Almost everything's four stories or less, ${m(/(\d+)% of floor area/)[1]}% of the floor space, and the ${n("n_exceptions_over_4_stories")} taller ones keep their distance from each other.`,
+  p21_four_story_limit: ({ n, m }) => {
+    const low = +m(/(\d+)% of floor area/)[1];
+    return low >= 50
+      ? `Almost everything's four stories or less, ${low}% of the floor space, and the ${n("n_exceptions_over_4_stories")} taller ones keep their distance from each other.`
+      : `Alexander said four stories, tops. All ${n("n_exceptions_over_4_stories")} buildings here go over. The tall ones at least keep their distance, ${m(/(\d+)% of exception pairs/)[1]}% of them ${m(/>= (\d+)m apart/)[1]} metres apart.`;
+  },
   p127_intimacy_gradient: ({ n, m }) =>
     `Of ${n("n_doors_evaluated")} front doors, only ${m(/(\d+)% open into/)[1]}% open into the most public room. The rest walk you straight into the private bits.`,
   p128_indoor_sunlight: ({ n }) => `Only ${n("n_south_lit")} of the ${n("n_buildings_evaluated")} buildings let the sun into their common room through a south window.`,
@@ -103,13 +107,28 @@ const PLAIN = {
   p37_house_cluster: () => `Do the houses cluster? Can't tell. The blocks they'd cluster in got merged away.`,
   p28_eccentric_nucleus: () => `Where's the middle of it all? Can't say. There are no blocks left to measure.`,
   p67_common_land: () => `Does each cluster get its own common land? No blocks left to check.`,
-  p32_shopping_street: () => `A good shopping street? Nobody's marked any of the land for shops, so who knows.`,
-  p46_market_of_many_shops: () => `A market of little shops? Nobody's marked any land for business yet.`,
-  p89_corner_grocery: () => `A corner shop nearby? Nothing's marked for business, so I can't say.`,
-  p33_night_life: () => `Night life? Nothing's marked for business yet.`,
-  p88_street_cafe: () => `Street cafés? Nobody's marked any land for business, so I couldn't tell you.`,
-  p93_food_stands: () => `Food stands? Nothing's marked for business yet.`,
-  p48_housing_in_between: () => `Housing mixed in with everything else? Nobody's marked anywhere as housing yet.`,
+  // These seven abstained until P9 Scattered Work gave floors their uses; each keeps its shrug for a plan without them.
+  p32_shopping_street: ({ value, n, m }) => value == null
+    ? `A good shopping street? Nobody's marked any of the land for shops, so who knows.`
+    : `${m(/(\d+)% have real commercial frontage/)[1]}% of the ${n("n_pedestrian_streets")} pedestrian streets have shops along them${m(/(\d+)% keep parking off/)[1] === "100" ? ", and not one has parking out front" : ""}.`,
+  p46_market_of_many_shops: ({ value, n, m }) => value == null
+    ? `A market of little shops? Nobody's marked any land for business yet.`
+    : `The little shop buildings are too spread out to make a market. ${m(/; (\d+)% belong to/)[1] === "0" ? "None" : m(/; (\d+)% belong to/)[1] + "%"} of the ${n("n_small_commercial_parcels")} sit in a cluster of ${n("min_cluster_size")}.`,
+  p89_corner_grocery: ({ value, m }) => value == null
+    ? `A corner shop nearby? Nothing's marked for business, so I can't say.`
+    : `Hardly any of the shops sit on a corner, ${m(/(\d+)% sit at a real corner/)[1]}%. But ${m(/(\d+)% have a real second floor/)[1] === "100" ? "every one" : m(/(\d+)% have a real second floor/)[1] + "%"} has a floor above to live over the shop.`,
+  p33_night_life: ({ value, n }) => value == null
+    ? `Night life? Nothing's marked for business yet.`
+    : `${n("n_clustered")} of the ${n("n_commercial_parcels")} shop buildings are close enough together to make a night of it.`,
+  p88_street_cafe: ({ value, m }) => value == null
+    ? `Street cafés? Nobody's marked any land for business, so I couldn't tell you.`
+    : `Only ${m(/(\d+)% sit within/)[1]}% of the shop buildings are on a local or pedestrian street, where a café could spill out onto the pavement.`,
+  p93_food_stands: ({ value, n }) => value == null
+    ? `Food stands? Nothing's marked for business yet.`
+    : `Only ${n("n_with_commercial_nearby")} of the ${n("n_intersections")} crossroads has shops near it. Not much for a food stand to work with.`,
+  p48_housing_in_between: ({ value, n }) => value == null
+    ? `Housing mixed in with everything else? Nobody's marked anywhere as housing yet.`
+    : `Every one of the ${n("n_residential_parcels")} buildings with homes has shops or work right there. That's housing in between.`,
   p123_pedestrian_density: () => `How crowded is it? No idea. Nobody's counting people.`,
   p147_communal_eating: () => `Do people eat together here? You can't see that in a floor plan.`,
   p198_closets_between_rooms: () => `Closets? This place doesn't even have a word for closets.`,

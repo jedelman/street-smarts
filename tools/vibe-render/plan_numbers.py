@@ -4,6 +4,7 @@
 Reads the pipeline's own output (the neighborhood JSON) and the packed GLB
 it was rendered into (for the shop fronts render.py found), and writes a
 small JSON of plain measurements: buildings, floor area, upper-floor area,
+floor area by use (P9 Scattered Work's live / work / play),
 shop fronts and their frontage, trees, open space, the light rail's station.
 No assumptions live here. The landing page's rough economics (homes per
 square foot, spending per household, sales per square foot) are stated and
@@ -52,12 +53,17 @@ def main(nbhd_path, glb_path):
 
     footprint = floor_area = 0.0
     floors = []
+    by_use = {"live": 0.0, "work": 0.0, "play": 0.0}
     for b in n["buildings"]:
         a = polygon_area_m2(b["polygon"])
         f = int(b.get("floors") or 1)
         footprint += a
         floor_area += a * f
         floors.append(f)
+        # P9's floor uses; without them, the old reading: shops at street level, homes above.
+        uses = b.get("floor_uses") or (["play"] + ["live"] * (f - 1))
+        for u in uses:
+            by_use[u] = by_use.get(u, 0.0) + a
     widths = [row[2] - row[1] for row in shops]  # hi - lo, metres along the wall
     open_space = sum(polygon_area_m2(o["polygon"]) for o in n.get("open_space") or [])
     link = next((s for s in n.get("streets") or [] if s["id"].endswith("_p34_link")), None)
@@ -71,6 +77,10 @@ def main(nbhd_path, glb_path):
         "footprint_m2": round(footprint),
         "floor_area_m2": round(floor_area),
         "upper_floor_area_m2": round(floor_area - footprint),
+        "live_m2": round(by_use["live"]),
+        "work_m2": round(by_use["work"]),
+        "play_m2": round(by_use["play"]),
+        "uses_assigned": any(b.get("floor_uses") for b in n["buildings"]),
         "shop_fronts": len(shops),
         "p87_shop_fronts": sum(1 for row in shops if row[7]),
         "frontage_m": round(sum(widths)),
