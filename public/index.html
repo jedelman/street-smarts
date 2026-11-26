@@ -748,6 +748,13 @@
   .capital button:last-child { border-radius: 0 999px 999px 0; }
   .capital button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   .models { margin: 0.4rem 0 0.9rem; }
+  .stack-controls { display: grid; gap: 0.5rem; margin: 0.4rem 0 0.7rem; font-size: 0.9rem; }
+  .stack-controls label { display: grid; grid-template-columns: minmax(10rem, 16rem) 1fr 3.2rem; align-items: center; gap: 0.6rem; }
+  .stack-controls input { width: 100%; accent-color: var(--ink); }
+  .stack-controls b { text-align: right; font-variant-numeric: tabular-nums; }
+  .stacktable td:last-child { text-align: right; white-space: nowrap; }
+  .stacktable tr.total td { font-weight: 650; }
+  @media (max-width: 520px) { .stack-controls label { grid-template-columns: 1fr 3rem; } .stack-controls input { grid-column: 1 / -1; grid-row: 2; } }
   .models dt { font-weight: 650; margin-top: 0.7rem; }
   .models dd { margin: 0.15rem 0 0; }
   .adds-cap-note { margin: 0 0 0.3rem; font-size: 0.9rem; color: var(--muted); }
@@ -819,8 +826,35 @@
   </section>
 
   <section class="adds-up" id="adds-up" aria-labelledby="adds-up-h">
-    <h2 id="adds-up-h">What it adds up to, roughly</h2>
-    <p class="adds-lede">The plan's own measurements, taken on every deploy, run through a few stated assumptions. A sense of scale, not a pro forma.</p>
+    <h2 id="adds-up-h">What it would cost, and who would pay</h2>
+    <p class="adds-lede">This is public finance before it's retail: about <b data-n="costB">$1.8B</b> of building on land the public already owns. The plan's own measurements, taken on every deploy, run through sourced figures and stated assumptions. A sense of scale, not a pro forma.</p>
+    <div class="stats">
+      <div class="stat"><b data-n="costB">$1.8B</b><span>to build: homes <span data-n="costHomes">$990M</span>, workplaces <span data-n="costWork">$590M</span>, shops <span data-n="costShops">$240M</span>, and the land at what the public paid for it, <span data-n="costLand">$13M</span>. Before the streets and utilities.</span></div>
+      <div class="stat"><b>4 or 5</b><span>phases of about <span data-n="phase5">$370M</span> to <span data-n="phase4">$460M</span> each (our guess). Norfolk's housing authority puts the next stage of St. Paul's, Young Terrace and Calvert Square, at $1 billion, in phases from 2027.</span></div>
+      <div class="stat"><b data-n="noiM">$78M</b><span>a year after running costs and vacancy, at today's Norfolk rents: <span data-n="noiYield">4.3</span>% of what it costs. Private buyers price finished buildings at 5.6 to 7.7%, and developers want 1 to 1.5 points more.</span></div>
+      <div class="stat"><b data-n="payRate">1.7%</b><span>the interest rate at which that pays the whole cost back in 30 years. Norfolk itself borrows at up to 4.1%; Virginia Housing lends at about 6.2%.</span></div>
+      <div class="stat"><b data-n="freeNeed">38%</b><span>of the money would have to come as grants and tax credits for it to pay its way, with the city lending a third of the rest. One St. Paul's building got 41%.</span></div>
+      <div class="stat"><b data-n="taxM">$17M</b><span>a year in property tax, assessed at what the buildings cost. The land stays the public's under ground leases, as at St. Paul's.</span></div>
+    </div>
+
+    <h3>How Norfolk paid for St. Paul's</h3>
+    <p>The nearest thing Norfolk has done is the St. Paul's Area Transformation. Tidewater Gardens is being rebuilt as Kindred: 714 homes, in phases since 2022, and each phase is its own deal. Here is how one building in the fourth phase, 101 homes costing $50.9M (about $504,000 a home), is paid for:</p>
+    <div class="bars" id="adds-stpauls" aria-hidden="true"></div>
+    <p>The city's part sits mostly outside the stack. It builds the new streets and utilities, $60.6M across the phases, and counts them as an in-kind contribution. The land stays the housing authority's: it's ground-leased to each phase, with an option to buy the building back after 15 years. The homes stay affordable for 30 to 50 years. And Norfolk borrows cheaply: its 2025 bonds, rated AAA by S&amp;P, sold at yields of 2.3 to 4.1%.</p>
+    <p>It hasn't been quick or cheap. Virginia Housing flagged that building's cost a home as over its limit ($501,470 against $331,194). The new streets went from about $26M to $61M. The 2022 promise of completion by 2025 now runs to 2028. And the housing authority counts 101 of 618 Tidewater Gardens families back so far.</p>
+
+    <h3>The same shape, here</h3>
+    <p>The city already owns most of this site, as the housing authority owns St. Paul's. Say it keeps the land, leases it to each phase and builds the streets, and the money comes the way St. Paul's money did. Grants and tax credits cost the project nothing to carry. The city lends at its own rate. A first mortgage covers the rest. Move the shares:</p>
+    <div class="stack-controls">
+      <label>Grants and tax credits <input type="range" id="stack-free" min="0" max="60" step="1" value="41"> <b id="stack-free-v">41%</b></label>
+      <label>The city's share of what's borrowed <input type="range" id="stack-city" min="0" max="100" step="5" value="35"> <b id="stack-city-v">35%</b></label>
+    </div>
+    <table class="captable stacktable">
+      <tbody id="adds-stack"></tbody>
+    </table>
+    <p class="adds-cap-note">Tax credits only pay for homes kept affordable, which then rent for less, and grants are competitive. The shops are priced at $27 a square foot before running costs, a developer's return. That's more than a stack like this costs to carry on them, and the difference is part of what's left for the city. The homes and offices earn today's Norfolk rents.</p>
+
+    <h3>What's in it</h3>
     <div class="stats">
       <div class="stat"><b data-n="floorSf">3.2M</b><span>square feet of floor space, about <span data-n="mallX">3.5</span>&times; the old mall's 935,000 (54% occupied in 2020)</span></div>
       <div class="stat"><b data-n="homes">2,300</b><span>homes, on the floors P9 Scattered Work gives to living: about <span data-n="people">5,300</span> people. All of downtown Norfolk had 4,691 in 2023.</span></div>
@@ -857,7 +891,7 @@
     </table>
     <p class="adds-cap-note">The rent ladder, before running costs, a square foot a year:</p>
     <div class="bars" id="adds-ladder" aria-hidden="true"></div>
-    <p>At a developer's return or a bank's rate, new space here needs about <span data-n="devNet">$27</span> to <span data-n="bankNet">$28</span> before running costs: nearly double Norfolk's average ask, and still under what new space in the region leases for. Public money brings it to about <span data-n="publicNet">$21</span>. Held in common and paid for, the rent is only the running costs, and a shop's break-even falls by about <span data-n="paidCut">25%</span> against public money. The break-evens are floors: the shopkeeper earns Norfolk's living wage, and utilities, insurance and card fees aren't counted.</p>
+    <p>At a developer's return or a bank's rate, new space here needs about <span data-n="devNet">$27</span> to <span data-n="bankNet">$28</span> before running costs: nearly double Norfolk's average ask, and still under what new space in the region leases for. Public money brings it to about <span data-n="publicNet">$19</span>. Held in common and paid for, the rent is only the running costs, and a shop's break-even falls by about <span data-n="paidCut">25%</span> against public money. The break-evens are floors: the shopkeeper earns Norfolk's living wage, and utilities, insurance and card fees aren't counted.</p>
 
     <h3>The pull gap</h3>
     <p>If every dollar the people upstairs spend in shops stayed here, about <b data-n="spend">$38M</b> a year, it would carry about <b data-n="homeShops">160</b> shops at that break-even. The desks bring a lunch crowd: about <span data-n="desks">9,400</span> of them, spending about <b data-n="deskSpend">$59M</b> a year near the office, more than the households. Together, about <b data-n="both">$96M</b>, enough for about <b data-n="supported">400</b>. That counts every desk filled five days a week, which hybrid work isn't, and prices the desks' spending in 2011 dollars, which understates it. The other <span data-n="outside">340</span> fronts need about <b data-n="gap">$80M</b> a year from outside the site, roughly <span data-n="granbyX">1.5</span>&times; everything downtown's Granby sub-district sold in FY2023. That's on purpose: the plan is a frame for a regional destination, and the gap is the pull it would have to earn.</p>
@@ -879,6 +913,9 @@
         <li><b>Measured from the plan</b> on every deploy (<code>tools/vibe-render/plan_numbers.py</code>): floor area is each building's footprint times its floors; upper floors are that minus the ground floor; shop fronts are the ones the render opens at street-facing doors.</li>
         <li><b>Homes:</b> the floors given to living &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). Every floor of offices means fewer homes and a bigger lunch crowd. <b>People:</b> 2.27 a household, Norfolk's average.</li>
         <li><b>Ground floors per resident:</b> Paris, 60,846 ground-floor shops, bars, restaurants and services, 28 per 1,000 residents (Apur's 2023 census); Barcelona, 61,875 ground-floor businesses, 3.7 per 100 (2024), of which 21,167 are shops and 33,740 services; its residents (about 1.67 million) are implied by those two figures. City-wide figures, with visitors' and commuters' spending in them, so a ceiling for what residents alone carry; Barcelona's census credits its density to &ldquo;urban compactness and the large number of visitors.&rdquo;</li>
+        <li><b>What it earns:</b> the homes at Norfolk's average effective rent, $1.80 a square foot a month ($1,598 a unit; Cushman &amp; Wakefield | Thalhimer, Q3 2026; Class A across Hampton Roads asks $2,110, Northmarq), less 5% vacancy and 28% running costs, property tax included (BAE's Seattle assumptions; Norfolk's vacancy is 3.1%). The offices at Norfolk's Class A full-service asking rent, $26.78 (Thalhimer, Q3 2026), less 10% vacancy (ours; Norfolk's is 14.1%) and 32% running costs (BAE), before fitting them out ($40&ndash;50 a square foot, ODU). The shops at $27 before running costs, less 5% vacancy (ours). What buyers pay for finished buildings: apartments 5.6%, offices 7.3&ndash;7.5% (MSCI Real Capital Analytics, February 2026), Hampton Roads offices 7.7% (ODU), multi-tenant retail 7.08% (Northmarq).</li>
+        <li><b>The stack:</b> grants and tax credits carry nothing; the city's share of the borrowing is at its 2025 bond yield, 4.11%; the rest is a first mortgage at 6.18%, Virginia Housing's rate in the St. Paul's building above (its rate sheet showed 6.154% on November 25, 2026); both are paid off over 30 years (our term). Phases, tax-exempt bond limits, construction loans and lease-up aren't modeled. The phases are four or five, our guess, equal in cost.</li>
+        <li><b>St. Paul's:</b> the building is Tidewater Gardens B-2 at Kindred, from its 2025 application for 4% tax credits to Virginia Housing: $50,939,077 in all, with $25.72M of tax-exempt bonds during construction. The sources above are its permanent ones; the shares are of the total, and $0.4M is unaccounted for in the application's own list. The developer is Brinshore; the master developer for Young Terrace and Calvert Square is Gilbane. The city's streets and utilities ($60,575,654.71) are from the city manager's letter in the application; the streets' cost rise and delay from the city council's October 2025 acceptance of federal BUILD money; the cost limit from Virginia Housing's own form; the return count from the housing authority's October 2026 board packet. Norfolk's 2025 bonds: $241.3M tax-exempt and $14.8M taxable, yields 2.320&ndash;4.110%.</li>
         <li><b>What the space costs:</b>
           <ul>
             <li><b>Building it:</b> the middle of RLB's $205&ndash;290 a square foot for strip retail in Charlotte (Q3 2026). That's hard construction cost only: RLB's definition leaves out site work (utilities, paving, landscaping), furniture and fittings, and every soft cost, from land to design, permits and financing (its 2021 <i>Riders Digest</i>; the 2026 report says only &ldquo;hard construction costs&rdquo;).</li>
@@ -887,7 +924,7 @@
             <li><b>Running it:</b> $10.33 a square foot a year, IREM's 2024 national figure for offices, taxes included. No public retail figure exists, and IREM has stopped publishing the series.</li>
           </ul>
         </li>
-        <li><b>Rent four ways:</b> a developer earns 8.33% a year on the whole cost: Northmarq's Q3 2026 average cap rate for multi-tenant retail, 7.08% (sales over $2.5M; Southeast 6.92%, Mid-Atlantic 7.82%), plus 1.25 points, the middle of the 1&ndash;1.5 point spread the Terner Center heard from developers and BAE uses in Seattle. A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.91%, over 30 years (our term), both from the Federal Reserve's H.15 for November 24, 2026. Already paid for is running costs only. The market's asks: $14.75 triple-net for Norfolk and $16.96 for Hampton Roads (Cushman &amp; Wakefield | Thalhimer, Q3 2026); new construction &ldquo;commonly commenced at $35 psf on a triple-net basis&rdquo; (ODU, 2026).</li>
+        <li><b>Rent four ways:</b> a developer earns 8.33% a year on the whole cost: Northmarq's Q3 2026 average cap rate for multi-tenant retail, 7.08% (sales over $2.5M; Southeast 6.92%, Mid-Atlantic 7.82%), plus 1.25 points, the middle of the 1&ndash;1.5 point spread the Terner Center heard from developers and BAE uses in Seattle. A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is Norfolk's own borrowing: its 2025 general obligation bonds (rated AAA by S&amp;P, AA+ by Fitch) sold at yields up to 4.110% for a 2045 maturity, amortized here over 30 years (our term). The prime rate is from the Federal Reserve's H.15 for November 24, 2026, when the 10-year Treasury was 4.91%: tax-exempt city bonds cost less than the federal government's. Already paid for is running costs only. The market's asks: $14.75 triple-net for Norfolk and $16.96 for Hampton Roads (Cushman &amp; Wakefield | Thalhimer, Q3 2026); new construction &ldquo;commonly commenced at $35 psf on a triple-net basis&rdquo; (ODU, 2026).</li>
         <li><b>Cost rent elsewhere:</b> Austria's Limited-Profit Housing Act sets rent at what covers the buildings' costs and reserves, &ldquo;nicht h&ouml;her, aber auch nicht niedriger&rdquo;, for homes and business premises (&sect;13). It counts construction, land and financing in the cost, and caps interest on the association's own money at 3.5%, 5% at most (&sect;14). The rents are Austria-wide averages for homes, before running costs (Statistik Austria, Q2 2026). Paris: SEM Paris Commerces (formerly Semaest) has worked on more than 800 premises since 2004 and manages nearly 500. The city lends it the money to buy, and subsidizes it to offset &ldquo;des loyers inf&eacute;rieurs au prix de march&eacute;&rdquo; (rents below market; Ville de Paris, 2025). The bookshop at about 40% under the market is the city's own example (2023). That's subsidized rent, not cost rent in law.</li>
         <li><b>A shop's break-even:</b> rent for 900 sq ft plus Norfolk's living wage for one adult ($47,273, MIT) divided by a 31.1% gross margin, the average for all US retail in 2022 (Census). Margins run from 28% at grocers and 31% at wine shops to 45% at book and hobby stores and 51% at clothing stores. Cafés and restaurants keep about 68% after food and drink, but pay staff: this doesn't model them.</li>
         <li><b>Desks:</b> the floors given to work &times; 85% usable &divide; 12 m&sup2; (129 sq ft) a desk, the Employment Density Guide's figure for professional-services offices (UK Homes &amp; Communities Agency, 2015; office gross runs 15&ndash;20% over net). That's a planned office. US offices hold about three times the space a worker: EIA counts 507 sq ft of building, lobbies, halls and empty space included, per office worker on the main shift (2018). <b>What a desk spends nearby:</b> $129.18 a workweek on goods, services and food around the office, less transport and online shopping (ICSC's survey of 4,000 office workers, October 2011; in 2011 dollars, not adjusted), for 48 weeks a year (ours). Every desk filled five days a week: hybrid work would cut it, and some desks are the people upstairs, counted twice. The walk's Flows draws the same model.</li>
@@ -903,6 +940,16 @@
         <a href="https://norfolk.gov/m/faq?cat=48" target="_blank" rel="noopener">City of Norfolk, real estate tax rate</a> ·
         <a href="https://www.paris.fr/pages/avec-28-commerces-pour-1000-habitants-paris-maintient-sa-densite-commerciale-a-un-haut-niveau-26008" target="_blank" rel="noopener">Ville de Paris / Apur (2023)</a> ·
         <a href="https://ajuntament.barcelona.cat/comerc/en/commercial-census-2024" target="_blank" rel="noopener">Barcelona commercial census (2024)</a> ·
+        <a href="https://virginiahousing.stylelabs.cloud/api/public/content/NorfolkKindred_App-4pct-2025" target="_blank" rel="noopener">Kindred TWG B-2, tax credit application (2025)</a> ·
+        <a href="https://nrha.us/document-public/247-20261009164230-8293477-1" target="_blank" rel="noopener">NRHA board packet (October 2026)</a> ·
+        <a href="https://nrha.us/redevelopment-initiatives/st-pauls-area-transformation/housing" target="_blank" rel="noopener">NRHA, St. Paul's housing</a> ·
+        <a href="https://www.norfolk.gov/DocumentCenter/View/106536/R-05-Acceptance-of-earmarked-federal-funds---BUILD-Project" target="_blank" rel="noopener">Norfolk City Council, BUILD acceptance (October 2025)</a> ·
+        <a href="https://www.norfolk.gov/DocumentCenter/View/108550/GO-Bonds-Series-2025-A-and-B" target="_blank" rel="noopener">Norfolk, GO Bonds 2025A/B official statement</a> ·
+        <a href="https://www.virginiahousing.com/-/media/docs/mfrates.pdf" target="_blank" rel="noopener">Virginia Housing, multifamily rates</a> ·
+        <a href="https://thalhimer.com/wp-content/uploads/2026/10/Hampton_Roads_Americas_Alliance_MarketBeat_Multifamily_Q3_2026.pdf" target="_blank" rel="noopener">Thalhimer, Hampton Roads Multifamily (Q3 2026)</a> ·
+        <a href="https://thalhimer.com/wp-content/uploads/2026/10/Hampton-Roads_Americas_Alliance_MarketBeat_Office_Q3_2026.pdf" target="_blank" rel="noopener">Thalhimer, Hampton Roads Office (Q3 2026)</a> ·
+        <a href="https://www.northmarq.com/sites/default/files/docs/NMMarketInsights-Q22026-Hampton-Roads.pdf" target="_blank" rel="noopener">Northmarq, Hampton Roads Multifamily (Q2 2026)</a> ·
+        <a href="https://www.msci.com/downloads/web/msci-com/data-and-analytics/real-estate/us-rca-capital-trends-report/2603-usct-bigpic-rca-msci-pg1.pdf" target="_blank" rel="noopener">MSCI Real Capital Analytics, Capital Trends (2026)</a> ·
         <a href="https://www.rlb.com/wp-content/uploads/sites/4/2026/09/Q3-2026-QCR.pdf" target="_blank" rel="noopener">RLB, North America Quarterly Cost Report (Q3 2026)</a> ·
         <a href="https://rlb.com/americas/wp-content/uploads/sites/4/2021/07/2021-Riders-Digest.pdf" target="_blank" rel="noopener">RLB, Riders Digest (2021)</a> ·
         <a href="https://seattle.gov/documents/Departments/OPCD/OngoingInitiatives/UrbanCentersPlanning/Downtown/Appendices/OPCDRegionalCentersPlanningDowntownAppendixRealEstateFinancialFeasibilityReport.pdf" target="_blank" rel="noopener">BAE for the City of Seattle, Real Estate Financial Feasibility (2025)</a> ·
@@ -1237,6 +1284,19 @@
       buildPsf: (205 + 290) / 2, runPsf: 10.33,                            // RLB Q3 2026 (Charlotte strip retail, hard); IREM 2024
       softShare: 0.30, landPaid: 11e6 + 2.4e6,                             // ours (BAE 2025, Terner 2023, Brookings 2020); Norfolk EDA, 2020
       oldAsk: 14.75, newAsk: 35,                                           // Thalhimer Q3 2026 (Norfolk, NNN); ODU 2026 (new construction, NNN)
+      // The whole plan's rents, for the public-finance lead.
+      aptPsfMo: 1.80, aptVac: 0.05, aptOpex: 0.28,                         // C&W | Thalhimer Q3 2026 (Norfolk, effective); BAE 2025; BAE 2025
+      officeRent: 26.78, officeVac: 0.10, officeOpex: 0.32,                // C&W | Thalhimer Q3 2026 (Norfolk Class A, full service); ours (Norfolk 14.1%); BAE 2025
+      shopNet: 27, shopVac: 0.05,                                          // a developer's return (above); ours
+      seniorRate: 0.0618, cityRate: 0.0411, stackYears: 30,                // Virginia Housing, St. Paul's TWG B2 (2025); Norfolk GO 2025A; ours
+      stPauls: [                                                           // St. Paul's TWG B2, 4% application, 6/25/2025: $50,939,077
+        ["Tax-credit equity", "U.S. Bancorp, $0.81 a credit", 15988355],
+        ["State and local loans", "REACH at 3.95%, Virginia Housing Match, two state housing funds", 7954154 + 3000000 + 1400000 + 2000000],
+        ["First mortgage", "Virginia Housing, at 6.18%", 11772000],
+        ["HUD Choice Neighborhoods grant", "three awards, 2018 to 2024", 4796999],
+        ["Norfolk's housing authority", "public housing funds", 1950000],
+        ["The developer's deferred fee", "paid later, from the rents", 1666963],
+      ],
       homesBuildPsf: (220 + 375) / 2, taxRate: 1.23 / 100,                 // RLB Q3 2026 (Charlotte multifamily, hard); City of Norfolk
       officeBuildPsf: (265 + 370) / 2,                                     // RLB Q3 2026 (Charlotte secondary offices, hard)
       walkup: [31.8, 42.0, 26.2], downtown: [15.9, 69.7, 14.5],            // C&W / Places Platform, Reimagining Cities, p. 75 and summary
@@ -1245,7 +1305,7 @@
       capital: {
         developer: { label: "A developer", note: "a 7.08% cap rate + 1.25 points, on the whole cost", yield: 0.0708 + 0.0125 }, // Northmarq Q3 2026; Terner 2023, BAE 2025
         bank: { label: "A bank loan", note: "prime rate, 7.00%, 25 years", rate: 0.07, years: 25 },
-        public: { label: "Public money", note: "10-year Treasury, 4.91%, 30 years", rate: 0.0491, years: 30 }, // H.15, Nov 24 2026
+        public: { label: "Public money", note: "Norfolk's own bonds, 4.11%, 30 years", rate: 0.0411, years: 30 }, // Norfolk GO 2025A, 2045 maturity
         paid: { label: "Already paid for", note: "running costs only", rate: 0, years: 0 },
       },
     };
@@ -1279,6 +1339,17 @@
       // The whole plan's cost: each use's floors at RLB's hard cost for its kind, plus soft costs, plus the land.
       var cost = { homes: liveSf * A.homesBuildPsf * (1 + A.softShare), work: workSf * A.officeBuildPsf * (1 + A.softShare), shops: playSf * A.buildPsf * (1 + A.softShare) };
       cost.total = cost.homes + cost.work + cost.shops + A.landPaid;
+      // What it earns, after vacancy and running costs, at today's rents.
+      var noi = {
+        homes: liveSf * A.aptPsfMo * 12 * (1 - A.aptVac) * (1 - A.aptOpex),
+        work: workSf * A.officeRent * (1 - A.officeVac) * (1 - A.officeOpex),
+        shops: n.shop_fronts * A.shopSf * A.shopNet * (1 - A.shopVac),
+      };
+      noi.total = noi.homes + noi.work + noi.shops;
+      var ann = function (r, y) { return r ? r / (1 - Math.pow(1 + r, -y)) : 1 / y; };
+      var payRate = (function () { var lo = 0, hi = 0.2; for (var it = 0; it < 60; it++) { var mid = (lo + hi) / 2; if (ann(mid, A.stackYears) * cost.total > noi.total) hi = mid; else lo = mid; } return lo; })();
+      var borrowFactor = function (city) { return city * ann(A.cityRate, A.stackYears) + (1 - city) * ann(A.seniorRate, A.stackYears); };
+      var freeNeed = Math.max(0, 1 - noi.total / (borrowFactor(0.35) * cost.total));
       var homes = liveSf * A.usable / A.homeSf, people = homes * A.perHome;
       var lo = people * A.paris / 1000, hi = people * A.barcelona / 1000;
       var desks = (n.work_m2 || 0) * A.usable / A.m2PerDesk;
@@ -1304,6 +1375,8 @@
         costB: "$" + (cost.total / 1e9).toFixed(1) + "B",
         costHomes: money(cost.homes), costWork: money(cost.work), costShops: money(cost.shops), costLand: money(A.landPaid),
         phase4: money(cost.total / 4), phase5: money(cost.total / 5),
+        noiM: money(noi.total), noiYield: (noi.total / cost.total * 100).toFixed(1),
+        payRate: (payRate * 100).toFixed(1) + "%", freeNeed: Math.round(freeNeed * 100) + "%",
         liveP: num(liveSf / floorSf * 100), workP: num(workSf / floorSf * 100), playP: num(playSf / floorSf * 100),
         bcnShops: num(Math.round(people * A.bcnShops / (A.bcnAll / 0.037) / 10) * 10),
         bcnServices: num(Math.round(people * A.bcnServices / (A.bcnAll / 0.037) / 10) * 10),
@@ -1324,7 +1397,7 @@
       var net = function (key) { return rentPsf(A.capital[key]) - A.runPsf; };
       bars("adds-ladder", [
         ["What Norfolk asks", "the average, mostly older space", A.oldAsk, "$" + A.oldAsk.toFixed(2), false],
-        ["At cost, public money", "4.91% over 30 years", net("public"), "$" + Math.round(net("public")), cap === "public"],
+        ["At cost, public money", "4.11% over 30 years", net("public"), "$" + Math.round(net("public")), cap === "public"],
         ["A developer's return", "8.33% on the whole cost", net("developer"), "$" + Math.round(net("developer")), cap === "developer"],
         ["At cost, a bank loan", "7.00% over 25 years", net("bank"), "$" + Math.round(net("bank")), cap === "bank"],
         ["New space in Hampton Roads", "what it commonly starts at", A.newAsk, "$" + A.newAsk + "+", false],
@@ -1337,6 +1410,12 @@
         ["Granby sub-district, downtown", "all its retail sales, FY2023", A.granby, money(A.granby), false],
       ]);
       document.querySelectorAll("#adds-up .capital button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.cap === cap)); });
+      var spTotal = 50939077;
+      bars("adds-stpauls", A.stPauls.map(function (r) {
+        return [r[0], r[1], r[2], "$" + (r[2] / 1e6).toFixed(1) + "M · " + Math.round(r[2] / spTotal * 100) + "%", false];
+      }));
+      stackState.cost = cost; stackState.noi = noi; stackState.ann = ann; stackState.borrowFactor = borrowFactor;
+      renderStack();
       var live = liveSf / floorSf * 100, work = workSf / floorSf * 100, play = playSf / floorSf * 100;
       var stack = function (l, w, p) {
         var seg = function (cls, x) { return x > 0 ? '<span class="' + cls + '" style="width:' + x + '%">' + (x >= 9 ? Math.round(x) + "%" : "") + "</span>" : ""; };
@@ -1351,6 +1430,26 @@
     document.querySelectorAll("#adds-up .capital button").forEach(function (b) {
       b.addEventListener("click", function () { cap = b.dataset.cap; fill(); });
     });
+    // The stack: grants and credits carry nothing; the rest is borrowed, the city's share at its
+    // bond rate and the rest as a first mortgage, both paid off over 30 years.
+    var stackState = {};
+    function renderStack() {
+      var S = stackState; if (!S.cost) return;
+      var free = +document.getElementById("stack-free").value / 100, city = +document.getElementById("stack-city").value / 100;
+      document.getElementById("stack-free-v").textContent = Math.round(free * 100) + "%";
+      document.getElementById("stack-city-v").textContent = Math.round(city * 100) + "%";
+      var borrowed = (1 - free) * S.cost.total, cityLoan = borrowed * city, firstLoan = borrowed - cityLoan;
+      var cityPay = cityLoan * S.ann(A.cityRate, A.stackYears), firstPay = firstLoan * S.ann(A.seniorRate, A.stackYears);
+      var left = S.noi.total - cityPay - firstPay;
+      var row = function (a, b, c, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : "") + "><td>" + a + (b ? "<small>" + b + "</small>" : "") + "</td><td>" + c + "</td></tr>"; };
+      document.getElementById("adds-stack").innerHTML =
+        row("Grants and tax credits", "carry nothing", money(S.cost.total * free)) +
+        row("The city's bonds", "at " + (A.cityRate * 100).toFixed(2) + "%, " + A.stackYears + " years: " + money(cityPay) + " a year", money(cityLoan)) +
+        row("A first mortgage", "at " + (A.seniorRate * 100).toFixed(2) + "%, " + A.stackYears + " years: " + money(firstPay) + " a year", money(firstLoan)) +
+        row("What it earns a year", "homes " + money(S.noi.homes) + ", work " + money(S.noi.work) + ", shops " + money(S.noi.shops), money(S.noi.total)) +
+        row(left >= 0 ? "Left for the city each year" : "Short each year", left >= 0 ? "after both loans are paid, as ground rent" : "a gap someone has to fill", money(Math.abs(left)), "total");
+    }
+    ["stack-free", "stack-city"].forEach(function (id) { document.getElementById(id).addEventListener("input", renderStack); });
     // Measured 2026-11-26, until the live figures arrive.
     n = { floor_area_m2: 441725, upper_floor_area_m2: 371175, live_m2: 237885, work_m2: 133290, play_m2: 70550, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082, trees: 2229, station_path_m: 133 };
     fill();
