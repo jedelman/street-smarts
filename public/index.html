@@ -747,6 +747,10 @@
   .capital button:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
   .capital button:last-child { border-radius: 0 999px 999px 0; }
   .capital button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .models { margin: 0.4rem 0 0.9rem; }
+  .models dt { font-weight: 650; margin-top: 0.7rem; }
+  .models dd { margin: 0.15rem 0 0; }
+  .adds-cap-note { margin: 0 0 0.3rem; font-size: 0.9rem; color: var(--muted); }
   .captable { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin: 0 0 0.9rem; font-variant-numeric: tabular-nums; }
   .captable th { text-align: left; font-weight: 600; color: var(--muted); font-size: 0.8rem; border-bottom: 1px solid var(--line); padding: 0.3rem 0.4rem; }
   .captable td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--line); }
@@ -820,17 +824,29 @@
     <div class="stats">
       <div class="stat"><b data-n="floorSf">3.2M</b><span>square feet of floor space, about <span data-n="mallX">3.5</span>&times; the old mall's 935,000 (54% occupied in 2020)</span></div>
       <div class="stat"><b data-n="homes">2,300</b><span>homes, on the floors P9 Scattered Work gives to living: about <span data-n="people">5,300</span> people. All of downtown Norfolk had 4,691 in 2023.</span></div>
+      <div class="stat"><b data-n="desks">9,400</b><span>desks, on the floors P9 gives to work: offices, studios and workshops, and a lunch crowd for the shops below</span></div>
+      <div class="stat"><b data-n="both">$96M</b><span>a year the homes and desks would spend in shops, if all of it stayed here: <span data-n="spend">$38M</span> from homes, <span data-n="deskSpend">$59M</span> from desks</span></div>
       <div class="stat"><b data-n="shops">740</b><span>shop fronts along <span data-n="frontageKm">4.1</span> km of street, <span data-n="p87">699</span> of them P87's own small doors</span></div>
       <div class="stat"><b data-n="trees">2,229</b><span>trees, and a meadow on the open ground. No parking lots.</span></div>
     </div>
 
     <h3>How many ground floors can the people upstairs carry?</h3>
-    <p><span data-n="shops">740</span> shop fronts for about <span data-n="people">5,300</span> people is about <b data-n="per1000">140</b> for every 1,000. Paris has 28 ground-floor shops, cafés and services per 1,000 residents, Barcelona 37, and both have tourists and commuters helping. By the block model's own measure, the people upstairs carry about <b data-n="carried">150 to 200</b> ground floors, and most of those aren't shops. Of Barcelona's 61,875 ground-floor businesses, 21,167 are shops and 33,740 are services: hairdressers, clinics, agencies, repair, offices at street level. At Barcelona's rates, the people here would carry about <b data-n="bcnShops">70</b> shops and <b data-n="bcnServices">110</b> services. The rest of the <span data-n="shops">740</span> fronts are the bet: pull from the light rail and the region, or work.</p>
+    <p><span data-n="shops">740</span> shop fronts for about <span data-n="people">5,300</span> people is about <b data-n="per1000">140</b> for every 1,000. Paris has 28 ground-floor shops, cafés and services per 1,000 residents, Barcelona 37, and both have tourists and commuters helping. By the block model's own measure, the people upstairs carry about <b data-n="carried">150 to 200</b> ground floors, and most of those aren't shops. Of Barcelona's 61,875 ground-floor businesses, 21,167 are shops and 33,740 are services: hairdressers, clinics, agencies, repair, offices at street level. At Barcelona's rates, the people here would carry about <b data-n="bcnShops">70</b> shops and <b data-n="bcnServices">110</b> services. The rest of the <span data-n="shops">740</span> fronts are the bet: the people who come to work here, and pull from the light rail and the region.</p>
     <div class="bars" id="adds-fronts" aria-hidden="true"></div>
 
     <h3>What a shop here has to sell</h3>
-    <p>Nothing like this block has been built in Hampton Roads, so the market can't price it. We price the space at what it costs. Shop space costs $205 to $290 a square foot to build (Charlotte, the nearest city in Rider Levett Bucknall's survey), before land and fees. What that comes to in rent depends on who carries the money:</p>
+    <p>A shop's rent can be priced three ways, and each answers a different question.</p>
+    <dl class="models">
+      <dt>What the market asks</dt>
+      <dd>Landlords price space by what similar space nearby rents for. Norfolk's average ask is $14.75 a square foot a year before running costs, and that's mostly older buildings: new shop space in Hampton Roads commonly starts at $35, often more (Old Dominion University's 2026 market review). Nothing like this block has been built here, so there's nothing to compare it with.</dd>
+      <dt>What a developer needs</dt>
+      <dd>A developer builds when the rent, less running costs, returns enough on everything the building cost. That return has to beat what a buyer gets on a finished shopping center, 7.08% on average last quarter, by 1 to 1.5 points, or the developer would rather buy one. That's the yield on cost. At 8.33% of what this space costs, the rent comes to about <span data-n="devNet">$27</span> before running costs.</dd>
+      <dt>What it costs</dt>
+      <dd>Cost rent pays back what the space cost, with interest, over a loan's term, plus its running costs, and nothing more. Each year that's the cost &times; <i>r</i> &divide; (1 &minus; (1 + <i>r</i>)<sup>&minus;years</sup>). Austria's limited-profit housing associations set rents this way by law, for homes and shops alike: &ldquo;no higher, but also no lower&rdquo; than their costs, with the return on their own money capped at 3.5%. Their homes rent for about &euro;6.50 a square meter a month, against &euro;10.70 in private buildings built since 1945. Paris does something like it for shops: the city lends SEM Paris Commerces the money to buy ground floors, which it rents to independent shops below market, nearly 500 of them today. One bookshop pays about 40% under the market.</dd>
+    </dl>
+    <p>We price this space at what it costs. Building it costs $205 to $290 a square foot (strip retail in Charlotte, the nearest city in Rider Levett Bucknall's survey; we use the middle, $248). Add 30% for design, permits, fees and financing. Add the land at what the public paid for it, $13.4M in 2020, which is about <span data-n="landPsf">$3</span> a square foot of the plan's floors. That comes to about <b data-n="tdcPsf">$325</b> a square foot, before the site's own streets, utilities and landscaping, which the survey leaves out. Who carries the money sets the rent:</p>
     <div class="capital" role="group" aria-label="Who carries the money">
+      <button type="button" data-cap="developer" aria-pressed="false">A developer</button>
       <button type="button" data-cap="bank" aria-pressed="false">A bank loan</button>
       <button type="button" data-cap="public" aria-pressed="true">Public money</button>
       <button type="button" data-cap="paid" aria-pressed="false">Already paid for</button>
@@ -839,17 +855,19 @@
       <thead><tr><th>Who carries the money</th><th>Rent a sq ft a year</th><th>A shop must sell, a year</th></tr></thead>
       <tbody id="adds-cap"></tbody>
     </table>
-    <p>For contrast, existing shop space in Norfolk asks $14.75 a square foot a year, before running costs. Borrowed at the bank's rate, new space has to ask about <span data-n="bankNet">$21</span> before running costs, half again as much, which is why the market hasn't built it. Public money brings it to about <span data-n="publicNet">$16</span>, about level with old space. Held in common and paid for, a shop's break-even falls by about a quarter. The break-evens are floors: the shopkeeper earns Norfolk's living wage, and utilities, insurance and card fees aren't counted.</p>
+    <p class="adds-cap-note">The rent ladder, before running costs, a square foot a year:</p>
+    <div class="bars" id="adds-ladder" aria-hidden="true"></div>
+    <p>At a developer's return or a bank's rate, new space here needs about <span data-n="devNet">$27</span> to <span data-n="bankNet">$28</span> before running costs: nearly double Norfolk's average ask, and still under what new space in the region leases for. Public money brings it to about <span data-n="publicNet">$21</span>. Held in common and paid for, the rent is only the running costs, and a shop's break-even falls by about <span data-n="paidCut">25%</span> against public money. The break-evens are floors: the shopkeeper earns Norfolk's living wage, and utilities, insurance and card fees aren't counted.</p>
 
     <h3>The pull gap</h3>
-    <p>If every dollar the people upstairs spend in shops stayed here, about <b data-n="spend">$37M</b> a year, it would carry about <b data-n="supported">160</b> shops at that break-even. The other <span data-n="outside">580</span> need about <b data-n="gap">$130M</b> a year from outside the site, roughly <span data-n="granbyX">2.4</span>&times; everything downtown's Granby sub-district sold in FY2023. That's on purpose: the plan is a frame for a regional destination, and the gap is the pull it would have to earn.</p>
+    <p>If every dollar the people upstairs spend in shops stayed here, about <b data-n="spend">$38M</b> a year, it would carry about <b data-n="homeShops">160</b> shops at that break-even. The desks bring a lunch crowd: about <span data-n="desks">9,400</span> of them, spending about <b data-n="deskSpend">$59M</b> a year near the office, more than the households. Together, about <b data-n="both">$96M</b>, enough for about <b data-n="supported">400</b>. That counts every desk filled five days a week, which hybrid work isn't, and prices the desks' spending in 2011 dollars, which understates it. The other <span data-n="outside">340</span> fronts need about <b data-n="gap">$80M</b> a year from outside the site, roughly <span data-n="granbyX">1.5</span>&times; everything downtown's Granby sub-district sold in FY2023. That's on purpose: the plan is a frame for a regional destination, and the gap is the pull it would have to earn.</p>
     <div class="bars" id="adds-bars" aria-hidden="true"></div>
 
     <h3>Against the doom loop</h3>
     <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that do best mix living, working and playing; downtowns lost value because they were mostly work. Their best mix, by floor area, averages 42% work (anywhere from 24% to 62% can work), 32% living and 26% play. And WalkUPs, they write, are not &ldquo;bedroom communities, where residential tends to be between 80% to 90% of all inventory.&rdquo;</p>
     <p>With homes over shops and nothing else, this plan was 77% living. Now Alexander's P9 Scattered Work gives every floor a use and scatters work through the homes, a floor at a time across every building: &ldquo;Prohibit large concentrations of work without family life around them. Prohibit large concentrations of family life without workplaces around them.&rdquo; It comes to <b data-n="liveP">54</b>% living, <b data-n="workP">30</b>% work and <b data-n="playP">16</b>% play:</p>
     <div class="mix" id="adds-mix" aria-hidden="true"></div>
-    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Homes over shops alone would have traded it for another monoculture, with shops waiting all day for people to come home. Work on every block changes that: offices, studios and workshops bring a lunch crowd, and could keep the site busy at both ends of the day. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station. Some of what the people here need takes more of them, too: a walkable grocery store wants 5,000 to 10,000 homes nearby before it opens, and the plan has about <span data-n="homes">2,300</span>.</p>
+    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Homes over shops alone would have traded it for another monoculture, with shops waiting all day for people to come home. Work on every block changes that: offices, studios and workshops bring a lunch crowd, about <span data-n="desks">9,400</span> desks whose spending nearby would outrun the households', and the shops get a day as well as an evening. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station. Some of what the people here need takes more of them, too: a walkable grocery store wants 5,000 to 10,000 homes nearby before it opens, and the plan has about <span data-n="homes">2,300</span>.</p>
     <p>Their other levers, and what each looks like held in common. More homes for sale, not just for rent: here, limited-equity co-ops and land-trust homes, which keep the gains with the people who live there. Place management, which they mean as business improvement districts: here, the neighborhood running its own streets and squares. Faster permits and incentives for reuse: the city's call. And the tax base: at Norfolk's rate, the plan's buildings would pay about <b data-n="taxM">$11M</b> a year in real estate tax if assessed at what they cost to build, before counting the land.</p>
 
     <h3>The light rail</h3>
@@ -861,14 +879,24 @@
         <li><b>Measured from the plan</b> on every deploy (<code>tools/vibe-render/plan_numbers.py</code>): floor area is each building's footprint times its floors; upper floors are that minus the ground floor; shop fronts are the ones the render opens at street-facing doors.</li>
         <li><b>Homes:</b> the floors given to living &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). Every floor of offices means fewer homes and a bigger lunch crowd. <b>People:</b> 2.27 a household, Norfolk's average.</li>
         <li><b>Ground floors per resident:</b> Paris, 60,846 ground-floor shops, bars, restaurants and services, 28 per 1,000 residents (Apur's 2023 census); Barcelona, 61,875 ground-floor businesses, 3.7 per 100 (2024), of which 21,167 are shops and 33,740 services; its residents (about 1.67 million) are implied by those two figures. City-wide figures, with visitors' and commuters' spending in them, so a ceiling for what residents alone carry; Barcelona's census credits its density to &ldquo;urban compactness and the large number of visitors.&rdquo;</li>
-        <li><b>Rent at cost:</b> the middle of RLB's $205&ndash;290 hard cost for strip retail in Charlotte (Q3 2026; no land, design or financing fees, so low), paid off as a loan, plus $10.33 a square foot a year to run (IREM's 2024 national figure for offices, taxes included; no public retail figure). A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.85%, over 30 years (our term); already paid for is running costs only.</li>
+        <li><b>What the space costs:</b>
+          <ul>
+            <li><b>Building it:</b> the middle of RLB's $205&ndash;290 a square foot for strip retail in Charlotte (Q3 2026). That's hard construction cost only: RLB's definition leaves out site work (utilities, paving, landscaping), furniture and fittings, and every soft cost, from land to design, permits and financing (its 2021 <i>Riders Digest</i>; the 2026 report says only &ldquo;hard construction costs&rdquo;).</li>
+            <li><b>Soft costs:</b> 30% on top, ours, inside the published range. In Seattle, BAE puts design, legal and accounting alone at 18&ndash;20% of hard costs, with a 4% developer fee and construction financing on top (2025). In California, the Terner Center's budgets put fees, financing, consulting and the developer's fee at 37&ndash;40% (2023; our arithmetic from its figures). Brookings has soft costs at 20&ndash;30% of total cost for a straightforward apartment project (2020).</li>
+            <li><b>Land:</b> what the public paid. Norfolk's Economic Development Authority bought the mall and its outparcels for $11M and the hotel for $2.4M in 2020, and sold the mall to the city for $10 in 2025. Spread over the plan's floors, that's the per-foot figure above. The city doesn't hold the whole site: Sentara owns the old J.C. Penney building and much of the parking inside the ring road.</li>
+            <li><b>Running it:</b> $10.33 a square foot a year, IREM's 2024 national figure for offices, taxes included. No public retail figure exists, and IREM has stopped publishing the series.</li>
+          </ul>
+        </li>
+        <li><b>Rent four ways:</b> a developer earns 8.33% a year on the whole cost: Northmarq's Q3 2026 average cap rate for multi-tenant retail, 7.08% (sales over $2.5M; Southeast 6.92%, Mid-Atlantic 7.82%), plus 1.25 points, the middle of the 1&ndash;1.5 point spread the Terner Center heard from developers and BAE uses in Seattle. A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.91%, over 30 years (our term), both from the Federal Reserve's H.15 for November 24, 2026. Already paid for is running costs only. The market's asks: $14.75 triple-net for Norfolk and $16.96 for Hampton Roads (Cushman &amp; Wakefield | Thalhimer, Q3 2026); new construction &ldquo;commonly commenced at $35 psf on a triple-net basis&rdquo; (ODU, 2026).</li>
+        <li><b>Cost rent elsewhere:</b> Austria's Limited-Profit Housing Act sets rent at what covers the buildings' costs and reserves, &ldquo;nicht h&ouml;her, aber auch nicht niedriger&rdquo;, for homes and business premises (&sect;13). It counts construction, land and financing in the cost, and caps interest on the association's own money at 3.5%, 5% at most (&sect;14). The rents are Austria-wide averages for homes, before running costs (Statistik Austria, Q2 2026). Paris: SEM Paris Commerces (formerly Semaest) has worked on more than 800 premises since 2004 and manages nearly 500. The city lends it the money to buy, and subsidizes it to offset &ldquo;des loyers inf&eacute;rieurs au prix de march&eacute;&rdquo; (rents below market; Ville de Paris, 2025). The bookshop at about 40% under the market is the city's own example (2023). That's subsidized rent, not cost rent in law.</li>
         <li><b>A shop's break-even:</b> rent for 900 sq ft plus Norfolk's living wage for one adult ($47,273, MIT) divided by a 31.1% gross margin, the average for all US retail in 2022 (Census). Margins run from 28% at grocers and 31% at wine shops to 45% at book and hobby stores and 51% at clothing stores. Cafés and restaurants keep about 68% after food and drink, but pay staff: this doesn't model them.</li>
+        <li><b>Desks:</b> the floors given to work &times; 85% usable &divide; 12 m&sup2; (129 sq ft) a desk, the Employment Density Guide's figure for professional-services offices (UK Homes &amp; Communities Agency, 2015; office gross runs 15&ndash;20% over net). That's a planned office. US offices hold about three times the space a worker: EIA counts 507 sq ft of building, lobbies, halls and empty space included, per office worker on the main shift (2018). <b>What a desk spends nearby:</b> $129.18 a workweek on goods, services and food around the office, less transport and online shopping (ICSC's survey of 4,000 office workers, October 2011; in 2011 dollars, not adjusted), for 48 weeks a year (ours). Every desk filled five days a week: hybrid work would cut it, and some desks are the people upstairs, counted twice. The walk's Flows draws the same model.</li>
         <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment (BLS, 2023, middle income fifth where published).</li>
         <li><b>Live, work, play:</b> each floor's use is P9 Scattered Work's, from the pipeline: ground floors with shop doors are play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest), ground floors without them are workshops, and upper floors are homes with work added a floor at a time until it reaches 30% of the floor area, a share inside the report's band. The report's shares are of real estate inventory by square footage. Its optimal mix, found by a random-forest model balancing place-based GDP and value per square foot, averages 42.0% work (90% band 23.8&ndash;61.7%), 31.8% living (22.8&ndash;46.6%) and 26.2% play (17.0&ndash;31.0%); downtowns are 69.7% work, 15.9% living and 14.5% play. It sets aside suburban WalkUPs, &ldquo;redevelopment of edge cities&rdquo; among them, which is what this site would be. The grocery threshold is from the same report.</li>
         <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for shops (strip retail, $205&ndash;290), $298 for homes (multifamily, $220&ndash;375) and $318 for work (secondary offices, $265&ndash;370). Assessments needn't match cost; land isn't counted.</li>
         <li><b>Heights:</b> El Born's, not Alexander's: the pipeline caps ordinary buildings at six floors (P21's own default is four, and the P21 opinion marks the plan down for it), with a few widely spaced exceptions at eight.</li>
-        <li><b>Not modeled:</b> jobs, what office workers would spend nearby, visitors, competition from nearby stores, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
-        <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres, the city's RFQ says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
+        <li><b>Not modeled:</b> visitors, competition from nearby stores, office attendance below five days a week, the site's own streets, utilities and landscaping, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
+        <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres. The city's site page and its 2020 announcement of the RFQ say about 74 for the mall, its parking and outparcels. The RFQ itself says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
       </ul>
       <p class="adds-sources">Sources:
         <a href="https://www.cushmanwakefield.com/en/united-states/insights/reimagining-cities-disrupting-the-urban-doom-loop" target="_blank" rel="noopener">Cushman &amp; Wakefield and Places Platform, Reimagining Cities: Disrupting the Urban Doom Loop</a> ·
@@ -876,6 +904,22 @@
         <a href="https://www.paris.fr/pages/avec-28-commerces-pour-1000-habitants-paris-maintient-sa-densite-commerciale-a-un-haut-niveau-26008" target="_blank" rel="noopener">Ville de Paris / Apur (2023)</a> ·
         <a href="https://ajuntament.barcelona.cat/comerc/en/commercial-census-2024" target="_blank" rel="noopener">Barcelona commercial census (2024)</a> ·
         <a href="https://www.rlb.com/wp-content/uploads/sites/4/2026/09/Q3-2026-QCR.pdf" target="_blank" rel="noopener">RLB, North America Quarterly Cost Report (Q3 2026)</a> ·
+        <a href="https://rlb.com/americas/wp-content/uploads/sites/4/2021/07/2021-Riders-Digest.pdf" target="_blank" rel="noopener">RLB, Riders Digest (2021)</a> ·
+        <a href="https://seattle.gov/documents/Departments/OPCD/OngoingInitiatives/UrbanCentersPlanning/Downtown/Appendices/OPCDRegionalCentersPlanningDowntownAppendixRealEstateFinancialFeasibilityReport.pdf" target="_blank" rel="noopener">BAE for the City of Seattle, Real Estate Financial Feasibility (2025)</a> ·
+        <a href="https://ternercenter.berkeley.edu/wp-content/uploads/2023/12/Making-It-Pencil-December-2023.pdf" target="_blank" rel="noopener">Terner Center, Making It Pencil (2023)</a> ·
+        <a href="https://www.brookings.edu/articles/making-apartments-more-affordable-starts-with-understanding-the-costs-of-building-them/" target="_blank" rel="noopener">Brookings (2020)</a> ·
+        <a href="https://www.northmarq.com/sites/default/files/docs/MarketSnapshot_Multi-Tenant-Retail_Q3-2026.pdf" target="_blank" rel="noopener">Northmarq, Multi-Tenant Retail (Q3 2026)</a> ·
+        <a href="https://www.odu.edu/sites/default/files/2026/documents/2026-market-review-report-final.pdf" target="_blank" rel="noopener">ODU, Hampton Roads Market Review (2026)</a> ·
+        <a href="https://patch.com/virginia/norfolk/norfolk-economic-development-authority-approves-purchase-gallery-military-circle" target="_blank" rel="noopener">City of Norfolk via Patch: the mall (2020)</a> ·
+        <a href="https://patch.com/virginia/norfolk/norfolk-economic-development-authority-completes-purchase-former-doubletree-hotel" target="_blank" rel="noopener">and the hotel (2020)</a> ·
+        <a href="https://www.whro.org/business-growth/2025-08-07/officials-wonder-about-role-of-norfolks-economic-development-arm-after-military-circle-transfer" target="_blank" rel="noopener">WHRO (August 2025)</a> ·
+        <a href="https://www.whro.org/local-government/2026-09-01/260901-militarycircle-saunders" target="_blank" rel="noopener">WHRO (September 2026)</a> ·
+        <a href="https://www.norfolk.gov/6268" target="_blank" rel="noopener">City of Norfolk, Military Circle</a> ·
+        <a href="https://www.jusline.at/gesetz/wgg/paragraf/artikel1zu13" target="_blank" rel="noopener">Austria, WGG &sect;13</a> ·
+        <a href="https://www.jusline.at/gesetz/wgg/paragraf/artikel1zu14" target="_blank" rel="noopener">&sect;14</a> ·
+        <a href="https://www.statistik.at/fileadmin/announcement/2026/09/20260908Wohnen2026Q2.pdf" target="_blank" rel="noopener">Statistik Austria, Wohnen Q2 2026</a> ·
+        <a href="https://cdn.paris.fr/paris/2025/10/30/2025-dae-170-gqiN.pdf" target="_blank" rel="noopener">Ville de Paris, 2025 DAE 170</a> ·
+        <a href="https://cdn.paris.fr/presse/2023/09/27/a93755f0c8caf6ad9187f3565f5b13dd.pdf" target="_blank" rel="noopener">Ville de Paris, commerce press kit (2023)</a> ·
         <a href="https://thalhimer.com/wp-content/uploads/2026/10/Hampton_Roads_Americas_Alliance_MarketBeat_Retail_Q32026.pdf" target="_blank" rel="noopener">Cushman &amp; Wakefield | Thalhimer, Hampton Roads Retail (Q3 2026)</a> ·
         <a href="https://www.irem.org/file%20library/globalnavigation/learning/tools/irem-income-expense-iq-national-summary-24.pdf" target="_blank" rel="noopener">IREM, Income/Expense IQ (2024)</a> ·
         <a href="https://www.federalreserve.gov/releases/h15/" target="_blank" rel="noopener">Federal Reserve H.15 (prime rate)</a> ·
@@ -884,6 +928,9 @@
         <a href="https://www2.census.gov/programs-surveys/arts/tables/2022benchmarked/gmper.xlsx" target="_blank" rel="noopener">Census, Annual Retail Trade Survey (2022)</a> ·
         <a href="https://census.gov/quickfacts/fact/table/norfolkcitycountyvirginia/PST045223" target="_blank" rel="noopener">Census QuickFacts, Norfolk</a> ·
         <a href="https://www.bls.gov/opub/reports/consumer-expenditures/2023/home.htm" target="_blank" rel="noopener">BLS, Consumer Expenditures in 2023</a> ·
+        <a href="https://www2.richmond.gov.uk/docs/arlington/CDH16_NE48_employment_density_guide_3rd_edition.pdf" target="_blank" rel="noopener">Homes &amp; Communities Agency, Employment Density Guide (3rd ed., 2015)</a> ·
+        <a href="https://www.eia.gov/consumption/commercial/data/2018/bc/pdf/b16.pdf" target="_blank" rel="noopener">EIA, CBECS 2018, table B16</a> ·
+        <a href="https://southfieldcitycentre.com/wp-content/uploads/2022/07/Office-Worker-Retail-Spending-in-a-Digital-Age.pdf" target="_blank" rel="noopener">ICSC, Office-Worker Retail Spending in a Digital Age (2012)</a> ·
         <a href="https://norfolkdevelopment.com/wp-content/uploads/2020/09/Military-Circle-RFQ.pdf" target="_blank" rel="noopener">Norfolk EDA, Military Circle RFQ (2020)</a> ·
         <a href="https://www.downtownnorfolk.org/_files/docs/downtownnorfolkvamarketassessmentfinal-2524.pdf" target="_blank" rel="noopener">Downtown Norfolk Council, Market Assessment (2023)</a> ·
         <a href="https://gohrt.com/2020/01/naval-station-norfolk-transit-corridor-project/" target="_blank" rel="noopener">HRT, Naval Station Norfolk Transit Corridor</a> ·
@@ -1174,24 +1221,31 @@
   })();
 </script>
 
-<script>
+<script type="module">
   // What it adds up to: the plan's measurements (tools/vibe-render/plan_numbers.py, on every
   // deploy) times the sourced inputs and stated assumptions in #adds-up's "How the numbers are
   // built". If the measurements don't load, the figures measured on 2026-11-26 stand in.
+  // Homes, desks and their spending share the walk's flow model's figures (sparrow/flows.js),
+  // so the page and the walk's Flows can't disagree.
+  import { FLOW } from "/sparrow/flows.js";
   (function () {
     var A = {
-      usable: 0.85, homeSf: 900, perHome: 2.27, spendPerHome: 15662,       // ours; Census; BLS
+      usable: FLOW.usable, homeSf: FLOW.homeSf, perHome: 2.27, spendPerHome: FLOW.spendPerHome, // ours; Census; BLS
+      m2PerDesk: FLOW.m2PerDesk, deskWeek: FLOW.spendPerWorkweek, deskWeeks: FLOW.workweeks,   // HCA 2015; ICSC 2012; ours
       paris: 28, barcelona: 37,                                            // per 1,000 residents: Apur 2023; Barcelona 2024
       bcnShops: 21167, bcnServices: 33740, bcnAll: 61875,                  // Barcelona 2024 commercial census
       buildPsf: (205 + 290) / 2, runPsf: 10.33,                            // RLB Q3 2026 (Charlotte strip retail, hard); IREM 2024
+      softShare: 0.30, landPaid: 11e6 + 2.4e6,                             // ours (BAE 2025, Terner 2023, Brookings 2020); Norfolk EDA, 2020
+      oldAsk: 14.75, newAsk: 35,                                           // Thalhimer Q3 2026 (Norfolk, NNN); ODU 2026 (new construction, NNN)
       homesBuildPsf: (220 + 375) / 2, taxRate: 1.23 / 100,                 // RLB Q3 2026 (Charlotte multifamily, hard); City of Norfolk
       officeBuildPsf: (265 + 370) / 2,                                     // RLB Q3 2026 (Charlotte secondary offices, hard)
       walkup: [31.8, 42.0, 26.2], downtown: [15.9, 69.7, 14.5],            // C&W / Places Platform, Reimagining Cities, p. 75 and summary
       shopSf: 900, livingWage: 47273, margin: 0.311,                       // ours; MIT; Census ARTS 2022
       granby: 55e6,                                                        // Downtown Norfolk Council, FY2023
       capital: {
+        developer: { label: "A developer", note: "a 7.08% cap rate + 1.25 points, on the whole cost", yield: 0.0708 + 0.0125 }, // Northmarq Q3 2026; Terner 2023, BAE 2025
         bank: { label: "A bank loan", note: "prime rate, 7.00%, 25 years", rate: 0.07, years: 25 },
-        public: { label: "Public money", note: "10-year Treasury, 4.85%, 30 years", rate: 0.0485, years: 30 },
+        public: { label: "Public money", note: "10-year Treasury, 4.91%, 30 years", rate: 0.0491, years: 30 }, // H.15, Nov 24 2026
         paid: { label: "Already paid for", note: "running costs only", rate: 0, years: 0 },
       },
     };
@@ -1199,8 +1253,14 @@
     var num = function (v) { return Math.round(v).toLocaleString("en-US"); };
     var money = function (v) { return "$" + Math.round(v / 1e6) + "M"; };
     var k = function (v) { return "$" + Math.round(v / 1000) + "k"; };
+    // What a square foot of shop costs: built, plus soft costs, plus the land at what the public
+    // paid, spread over every floor (set in fill(), from the measured floor area).
+    var costPsf = A.buildPsf * (1 + A.softShare);
+    function landPsf(floorSf) { return A.landPaid / floorSf; }
+    // Rent a square foot a year: a developer's yield on the whole cost, or the payment that pays
+    // it off (cost x r / (1 - (1 + r)^-years)), plus running costs.
     function rentPsf(c) {
-      var pay = c.rate ? A.buildPsf * c.rate / (1 - Math.pow(1 + c.rate, -c.years)) : 0;
+      var pay = c.yield ? costPsf * c.yield : c.rate ? costPsf * c.rate / (1 - Math.pow(1 + c.rate, -c.years)) : 0;
       return pay + A.runPsf;
     }
     function breakEven(c) { return (rentPsf(c) * A.shopSf + A.livingWage) / A.margin; }
@@ -1214,22 +1274,36 @@
     function fill() {
       var c = A.capital[cap];
       var floorSf = n.floor_area_m2 * SF, upperSf = n.upper_floor_area_m2 * SF;
+      costPsf = A.buildPsf * (1 + A.softShare) + landPsf(floorSf);
       var liveSf = (n.live_m2 != null ? n.live_m2 : n.upper_floor_area_m2) * SF, workSf = (n.work_m2 || 0) * SF, playSf = floorSf - liveSf - workSf;
+      // The whole plan's cost: each use's floors at RLB's hard cost for its kind, plus soft costs, plus the land.
+      var cost = { homes: liveSf * A.homesBuildPsf * (1 + A.softShare), work: workSf * A.officeBuildPsf * (1 + A.softShare), shops: playSf * A.buildPsf * (1 + A.softShare) };
+      cost.total = cost.homes + cost.work + cost.shops + A.landPaid;
       var homes = liveSf * A.usable / A.homeSf, people = homes * A.perHome;
       var lo = people * A.paris / 1000, hi = people * A.barcelona / 1000;
-      var be = breakEven(c), spend = homes * A.spendPerHome;
-      var supported = Math.min(n.shop_fronts, spend / be), outside = n.shop_fronts - supported, gap = outside * be;
+      var desks = (n.work_m2 || 0) * A.usable / A.m2PerDesk;
+      var be = breakEven(c), spend = homes * A.spendPerHome, deskSpend = desks * A.deskWeek * A.deskWeeks, both = spend + deskSpend;
+      var homeShops = Math.min(n.shop_fronts, spend / be);
+      var supported = Math.min(n.shop_fronts, both / be), outside = n.shop_fronts - supported, gap = outside * be;
       var v = {
         floorSf: (floorSf / 1e6).toFixed(1) + "M", mallX: (floorSf / 935000).toFixed(1),
         homes: num(Math.round(homes / 100) * 100), people: num(Math.round(people / 100) * 100),
         shops: num(n.shop_fronts), frontageKm: (n.frontage_m / 1000).toFixed(1), p87: num(n.p87_shop_fronts), trees: num(n.trees),
         per1000: num(Math.round(n.shop_fronts / people * 1000 / 10) * 10),
         carried: num(Math.round(lo / 10) * 10) + " to " + num(Math.round(hi / 10) * 10),
-        spend: money(spend), supported: num(Math.round(supported / 10) * 10), outside: num(Math.round(outside / 10) * 10),
+        spend: money(spend), deskSpend: money(deskSpend), both: money(both), desks: num(Math.round(desks / 100) * 100),
+        homeShops: num(Math.round(homeShops / 10) * 10),
+        supported: num(Math.round(supported / 10) * 10), outside: num(Math.round(outside / 10) * 10),
         gap: money(Math.round(gap / 1e7) * 1e7), granbyX: (gap / A.granby).toFixed(1),
         stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
         bankNet: "$" + Math.round(rentPsf(A.capital.bank) - A.runPsf), publicNet: "$" + Math.round(rentPsf(A.capital.public) - A.runPsf),
+        devNet: "$" + Math.round(rentPsf(A.capital.developer) - A.runPsf),
+        landPsf: "$" + Math.round(landPsf(floorSf)), tdcPsf: "$" + Math.round(costPsf / 5) * 5,
+        paidCut: Math.round((1 - breakEven(A.capital.paid) / breakEven(A.capital.public)) * 100) + "%",
         taxM: money((playSf * A.buildPsf + liveSf * A.homesBuildPsf + workSf * A.officeBuildPsf) * A.taxRate),
+        costB: "$" + (cost.total / 1e9).toFixed(1) + "B",
+        costHomes: money(cost.homes), costWork: money(cost.work), costShops: money(cost.shops), costLand: money(A.landPaid),
+        phase4: money(cost.total / 4), phase5: money(cost.total / 5),
         liveP: num(liveSf / floorSf * 100), workP: num(workSf / floorSf * 100), playP: num(playSf / floorSf * 100),
         bcnShops: num(Math.round(people * A.bcnShops / (A.bcnAll / 0.037) / 10) * 10),
         bcnServices: num(Math.round(people * A.bcnServices / (A.bcnAll / 0.037) / 10) * 10),
@@ -1243,12 +1317,23 @@
       ]);
       document.getElementById("adds-cap").innerHTML = Object.keys(A.capital).map(function (key) {
         var cc = A.capital[key], b = breakEven(cc);
+        var net = rentPsf(cc) - A.runPsf;
         return '<tr class="' + (key === cap ? "on" : "") + '"><td>' + cc.label + "<small>" + cc.note + "</small></td><td>$" + rentPsf(cc).toFixed(0) +
-          "</td><td>" + k(b) + "<small>$" + Math.round(b / A.shopSf) + " a sq ft</small></td></tr>";
+          "<small>" + (net > 0.5 ? "$" + net.toFixed(0) + " + $" + A.runPsf.toFixed(0) + " to run" : "running costs only") + "</small></td><td>" + k(b) + "<small>$" + Math.round(b / A.shopSf) + " a sq ft</small></td></tr>";
       }).join("");
+      var net = function (key) { return rentPsf(A.capital[key]) - A.runPsf; };
+      bars("adds-ladder", [
+        ["What Norfolk asks", "the average, mostly older space", A.oldAsk, "$" + A.oldAsk.toFixed(2), false],
+        ["At cost, public money", "4.91% over 30 years", net("public"), "$" + Math.round(net("public")), cap === "public"],
+        ["A developer's return", "8.33% on the whole cost", net("developer"), "$" + Math.round(net("developer")), cap === "developer"],
+        ["At cost, a bank loan", "7.00% over 25 years", net("bank"), "$" + Math.round(net("bank")), cap === "bank"],
+        ["New space in Hampton Roads", "what it commonly starts at", A.newAsk, "$" + A.newAsk + "+", false],
+      ]);
       bars("adds-bars", [
         ["Every shop front at break-even", num(n.shop_fronts) + " × " + k(be), n.shop_fronts * be, money(n.shop_fronts * be), true],
-        ["Everything residents spend in shops", num(homes) + " homes × $15,662", spend, money(spend), false],
+        ["Everything the homes and desks spend", "if all of it stayed here", both, money(both), false],
+        ["Everything residents spend in shops", num(Math.round(homes / 100) * 100) + " homes × $" + num(A.spendPerHome), spend, money(spend), false],
+        ["What the desks spend nearby", num(Math.round(desks / 100) * 100) + " desks × $" + A.deskWeek.toFixed(0) + " × " + A.deskWeeks + " weeks", deskSpend, money(deskSpend), false],
         ["Granby sub-district, downtown", "all its retail sales, FY2023", A.granby, money(A.granby), false],
       ]);
       document.querySelectorAll("#adds-up .capital button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.cap === cap)); });
@@ -1267,7 +1352,7 @@
       b.addEventListener("click", function () { cap = b.dataset.cap; fill(); });
     });
     // Measured 2026-11-26, until the live figures arrive.
-    n = { floor_area_m2: 300625, upper_floor_area_m2: 230075, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082, trees: 2229, station_path_m: 133 };
+    n = { floor_area_m2: 441725, upper_floor_area_m2: 371175, live_m2: 237885, work_m2: 133290, play_m2: 70550, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082, trees: 2229, station_path_m: 133 };
     fill();
     fetch("/vibe-render/clean_baseline_numbers.json").then(function (r) { return r.ok ? r.json() : null; })
       .then(function (m) { if (m && m.version === 1) { n = m; fill(); } }).catch(function () {});

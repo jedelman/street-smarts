@@ -20,6 +20,8 @@ import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } fro
 import { createGovernor, median, scaleRange } from "./governor.js";
 import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
 import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.js";
+import { computeFlows, lineFor as flowLineFor, summaryLine as flowSummary } from "./flows.js";
+import { buildFlowLines } from "./flowlines.js";
 
 const params = new URLSearchParams(location.search);
 const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
@@ -89,6 +91,7 @@ const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
+let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
 const voices = makeVoices(), heard = new Set();
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
@@ -154,7 +157,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop,
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -708,6 +711,10 @@ function touch(el) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (flowLines && flowLines.shown && el.source && el.group !== "shops") {
+    const l = flowLineFor(flowModel, el.source);
+    if (l) logLine(l, "note");
+  }
   if (tram && (el.kind === "platform" || el.kind === "activity_transit")) {
     const wait = Math.round(tram.nextArrival(t));
     logLine(wait > 0 ? `The next tram is ${wait} seconds away.` : "The tram is in. Hop up on its roof.", "note");
@@ -967,6 +974,14 @@ const director = (() => {
       const b = site.bounds, c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
       const from = new THREE.Vector3(c.x + s.x * 0.45, b.max.y + Math.max(s.x, s.z) * 0.45, c.z + s.z * 0.55);
       play(() => ({ pos: from, look: c, fov: 55 }), { dur: 4.2, blendIn: 0, blendOut: 3.4, start: true });
+    },
+    /** Rise over `b` (a Box3: the flows' arcs) and hold there a while, then come back. */
+    overview(b) {
+      if (REDUCED || !b || b.isEmpty()) return;
+      const c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3()), span = Math.max(s.x, s.z);
+      c.y = b.min.y;
+      const from = new THREE.Vector3(c.x - span * 0.08, b.max.y + span * 0.35, c.z + span * 0.62);
+      play(() => ({ pos: from, look: c, fov: 55 }), { dur: 9, blendIn: 1.6, blendOut: 2.4 });
     },
     /** Frame you and the thing you touched, from the side. */
     lookAt(el) {
@@ -1232,6 +1247,7 @@ function frame() {
   tourTick();
   if (trees) trees.update(t, camera);
   if (frontages) frontages.update(camera);
+  if (flowLines) flowLines.update(t, dt);
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });
@@ -1309,6 +1325,7 @@ function setupUI() {
       if (e.code === "Space") wantHop = true;
       if (e.code === "KeyE" || e.code === "Enter") interact();
       if (e.code === "KeyM") toggleMute();
+      if (e.code === "KeyO") toggleFlows();
       if (e.code === "KeyT") (tour ? endTour("You take it from here.") : startTour());
       if (e.code === "KeyF") { if (bird.air) holdDownFor = 3; else takeOff(); }
       if (e.code === "KeyV") director.zoomBy(director.eyes > 0.5 ? 3 : 0.2);
@@ -1365,6 +1382,7 @@ function setupUI() {
   $("prompt").addEventListener("click", interact);
   $("tour").addEventListener("click", () => (tour ? endTour("You take it from here.") : startTour()));
   $("mute").addEventListener("click", toggleMute);
+  if (flowsReady()) { $("flows").hidden = false; $("flows").addEventListener("click", toggleFlows); }
   $("mute").setAttribute("aria-pressed", String(sound.muted));
   $("help-btn").addEventListener("click", () => { $("help").hidden = !$("help").hidden; });
   $("help").addEventListener("click", () => { $("help").hidden = true; });
@@ -1424,6 +1442,70 @@ function hideHint() {
   if (hintGone) return;
   hintGone = true;
   $("hint").classList.add("gone");
+}
+/**
+ * The flow overlay needs each building's footprint (models rendered since
+ * the overlay came in carry it) and the shop fronts; without them there's
+ * no button.
+ */
+function flowsReady() {
+  return !!(frontages && frontages.shops.length && site.elements.some((e) => e.area != null && e.uses));
+}
+/** Where the neighbourhood's money goes (flows.js), drawn over the roofs (flowlines.js). */
+function toggleFlows() {
+  if (!flowsReady()) return;
+  if (!flowLines) {
+    const LIFT = 3;
+    const byId = new Map();
+    for (const e of site.elements) {
+      if (e.area == null || !e.source || !e.box || e.box.isEmpty()) continue;
+      const b = byId.get(e.source) || { id: e.source, area: e.area, uses: e.uses, box: new THREE.Box3() };
+      b.box.union(e.box);
+      byId.set(e.source, b);
+    }
+    const buildings = [...byId.values()].map((b) => {
+      const c = b.box.getCenter(new THREE.Vector3());
+      return { id: b.id, area: b.area, uses: b.uses, x: c.x, z: c.z, top: b.box.max.y };
+    });
+    const shops = frontages.shops.map((s) => ({ building: s.building, x: s.door.x, z: s.door.z }));
+    let station = null;
+    const line = site.transit[0];
+    if (line && line.stations && line.stations.length) {
+      const pts = line.points;
+      let left = line.stations[0].at;
+      for (let i = 1; i < pts.length && !station; i++) {
+        const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        if (left <= seg || i === pts.length - 1) {
+          const u = seg ? Math.min(1, left / seg) : 0;
+          station = { x: pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * u, z: pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * u };
+        }
+        left -= seg;
+      }
+    }
+    flowModel = computeFlows({ buildings, shops, station });
+    const places = new Map();
+    for (const b of buildings) {
+      const mine = shops.filter((s) => s.building === b.id);
+      const to = mine.length
+        ? new THREE.Vector3(mine.reduce((a, s) => a + s.x, 0) / mine.length, b.top + LIFT, mine.reduce((a, s) => a + s.z, 0) / mine.length)
+        : new THREE.Vector3(b.x, b.top + LIFT, b.z);
+      places.set(b.id, { from: new THREE.Vector3(b.x, b.top + LIFT, b.z), to });
+    }
+    if (station) {
+      const p = new THREE.Vector3(station.x, (tram ? tram.roofY : 4) + LIFT, station.z);
+      places.set("station", { from: p, to: p });
+    }
+    flowLines = buildFlowLines(scene, flowModel, places, { coarse: COARSE });
+  }
+  const on = !flowLines.shown;
+  flowLines.show(on);
+  $("flows").setAttribute("aria-pressed", String(on));
+  $("flows-legend").hidden = !on;
+  if (on) {
+    logLine(flowSummary(flowModel), "what");
+    logLine("Where it goes is our guess: each spends at the shop fronts within a five-minute walk, more at nearer ones. Touch a building to see what its shops take in.", "note");
+    director.overview(flowLines.bounds);
+  }
 }
 function toggleMute() {
   const m = sound.toggle();
