@@ -12,6 +12,7 @@
 // Pure, so Node can test it: tools/sparrow/answers.test.mjs.
 
 export const PATTERNS = {
+  34: { name: "Interchange", gist: "a station that is a center: continuous with the streets, ringed by homes and workplaces" },
   37: { name: "House Cluster", gist: "each cluster of houses set apart by common land" },
   51: { name: "Green Streets", gist: "grass, with paving stones set in for the wheels" },
   52: { name: "Network of Paths and Cars", gist: "the path system is the spine" },
@@ -78,6 +79,9 @@ export function patternsOf(el) {
     case "ground":
       if (has(/_p172_meadow$/)) add(172);
       break;
+    case "transit": // P34's track, platform and canopy
+      if (has(/p34/)) add(34);
+      break;
     case "shops": // a shop front at a door: P87's own door, or the building's
       if (el.p87) add(87);
       break;
@@ -90,7 +94,8 @@ export function patternsOf(el) {
       break;
     case "activity":
     case "activity_glow":
-      if (has(/_p126_middle$/)) add(126);
+      if (has(/_p34_station$/)) add(34);
+      else if (has(/_p126_middle$/)) add(126);
       else if (has(/_p53_gateway$/)) add(53);
       else if (has(/_p61_(new_)?sq\d+_activity$/)) add(61);
       else if (has(/_activity$/)) add(124); // "<pocket id>_activity"
@@ -129,6 +134,12 @@ export function nounOf(el) {
     case "pocket": return "activity pocket";
     case "undecided": return "patch of undecided ground";
     case "meadow": return "meadow";
+    case "track_bed": return "light rail track, grass between the rails";
+    case "rail": return "rail";
+    case "platform": return "light rail platform";
+    case "platform_canopy": return "platform canopy";
+    case "platform_post": return "platform canopy's post";
+    case "activity_transit": return "light rail stop";
     case "local": return "local street";
     case "pedestrian": return "pedestrian street";
     case "arterial": return "arterial road";
@@ -156,7 +167,7 @@ export function nounOf(el) {
 
 /** The things worth a glint and a prompt (not every wall). */
 export function touchable(el) {
-  if (el.group === "shops") return true;
+  if (el.group === "shops" || el.kind === "platform") return true;
   return /^(plaza|common|pocket|undecided|roof_garden|canopy_arcade|canopy_gallery|wall_niche)$/.test(el.kind || "")
     || (el.group === "activity" && (el.kind || "").startsWith("activity_"));
 }
@@ -167,6 +178,7 @@ export function promptOf(el) {
   const k = el.kind || "";
   if (el.group === "trees") return `Perch in the ${n}`;
   if (el.group === "shops") return `Look in the ${n}`;
+  if (el.kind === "platform" || el.kind === "activity_transit") return "Wait for the tram";
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Sit in the ${n}`;
   if (k === "roof_garden") return "Peck around the roof garden";
   if (k === "canopy_arcade" || k === "canopy_gallery") return `Perch on the ${n}`;
@@ -183,6 +195,9 @@ export function answerOf(el) {
     : n.startsWith("roof of") ? `The ${n}.`
     : `${article(n)[0].toUpperCase()}${article(n).slice(1)} ${n}.`;
   const lines = [head];
+  if (el.group === "transit" || el.kind === "activity_transit") {
+    lines.push("The line is a sketch from the direction of the Tide's Newtown Road station, not HRT's route; where the station stands is the pipeline's choice.");
+  }
   if (el.group === "shops") {
     // Which shop it is, its paint and sign, are the walk's; where its door is, is the pipeline's.
     lines.push(el.p87 ? "Which shop is ours; its door is the pipeline's." : "At the building's own door; which shop is ours.");
@@ -206,6 +221,8 @@ export function arrivalOf(el) {
   const n = nounOf(el);
   if (el.group === "trees") return `Up in ${article(n)} ${n}.`;
   if (k === "meadow") return "Into the meadow.";
+  if (k === "platform") return "Onto the platform.";
+  if (k === "track_bed" || k === "rail") return "Onto the tracks. Mind the tram.";
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Into ${article(n)} ${n}.`;
   if (/^(local|pedestrian|arterial|street)(_grass)?$/.test(k)) return `Onto ${article(n)} ${n}.`;
   if (k === "roof_garden") return "Down into a roof garden.";

@@ -14,6 +14,7 @@ import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
+import { buildTram } from "./tram.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
@@ -84,6 +85,7 @@ const bird = {
 const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
 let shopTouchables = [];
+let tram = null, tramStep = null, riding = false;
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
 let tour = null; // { stops: [...], i, waitUntil }
 let focus = null, focusScore = Infinity;
@@ -132,6 +134,8 @@ let present = [];
   }
   // Every window, and storefronts at the doors that open onto a street or square.
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE });
+  // P34's light rail: a tram on the line (the line is data; the timetable is ours).
+  if (site.transit.length) tram = buildTram(scene, site.transit[0]);
   pigeons = buildPigeons(scene, pigeonSpots());
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
@@ -144,7 +148,9 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, placeBird, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird,
+    state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
+    goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
   toPage({ type: "ready" });
 })();
@@ -332,6 +338,48 @@ function takeOff() {
   sound.flap();
 }
 
+/**
+ * The route to a goal, surveyed before flying it: whether the ground path is
+ * clear enough to walk, and how high to fly to clear every roof and treetop
+ * on the way (sampled straight down every 2.5 m), with room to spare.
+ */
+const CLEARANCE = 2.5;
+function surveyRoute(g) {
+  _tmp.subVectors(g.point, bird.pos);
+  const horiz = Math.hypot(_tmp.x, _tmp.z);
+  const dx = horiz > 1e-6 ? _tmp.x / horiz : 0, dz = horiz > 1e-6 ? _tmp.z / horiz : 0;
+  // Walkable: level with the goal, and nothing in the way at sparrow height.
+  _tmp2.set(dx, 0, dz);
+  _tmp.set(bird.pos.x, bird.pos.y + 0.15, bird.pos.z);
+  const walk = horiz < 30 && Math.abs(g.point.y - bird.pos.y) < 0.4 && !castRay(_tmp, _tmp2, Math.max(0.1, horiz - 0.3));
+  let top = Math.max(g.point.y, bird.groundAt);
+  const sky = site.bounds.max.y + 30;
+  for (let d = 1.5; d < horiz - 1.5; d += 2.5) {
+    const hit = castDown(bird.pos.x + dx * d, sky, bird.pos.z + dz * d, sky + 60);
+    if (hit) top = Math.max(top, hit.point.y);
+  }
+  // Somewhere to come down: the goal itself, or, when something overhangs it
+  // (a tree's crown, a canopy), the nearest clear ground beside it.
+  let landing = g.point;
+  const over = castDown(g.point.x, sky, g.point.z, sky + 60);
+  if (over && over.point.y > g.point.y + 0.5) {
+    search: for (const r of [2.5, 4, 6, 8]) {
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2, x = g.point.x + Math.cos(a) * r, z = g.point.z + Math.sin(a) * r;
+        const h = castDown(x, sky, z, sky + 60);
+        if (!h || Math.abs(h.point.y - g.point.y) > 0.35) continue;
+        // Open ground all round (no wall within 0.6 m), so the way down doesn't slide along brick.
+        const open = [[0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6]].every(([ox, oz]) => {
+          const e = castDown(x + ox, sky, z + oz, sky + 60);
+          return e && Math.abs(e.point.y - h.point.y) < 0.35;
+        });
+        if (open) { landing = new THREE.Vector3(x, h.point.y, z); break search; }
+      }
+    }
+  }
+  return { walk, cruise: top + CLEARANCE, landing, at: t };
+}
+
 function steerToGoal() {
   const g = goal;
   _tmp.subVectors(g.point, bird.pos);
@@ -343,30 +391,53 @@ function steerToGoal() {
     if (g.arrived) g.arrived();
     return;
   }
-  // Stuck on the ground (a wall, a ledge too high): fly over.
+  // Survey the way there now and then (it changes as you rise and as you go).
+  if (!g.route || t - g.route.at > 0.6) g.route = surveyRoute(g);
+  const route = g.route;
+  // Stuck on the ground (a kerb too high, a bench): fly instead.
   g.stuckT = (g.stuckT || 0) + 1 / 60;
   if (!g.lastPos || g.lastPos.distanceToSquared(bird.pos) > 0.02) { g.lastPos = bird.pos.clone(); g.stuckT = 0; }
-  const needFly = _tmp.y > 0.4 || horiz > 24 || g.stuckT > 0.8;
-  if (needFly && !bird.air) takeOff();
-  intent.move.set(_tmp.x, 0, _tmp.z).normalize().multiplyScalar(Math.min(1, horiz / (bird.air ? 5 : 1.2) + 0.15));
+  const fly = !route.walk || g.stuckT > 0.8;
+  if (fly && !bird.air) takeOff();
+  // In the air, home on where to land; on the ground, on the goal.
+  const aim = bird.air ? route.landing : g.point;
+  _tmp.subVectors(aim, bird.pos);
+  const aimHoriz = Math.hypot(_tmp.x, _tmp.z);
+  const toward = _tmp2.set(_tmp.x, 0, _tmp.z).normalize();
+  intent.move.copy(toward).multiplyScalar(Math.min(1, aimHoriz / (bird.air ? 5 : 1.2) + 0.15));
   intent.fast = horiz > (bird.air ? 30 : 12);
   if (bird.air) {
-    const groundHere = bird.groundAt;
-    const cruise = horiz > 5 ? Math.max(g.point.y, groundHere) + Math.min(8, 2 + horiz * 0.15) : g.point.y + 0.2;
-    // Something in the way ahead (looking level, not up): climb over it.
-    let blocked = null;
-    if (horiz > 2) {
-      _tmp2.set(intent.move.x, 0, intent.move.z).normalize();
+    // Coming down: only once the straight line to the goal is clear (so a
+    // courtyard is entered from above, not through its wall).
+    _tmp.set(bird.pos.x, bird.pos.y + 0.1, bird.pos.z);
+    const toGoal = new THREE.Vector3().subVectors(aim, _tmp);
+    const dist = toGoal.length();
+    const clearDown = dist < 0.5 || !castRay(_tmp, toGoal.divideScalar(Math.max(dist, 1e-6)), Math.max(0.1, dist - 0.5));
+    const descending = clearDown && aimHoriz < Math.max(4, (bird.pos.y - aim.y) * 1.6);
+    if (descending) {
+      intent.up = false;
+      intent.down = bird.pos.y > aim.y + 0.3;
+      if (aim !== g.point && aimHoriz < 0.8) holdDownFor = 0.6; // down beside the goal; walk the rest
+    } else {
+      // Climb to the surveyed height before pushing on, and never toward a wall.
+      const below = bird.pos.y < route.cruise - 0.4;
       _tmp.set(bird.pos.x, bird.pos.y + 0.1, bird.pos.z);
-      blocked = castRay(_tmp, _tmp2, Math.min(horiz, 3.5 + bird.speed * 0.5));
+      const wall = castRay(_tmp, toward, Math.min(aimHoriz, 4 + bird.speed * 0.6));
+      const roof = (below || wall) && castRay(_tmp, UP, 1.4); // a canopy or an arcade overhead
+      intent.up = (below || !!wall) && !roof;
+      intent.down = !intent.up && !roof && bird.pos.y > route.cruise + 0.6;
+      if (roof) {
+        // Out from under it first: on toward the goal if that's open, else back the way you faced.
+        intent.move.copy(toward).multiplyScalar(wall ? -0.7 : 0.8);
+      } else if (wall) {
+        intent.move.copy(toward).multiplyScalar(-0.15); // rise while easing off the brick, never into it
+      } else if (below) intent.move.multiplyScalar(0.55);
     }
-    intent.up = bird.pos.y < cruise - 0.3 || !!blocked;
-    intent.down = !intent.up && bird.pos.y > cruise + 0.3;
-    if (blocked) intent.move.multiplyScalar(0.35);
   }
-  // No closer in four seconds: say hello from here and land.
-  if (g.best == null || horiz < g.best - 0.3) { g.best = horiz; g.bestT = t; }
-  else if (t - g.bestT > 4) {
+  // No closer in six seconds: say hello from here and land.
+  const progress = horiz + Math.max(0, route.cruise - bird.pos.y) * 0.5;
+  if (g.best == null || progress < g.best - 0.3) { g.best = progress; g.bestT = t; }
+  else if (t - g.bestT > 6) {
     goal = null;
     holdDownFor = 3;
     if (g.arrived) g.arrived();
@@ -394,10 +465,18 @@ function physics(dt) {
     } else if (intent.up && !bird.onGround && bird.vel.y < 0.5) takeOff();
   }
   before.copy(bird.pos);
+  if (riding && tramStep) bird.pos.add(tramStep.delta); // carried along on the tram's roof
   const travel = bird.vel.length() * dt;
   const steps = Math.min(12, Math.max(2, Math.ceil(travel / (R * 0.7))));
   let grounded = false;
   for (let i = 0; i < steps; i++) grounded = collide(dt / steps) || grounded;
+  // The tram's roof is somewhere to stand.
+  riding = !!tram && bird.vel.y <= 0.3 && tram.onRoof(bird.pos);
+  if (riding) {
+    bird.pos.y = tram.roofY;
+    if (bird.vel.y < 0) bird.vel.y = 0;
+    grounded = true;
+  }
   bird.onGround = grounded;
   // Up a kerb or a slab edge: the capsule can't climb 15–30 cm, so hop it.
   const wanted = Math.hypot(bird.vel.x, bird.vel.z) * dt;
@@ -441,7 +520,19 @@ function stepUp() {
 
 // ---------------------------------------------------------------- ground underfoot, arrivals
 let underKey = null, underSince = 0, lastArrival = "", lastArrivalT = -10;
+let saidRiding = false;
 function probeGround() {
+  if (riding) {
+    // On the tram: the shadow on its roof, and a word the first time.
+    bird.groundAt = tram.roofY;
+    bird.under = null;
+    shadow.position.set(bird.pos.x, tram.roofY + 0.006, bird.pos.z);
+    shadow.material.opacity = 1;
+    shadow.scale.setScalar(1);
+    if (!saidRiding && !bird.air) { saidRiding = true; logLine("Riding the tram.", "arrive"); }
+    return;
+  }
+  saidRiding = false;
   const hit = castDown(bird.pos.x, bird.pos.y + 0.25, bird.pos.z, 400);
   bird.groundAt = hit ? hit.point.y : world.groundY;
   const el = hit && !hit.prop ? hit.el : null;
@@ -583,6 +674,10 @@ function touch(el) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (tram && (el.kind === "platform" || el.kind === "activity_transit")) {
+    const wait = Math.round(tram.nextArrival(t));
+    logLine(wait > 0 ? `The next tram is ${wait} seconds away.` : "The tram is in. Hop up on its roof.", "note");
+  }
   meet(el);
   const k = el.kind;
   if (/^(plaza|common|pocket|undecided)$/.test(k) || k === "wall_niche") {
@@ -624,7 +719,7 @@ function tapAt(x, y) {
   if (tour) endTour("You take it from here.");
   lastInputT = t;
   // Open ground (a square, a street) is somewhere to go; anything else is something to go and touch.
-  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow)(_grass)?$/.test(el.kind);
+  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail)(_grass)?$/.test(el.kind);
   if (el && el.tree) {
     // A tree: fly up and perch on top of its crown, then say what it is.
     const tr = el.tree;
@@ -656,7 +751,7 @@ function pingAt(p) {
 
 // ---------------------------------------------------------------- the tour
 function startTour() {
-  const order = [53, 61, 126, 171, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
+  const order = [53, 34, 61, 126, 171, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
   const stops = [];
   let from = bird.pos.clone();
   const used = new Set();
@@ -1016,6 +1111,12 @@ function frame() {
   const dt = Math.min(raw / 1000, 0.05);
   t += dt;
   pollPad();
+  if (tram) {
+    tramStep = tram.update(t);
+    const near = camera.position.distanceTo(tram.mesh.position);
+    if ((tramStep.arrived || tramStep.departing) && near < 160) sound.bell(Math.max(0.2, 1 - near / 160));
+    if (tramStep.speed > 0.02 && near < 50 && Math.random() < dt * 4) sound.rumble(Math.min(1, tramStep.speed / 0.25));
+  }
   gatherIntent();
   physics(dt);
   probeGround();

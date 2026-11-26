@@ -641,6 +641,7 @@ impl PatternOperator for P61SmallPublicSquares {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }
@@ -975,6 +976,7 @@ pub fn place_new_squares_n(
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
 }
 

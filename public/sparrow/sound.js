@@ -78,6 +78,17 @@ export const sound = {
     tone("sine", f * 2.01, f * 2, t, 0.7, 0.04);
   },
   rustle() { if (audio()) noise(ctx.currentTime, 0.35, 0.07, "bandpass", 3000, 1800, 0.6); },
+  /** A tram's bell, twice: a bright struck tone with its overtone. */
+  bell(gain = 1) {
+    if (!audio()) return;
+    for (const dt of [0, 0.32]) {
+      const t = ctx.currentTime + dt;
+      tone("sine", 1318, 1310, t, 0.9, 0.09 * gain);
+      tone("sine", 3296, 3280, t, 0.4, 0.025 * gain);
+    }
+  },
+  /** Wheels on rail, a low hiss rising and falling with the tram's speed. */
+  rumble(speed01) { if (audio() && speed01 > 0.05) noise(ctx.currentTime, 0.25, 0.02 * speed01, "lowpass", 220, 160, 0.7); },
   coo() {
     if (!audio()) return;
     const t = ctx.currentTime;

@@ -313,6 +313,7 @@ impl PatternOperator for P108ConnectedBuildings {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }

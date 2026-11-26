@@ -103,6 +103,10 @@ M_PER_DEG_LNG = 111_320.0
 DEFAULT_BUILDING_HEIGHT_M = 9.0  # ~3 stories, for pads P107 didn't shape
 STREET_THICKNESS_M = 0.3
 PLAZA_THICKNESS_M = 0.15
+TRACK_BED_HALF_M = 1.7  # P34's track bed: grass between and beside the rails ("green track")
+RAIL_GAUGE_M = 1.435  # standard gauge, as the Tide's
+PLATFORM_HEIGHT_M = 0.35  # a low-floor light rail platform (plausible, not HRT's figure)
+CANOPY_HEIGHT_M = 3.4
 MEADOW_TOP_M = -0.02  # P172's meadow lies just below grade: it is the ground
 MEADOW_THICKNESS_M = 0.08  # everything else stands on, and shows only where nothing does
 DOOR_KINDS = ("door", "shop_door")  # a building's own door, and a P87 shop's (OpeningKind::ShopDoor)
@@ -1591,6 +1595,72 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
                 ground_solids.append((solid.translate((0, 0, MEADOW_TOP_M - MEADOW_THICKNESS_M)), g.get("kind") or "meadow"))
     ground_prov.close()
 
+    # Transit (P34 Interchange) -- a green track bed with two rails along each
+    # line's centerline, and each station's platform with a canopy on posts.
+    transit_solids = []
+    transit_lines = []  # glTF-ready polylines for the walk's tram (pack_glb.add_transit)
+    transit_prov = Provenance(transit_solids)
+    for line in nbhd.get("transit", []):
+        transit_prov.mark(line)
+        pts = [project(p["lng"], p["lat"], origin_lng, origin_lat) for p in line.get("centerline", [])]
+        for a, b in zip(pts, pts[1:]):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-6:
+                continue
+            ux, uy = dx / length, dy / length
+            nx, ny = -uy, ux
+            def strip(offset, half, z0, z1, kind):
+                corner = [(a[0] + nx * (offset - half), a[1] + ny * (offset - half)),
+                          (b[0] + nx * (offset - half), b[1] + ny * (offset - half)),
+                          (b[0] + nx * (offset + half), b[1] + ny * (offset + half)),
+                          (a[0] + nx * (offset + half), a[1] + ny * (offset + half))]
+                try:
+                    solid = cq.Workplane("XY").polyline(corner).close().extrude(z1 - z0).translate((0, 0, z0))
+                    transit_solids.append((solid, kind))
+                except Exception as e:
+                    print(f"  ! transit strip failed: {e}", file=sys.stderr)
+            strip(0.0, TRACK_BED_HALF_M, -0.04, 0.06, "track_bed")
+            for side in (-1, 1):
+                strip(side * RAIL_GAUGE_M / 2, 0.04, 0.06, 0.2, "rail")
+        stations = []
+        for st in line.get("stations", []):
+            transit_prov.mark(st)
+            ring = st["platform"]["outer"]
+            platform = extrude_polygon(ring, [], PLATFORM_HEIGHT_M, origin_lng, origin_lat)
+            if platform is not None:
+                transit_solids.append((platform, "platform"))
+            xy = ring_to_xy(ring, origin_lng, origin_lat)
+            canopy = extrude_polygon(ring, [], 0.15, origin_lng, origin_lat)
+            if canopy is not None:
+                transit_solids.append((canopy.translate((0, 0, CANOPY_HEIGHT_M)), "platform_canopy"))
+            # Posts down the platform's middle, every 8 m.
+            (x0, y0), (x1, y1) = xy[0], xy[1]
+            (x3, y3) = xy[3] if len(xy) > 3 else xy[-1]
+            mx0, my0 = (x0 + x3) / 2, (y0 + y3) / 2
+            mx1, my1 = (x1 + xy[2][0]) / 2, (y1 + xy[2][1]) / 2
+            plen = math.hypot(mx1 - mx0, my1 - my0)
+            for k in range(int(plen // 8) + 1):
+                t = (k * 8 + (plen % 8) / 2) / plen if plen > 0 else 0
+                px, py = mx0 + (mx1 - mx0) * t, my0 + (my1 - my0) * t
+                post = cq.Workplane("XY").box(0.2, 0.2, CANOPY_HEIGHT_M - PLATFORM_HEIGHT_M).translate((px, py, PLATFORM_HEIGHT_M + (CANOPY_HEIGHT_M - PLATFORM_HEIGHT_M) / 2))
+                transit_solids.append((post, "platform_post"))
+            sx, sy = project(st["location"]["lng"], st["location"]["lat"], origin_lng, origin_lat)
+            # Where along the line the platform's middle is, for the tram to stop at.
+            best = None
+            walked = 0.0
+            for a, b in zip(pts, pts[1:]):
+                seg = math.hypot(b[0] - a[0], b[1] - a[1])
+                if seg > 1e-9:
+                    t = max(0.0, min(1.0, ((sx - a[0]) * (b[0] - a[0]) + (sy - a[1]) * (b[1] - a[1])) / seg ** 2))
+                    d = math.hypot(sx - a[0] - t * (b[0] - a[0]), sy - a[1] - t * (b[1] - a[1]))
+                    if best is None or d < best[0]:
+                        best = (d, walked + t * seg)
+                walked += seg
+            stations.append({"id": st["id"], "at": best[1] if best else walked, "length": plen})
+        transit_lines.append({"id": line["id"], "kind": line.get("kind"), "points": pts, "stations": stations})
+    transit_prov.close()
+
     # Trees (P171 Tree Places) -- points with a height and crown, kept as
     # data rather than solids: the isometric draws them as numpy meshes and
     # the GLB instances one crown and one trunk (pack_glb.add_trees).
@@ -1703,6 +1773,8 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
         "plazas": plaza_solids,
         "streets": street_solids,
         "ground": ground_solids,
+        "transit": transit_solids,
+        "transit_lines": transit_lines,
         "trees": trees,
         "frontage": frontage_detail(nbhd, origin_lng, origin_lat),
         "activity_markers": activity_solids,
@@ -1753,6 +1825,11 @@ COLORS = {
     # other) rather than a third unrelated hue.
     "common": "#a3b18a",
     "undecided": "#b8602a",
+    "track_bed": "#6f8a52",  # P34's green track: grass between the rails
+    "rail": "#8d939a",
+    "platform": "#cfc8b8",
+    "platform_canopy": "#2f4a52",
+    "platform_post": "#2f4a52",
     "meadow": "#8ea85f",  # P172: grasses and flowers, a warmer, yellower green
     # than "common" (mown shared lawn) and the tree crowns above it.
     "local": "#6b6259",
@@ -2002,6 +2079,7 @@ def render_isometric(scene, out_path, title):
     # The ground layers first and in a fixed order (meadow, squares,
     # streets) -- see draw_solid_group's `sort_zpos`.
     add_group(scene.get("ground", []), alpha=1.0, sort_zpos=-3000)
+    add_group(scene.get("transit", []), alpha=1.0)
     add_group(scene["streets"], alpha=0.55, for_bounds=True, sort_zpos=-1000)
     add_group(scene["plazas"], alpha=0.6, for_bounds=True, sort_zpos=-2000)
 
@@ -2542,6 +2620,7 @@ def export_glb(scene, out_path):
     buildings_alpha = 0.97 if punched else (0.35 if interior_walls else 0.82)
     for group, alpha, solids_key in (
         ("ground", 1.0, "ground"),  # P172's meadow, opaque: it is the ground
+        ("transit", 1.0, "transit"),  # P34's track, rails and platform
         ("streets", 0.55, "streets"), ("plazas", 0.6, "plazas"), ("buildings", buildings_alpha, "buildings"),
         ("interior_walls", 0.95, "interior_walls"),
         # Real warm panes behind punched WINDOW voids (empty unless
@@ -2606,6 +2685,8 @@ def export_glb(scene, out_path):
         # street-level detail from it, instanced (pack_glb.add_detail).
         detail = scene.get("frontage") or {}
         pack_glb.add_detail_file(out_path, detail)
+        # P34's lines as polylines, for the walk's tram.
+        pack_glb.add_transit_file(out_path, scene.get("transit_lines") or [])
         print(f"wrote {out_path} (packed {before} primitives into {after}, plus {n_trees} instanced trees, "
               f"{len(detail.get('openings', []))} openings on {len(detail.get('walls', []))} walls, "
               f"{len(detail.get('shops', []))} shop fronts)")

@@ -79,6 +79,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         };
         match P198ClosetsBetweenRooms.evaluate(&n) {
             OpinionOutput::NoView { reason, .. } => assert!(reason.contains("closet")),

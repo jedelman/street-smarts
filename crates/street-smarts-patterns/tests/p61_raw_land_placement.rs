@@ -51,6 +51,7 @@ fn nbhd(parcels: Vec<Parcel>, open_space: Vec<OpenSpace>) -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

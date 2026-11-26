@@ -397,6 +397,7 @@ impl PatternOperator for P127IntimacyGradient {
             new_fields,
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }
@@ -815,6 +816,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 

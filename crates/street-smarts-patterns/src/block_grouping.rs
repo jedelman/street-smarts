@@ -286,6 +286,7 @@ impl PatternOperator for BlockGrouping {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }

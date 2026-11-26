@@ -80,6 +80,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         };
         match P147CommunalEating.evaluate(&n) {
             OpinionOutput::NoView { reason, .. } => {

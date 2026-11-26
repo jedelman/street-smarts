@@ -140,6 +140,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 

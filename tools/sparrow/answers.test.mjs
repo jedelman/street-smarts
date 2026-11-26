@@ -143,3 +143,19 @@ test("shops: P87 at its own door, the building's door otherwise", () => {
   assert.deepEqual(answerOf(p87), ["A bookshop.", "Which shop is ours; its door is the pipeline's.", `P87 Individually Owned Shops: ${PATTERNS[87].gist}.`]);
   assert.deepEqual(answerOf(own), ["A coffee shop.", "At the building's own door; which shop is ours."]);
 });
+
+test("light rail: P34 on the station, platform and track; the line is called a sketch", () => {
+  const marker = el("activity", "activity_transit", "p34_light_rail_p34_station");
+  const platform = el("transit", "platform", "p34_light_rail_p34_station");
+  const track = el("transit", "track_bed", "p34_light_rail");
+  assert.deepEqual(patternsOf(marker), [34]);
+  assert.deepEqual(patternsOf(platform), [34]);
+  assert.deepEqual(patternsOf(track), [34]);
+  assert.equal(touchable(platform), true);
+  assert.equal(promptOf(platform), "Wait for the tram");
+  assert.equal(arrivalOf(track), "Onto the tracks. Mind the tram.");
+  const lines = answerOf(platform);
+  assert.equal(lines[0], "A light rail platform.");
+  assert.match(lines[1], /sketch/);
+  assert.equal(lines[2], `P34 Interchange: ${PATTERNS[34].gist}.`);
+});

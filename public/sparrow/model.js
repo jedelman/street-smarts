@@ -31,7 +31,7 @@ export async function loadSite(url, onProgress) {
   // Walls, openings and shop fronts, for the street-level detail (frontages.js).
   const detail = table ? await readDetail(gltf.parser, table).catch(() => null) : null;
   const parts = table ? packedParts(gltf, table) : looseParts(gltf);
-  return { ...assemble(parts), trees, detail };
+  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [] };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }

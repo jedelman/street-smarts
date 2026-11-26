@@ -102,6 +102,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
             metadata: NeighborhoodMeta {
                 source: "test".into(),
                 fetched_at: "".into(),

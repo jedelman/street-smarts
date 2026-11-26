@@ -117,6 +117,7 @@ pub fn generate(axes: &FixtureAxes, seed: u64) -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

@@ -256,7 +256,15 @@
 //!      free reorder like the others above. Not fatal if no door has room
 //!      for a niche on either side. See p160_building_edge's own module
 //!      doc.
-//!   29a. P87 Individually Owned Shops (once, site-scale): divides every
+//!   29a. P34 Interchange (once, site-scale): brings a light rail line onto
+//!      the site from the direction of the Tide's Newtown Road station (HRT's
+//!      paused Naval Station Norfolk Transit Corridor would end here) and
+//!      places its end-of-line station by the pattern's own rules: clear of
+//!      buildings, within 300 ft of a street, ringed by buildings. Adds the
+//!      `TransitLine`, a Transit `ActivityNode`, a square and a path to the
+//!      streets. Before P87, so walls facing the station square get shops.
+//!      See p34_interchange's own module doc.
+//!   29b. P87 Individually Owned Shops (once, site-scale): divides every
 //!      ground-floor outer wall that faces a street or square (a street's
 //!      right-of-way or a square within 12 m, straight out, before another
 //!      building) into ~5 m shop fronts and gives each one without a door its
@@ -328,6 +336,7 @@ use crate::p110_main_entrance::{P110MainEntrance, P110Params};
 use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
 use crate::p171_tree_places::{P171Params, P171TreePlaces};
 use crate::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
+use crate::p34_interchange::{P34Interchange, P34Params};
 use crate::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use crate::p160_building_edge::{P160BuildingEdge, P160Params};
@@ -772,6 +781,14 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub160) = P160BuildingEdge.apply(&nbhd, "*", &P160Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub160);
         trace.push(P160BuildingEdge.name());
+    }
+
+    // P34 Interchange (once, site-scale): a light rail line onto the site and
+    // its station as a center, with a square and a path to the streets. Before
+    // P87, so the walls facing the station square get shops. See step 29a.
+    if let Ok(sub34) = P34Interchange.apply(&nbhd, "*", &P34Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub34);
+        trace.push(P34Interchange.name());
     }
 
     // P87 Individually Owned Shops (once, site-scale): every ground floor

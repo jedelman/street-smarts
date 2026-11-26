@@ -215,6 +215,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "places a real wall niche flanking every real door P221 already placed, on the same wall edge; needs P221's real door Opening data to flank -- a genuine, non-free dependency (PATTERN_ORDERING_AUDIT.md §4.8), unlike P118/P119/P133 above",
     },
     PatternNode {
+        id: "p34_interchange", alexander_number: Some(34),
+        requires: &["path_network", "p61_small_public_squares", "p107_wings_of_light"],
+        completes: &[],
+        why: "brings a light rail line onto the site and places its station by the pattern's own rules (clear of the buildings P107 shaped, within 300 ft of path_network's streets, ringed by buildings), with a square and a path to the streets. Late, because it has to fit the finished plan; before P87 so the walls facing its square get shops, and before P171 so no tree stands on the track",
+    },
+    PatternNode {
         id: "p87_individually_owned_shops", alexander_number: Some(87),
         requires: &["p110_main_entrance", "p165_opening_to_the_street", "path_network", "p61_small_public_squares"],
         completes: &[],

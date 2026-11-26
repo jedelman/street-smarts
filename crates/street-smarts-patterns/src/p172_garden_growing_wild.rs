@@ -173,6 +173,7 @@ impl PatternOperator for P172GardenGrowingWild {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![meadow],
+            new_transit: vec![],
         })
     }
 }
@@ -211,6 +212,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 

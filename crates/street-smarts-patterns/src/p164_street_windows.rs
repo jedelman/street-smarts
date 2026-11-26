@@ -400,6 +400,7 @@ impl PatternOperator for P164StreetWindows {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
             replaced_parcel_ids: vec![],
             replaced_open_space_ids: vec![],
             replaced_building_ids,
@@ -439,6 +440,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 

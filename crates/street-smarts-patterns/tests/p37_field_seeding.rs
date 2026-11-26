@@ -154,6 +154,7 @@ fn field_guided_mode_falls_back_to_stratified_when_no_anchors_exist() {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         };
 
     let params = P37Params { seeding_mode: 1.0, ..P37Params::defaults() };
