@@ -57,6 +57,7 @@ fn rect_neighborhood(width_m: f64, depth_m: f64, use_category: Option<String>) -
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

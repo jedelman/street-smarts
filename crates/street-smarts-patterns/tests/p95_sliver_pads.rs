@@ -50,6 +50,7 @@ fn rect_parcel_neighborhood(width_m: f64, depth_m: f64) -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

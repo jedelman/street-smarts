@@ -89,6 +89,8 @@ pub struct World {
     pub trees: Vec<crate::nir::Tree>,
     /// Mirrors `Neighborhood.ground_cover` (P172 Garden Growing Wild).
     pub ground_cover: Vec<crate::nir::GroundCover>,
+    /// Mirrors `Neighborhood.transit` (P34 Interchange).
+    pub transit: Vec<crate::nir::TransitLine>,
     pub metadata: NeighborhoodMeta,
     pub density_tiers: BTreeMap<String, DensityTier>,
     /// Derived from each parcel's `use_category` -- same read-only,
@@ -151,6 +153,7 @@ impl World {
             pattern_fields: n.pattern_fields.clone(),
             trees: n.trees.clone(),
             ground_cover: n.ground_cover.clone(),
+            transit: n.transit.clone(),
             metadata: n.metadata.clone(),
             density_tiers,
             pad_roles,
@@ -172,6 +175,7 @@ impl World {
             pattern_fields: self.pattern_fields.clone(),
             trees: self.trees.clone(),
             ground_cover: self.ground_cover.clone(),
+            transit: self.transit.clone(),
             metadata: self.metadata.clone(),
         }
     }
@@ -233,6 +237,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
             metadata: NeighborhoodMeta {
                 source: "synthetic".into(),
                 fetched_at: "test".into(),

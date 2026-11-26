@@ -77,6 +77,10 @@ pub struct Subdivision {
     /// `Neighborhood.ground_cover` by `apply_subdivision`.
     #[serde(default)]
     pub new_ground_cover: Vec<street_smarts_core::nir::GroundCover>,
+    /// New transit lines (P34 Interchange). Appended to
+    /// `Neighborhood.transit` by `apply_subdivision`.
+    #[serde(default)]
+    pub new_transit: Vec<street_smarts_core::nir::TransitLine>,
     /// IDs of source parcels removed from the neighborhood when applying.
     #[serde(default)]
     pub replaced_parcel_ids: Vec<String>,
@@ -302,9 +306,13 @@ pub fn apply_subdivision(nbhd: &Neighborhood, sub: &Subdivision) -> Neighborhood
     let mut new_ground_cover = nbhd.ground_cover.clone();
     new_ground_cover.extend(sub.new_ground_cover.iter().cloned());
 
+    let mut new_transit = nbhd.transit.clone();
+    new_transit.extend(sub.new_transit.iter().cloned());
+
     let mut out = nbhd.clone();
     out.trees = new_trees;
     out.ground_cover = new_ground_cover;
+    out.transit = new_transit;
     out.parcels = new_parcels;
     out.open_space = new_open_space;
     out.buildings = new_buildings;

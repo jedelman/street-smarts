@@ -40,6 +40,10 @@ pub struct Neighborhood {
     /// which is why it isn't an `OpenSpace`. Empty until that operator runs.
     #[serde(default)]
     pub ground_cover: Vec<GroundCover>,
+    /// Transit lines the plan carries (P34 Interchange). Empty until that
+    /// operator runs; every existing fixture round-trips unchanged.
+    #[serde(default)]
+    pub transit: Vec<TransitLine>,
     pub metadata: NeighborhoodMeta,
 }
 
@@ -56,6 +60,27 @@ pub struct Tree {
     pub height_m: f64,
     pub crown_radius_m: f64,
     pub form: String,
+}
+
+/// A transit line: its track as a polyline, and the stations along it.
+/// `kind` is free-form, same convention as `Street.surface`: "light_rail".
+/// The centerline may run past the site's edge (a line comes from somewhere).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransitLine {
+    pub id: String,
+    pub kind: String,
+    pub centerline: Vec<crate::geometry::LngLat>,
+    #[serde(default)]
+    pub stations: Vec<TransitStation>,
+}
+
+/// A stop on a `TransitLine`: where its platform's middle is, and the
+/// platform's own footprint (beside the track).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransitStation {
+    pub id: String,
+    pub location: crate::geometry::LngLat,
+    pub platform: Polygon,
 }
 
 /// Ground cover over a polygon. `kind` is free-form, same convention as

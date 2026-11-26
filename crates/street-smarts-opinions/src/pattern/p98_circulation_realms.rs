@@ -82,6 +82,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         };
         match P98CirculationRealms.evaluate(&n) {
             OpinionOutput::NoView { reason, .. } => assert!(reason.contains("realm")),

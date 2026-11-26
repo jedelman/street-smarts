@@ -519,6 +519,31 @@ def add_detail_file(path, detail):
     write_glb(path, gltf, bin_chunk)
 
 
+# --- Transit -------------------------------------------------------------------
+#
+# P34's lines, for the walk's tram: `extras.streetSmarts.transit` lists each
+# line as {id, kind, points: [[x, z], ...] in glTF axes (y is the ground),
+# stations: [{id, at (metres along the line), length}]}.
+
+def add_transit(gltf, lines):
+    if not lines:
+        return gltf
+    table = gltf["nodes"][0]["extras"]["streetSmarts"]
+    table["transit"] = [{
+        "id": l["id"], "kind": l.get("kind"),
+        "points": [[round(x, 2), round(-y, 2)] for x, y in l["points"]],
+        "stations": [{"id": s["id"], "at": round(s["at"], 2), "length": round(s["length"], 2)} for s in l["stations"]],
+    } for l in lines]
+    return gltf
+
+
+def add_transit_file(path, lines):
+    if not lines:
+        return
+    gltf, bin_chunk = read_glb(path)
+    write_glb(path, add_transit(gltf, lines), bin_chunk)
+
+
 def pack_file(in_path, out_path=None, elements_by_name=None):
     gltf, bin_chunk = read_glb(in_path)
     before = sum(len(m["primitives"]) for m in gltf.get("meshes", []))

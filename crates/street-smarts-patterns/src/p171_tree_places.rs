@@ -341,7 +341,11 @@ impl PatternOperator for P171TreePlaces {
                 .iter()
                 .flat_map(|b| b.polygon.parts_view())
                 .map(|part| Shape::new(local(&part.outer), part.holes.iter().map(local).collect()))
+                // P34's platforms: no trunk on a platform.
+                .chain(nbhd.transit.iter().flat_map(|l| &l.stations).map(|s| Shape::new(local(&s.platform.outer), vec![])))
                 .collect(),
+            // Streets, then P34's track (kept 3 m clear of its centre). Avenues are planted
+            // along `nbhd.streets` zipped with this, so the track never gets an avenue.
             streets: nbhd
                 .streets
                 .iter()
@@ -349,6 +353,7 @@ impl PatternOperator for P171TreePlaces {
                     let line = s.centerline.iter().map(|p| planar::lnglat_to_local(p, &origin)).collect();
                     (line, s.row_width_m.unwrap_or(6.0) / 2.0)
                 })
+                .chain(nbhd.transit.iter().map(|l| (l.centerline.iter().map(|p| planar::lnglat_to_local(p, &origin)).collect(), 2.0)))
                 .collect(),
             markers: nbhd.activity_nodes.iter().map(|a| planar::lnglat_to_local(&a.location, &origin)).collect(),
             squares: nbhd
@@ -512,6 +517,7 @@ impl PatternOperator for P171TreePlaces {
             new_fields: vec![],
             new_trees,
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }
@@ -568,6 +574,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 

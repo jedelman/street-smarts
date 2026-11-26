@@ -35,6 +35,7 @@ fn square_plaza_neighborhood(side_m: f64) -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 
@@ -181,6 +182,7 @@ fn elongated_plaza_partitions_along_the_long_axis_only() {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         };
 
     let sub = P61SmallPublicSquares.apply(&nbhd, "*", &P61Params::defaults(), 0).unwrap();

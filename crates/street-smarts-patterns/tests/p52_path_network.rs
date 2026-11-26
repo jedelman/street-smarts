@@ -59,6 +59,7 @@ fn four_corner_blocks() -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 
@@ -225,6 +226,7 @@ fn pentagon_blocks() -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 
@@ -371,6 +373,7 @@ fn three_blocks_uneven_spacing() -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

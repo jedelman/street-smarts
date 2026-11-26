@@ -49,6 +49,7 @@ fn square_parcel_neighborhood(side_m: f64, id: &str) -> Neighborhood {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
 }
 

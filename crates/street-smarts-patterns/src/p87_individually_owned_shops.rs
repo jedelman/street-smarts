@@ -386,6 +386,7 @@ impl PatternOperator for P87IndividuallyOwnedShops {
             new_fields: vec![],
             new_trees: vec![],
             new_ground_cover: vec![],
+            new_transit: vec![],
         })
     }
 }
@@ -446,6 +447,7 @@ mod tests {
             pattern_fields: vec![],
             trees: vec![],
             ground_cover: vec![],
+            transit: vec![],
         }
     }
 
