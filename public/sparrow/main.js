@@ -15,6 +15,7 @@ import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
 import { buildTram } from "./tram.js";
+import { buildSculptures, hidePosts } from "./sculptures.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
@@ -91,6 +92,7 @@ const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
+let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
 const voices = makeVoices(), heard = new Set();
@@ -140,6 +142,15 @@ let present = [];
       tr.el.tree = tr;
     }
   }
+  // The markers P126 and P61 put in the middle of things: a bronze bird or cat on a plinth, after Botero.
+  {
+    const els = site.elements.filter((e) => e.group === "activity" && /^activity_/.test(e.kind || "") && !/^activity_(transit|gateway)$/.test(e.kind) && e.center && !e.box.isEmpty());
+    const seedOf = (s) => { let h = 2166136261; for (const ch of s || "") h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; };
+    if (els.length) {
+      hidePosts(site, els);
+      sculptures = buildSculptures(scene, els.map((el, i) => ({ el, x: el.center.x, y: el.box.min.y, z: el.center.z, seed: seedOf(`${el.source}:${i}`) })));
+    }
+  }
   // Every window, and storefronts at the doors that open onto a street or square.
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
@@ -157,7 +168,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -232,6 +243,8 @@ function firstHit(far, withTrees = true) {
   if (best) best.el = site.elementOfHit(best);
   const b = benchSet ? benchSet.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
   if (b && (!best || b.distance < best.distance)) { b.prop = true; b.el = null; best = b; }
+  const sc = sculptures ? sculptures.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
+  if (sc && (!best || sc.distance < best.distance)) { sc.el = sculptures.elementOfHit(sc); best = sc; }
   const tr = trees && withTrees ? trees.bvh.raycastFirst(_ray, THREE.DoubleSide, 0, far) : null;
   if (tr && (!best || tr.distance < best.distance)) { tr.el = trees.elementOfHit(tr); best = tr; }
   return best;
@@ -271,6 +284,7 @@ function collide(dt) {
   seg.end.set(bird.pos.x, bird.pos.y + R, bird.pos.z);
   const bvhs = [site.bvh];
   if (benchSet) bvhs.push(benchSet.bvh);
+  if (sculptures) bvhs.push(sculptures.bvh);
   if (trees) bvhs.push(trees.bvh);
   for (let pass = 0; pass < 2; pass++) for (const bvh of bvhs) {
     cbox.makeEmpty();
@@ -711,6 +725,11 @@ function touch(el) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (sculptures && sculptures.byElement.has(el)) {
+    logLine(sculptures.byElement.get(el) === "cat"
+      ? "On it, a bronze cat, sitting, round as a loaf, its tail wrapped round its paws: after Fernando Botero. Ours, not data."
+      : "On it, a bronze dove, swollen and serene on tiny feet: after Fernando Botero. Ours, not data.", "note");
+  }
   if (flowLines && flowLines.shown && el.source && el.group !== "shops") {
     const l = flowLineFor(flowModel, el.source);
     if (l) logLine(l, "note");
