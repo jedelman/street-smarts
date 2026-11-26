@@ -1,10 +1,13 @@
 // node --test tools/sparrow/
-// Eavesdropping: what the walk's passers-by say. Every finding must be the
-// opinion's own words (tidied for reading, never added to); only the opener
-// is the walk's, and it only says how the opinion scored.
+// Eavesdropping: what the walk's passers-by say. They say it plainly
+// (plain.js), but every number they say must be one the opinion reported;
+// the opinion's own words (tidied, never added to) go in the log beside it;
+// and the opener only says how the opinion scored.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { moodOf, shortName, tidy, forSpeech, pickOpinion, lineFor, questionLine } from "../../public/sparrow/chorus.js";
+import { plainFor, PLAIN_NAMES } from "../../public/sparrow/plain.js";
 
 // Real findings and sources from clean_baseline (seed 42), via chorus_of.
 const OPS = [
@@ -61,7 +64,8 @@ test("every finding is the opinion's own words, and the opener only carries the 
   for (const op of OPS) {
     for (let k = 0; k < 6; k++) {
       const line = lineFor(op, { rng });
-      assert.equal(line.text, `${line.opener} ${line.finding}`);
+      assert.equal(line.text.toLowerCase(), `${line.opener} ${line.said}`.toLowerCase());
+      assert.equal(line.said, line.plain ? plainFor(op) : line.finding);
       const own = new Set(words(op.says));
       for (const w of words(line.finding.replace(/…$/, ""))) assert.ok(own.has(w.replace(/[.,;:]$/, "")) || own.has(w), `${op.name}: "${w}" isn't in its own finding`);
       assert.equal(line.mood, moodOf(op.value));
@@ -97,8 +101,67 @@ test("what's nearby and a reply's mood both tilt the pick", () => {
   assert.ok(against > 400 * 0.45, `replies disagree: ${against}`);
 });
 
-test("the chorus's own question can be asked, word for word", () => {
+test("the chorus's own question is asked plainly, with the original in the log", () => {
   const q = questionLine(CHORUS, seeded());
-  assert.equal(q.text, CHORUS.questions[0].question);
+  assert.equal(q.finding, CHORUS.questions[0].question);
+  assert.equal(q.plain, true);
+  assert.doesNotMatch(q.text, /chorus|\d/);
   assert.equal(questionLine({ opinions: OPS, questions: [] }), null);
+  // A question worded some new way is asked as it is.
+  const odd = questionLine({ opinions: OPS, questions: [{ question: "What now?", why: "" }] }, seeded());
+  assert.equal(odd.text, "What now?");
+});
+
+// ---- plain speech, against the real chorus (a snapshot of clean_baseline, seed 42; and the
+// freshly rendered one too, when there is one).
+const REAL = [JSON.parse(readFileSync(new URL("./fixtures/clean_baseline_chorus.json", import.meta.url), "utf8"))];
+const fresh = new URL("../../target/vibe-render/clean_baseline_chorus.json", import.meta.url);
+if (existsSync(fresh)) REAL.push(JSON.parse(readFileSync(fresh, "utf8")));
+/** Every number written in digits ("1,512", "24.7", "17 to 20"). */
+const numbersIn = (s) => (s.match(/\d[\d,]*(?:\.\d+)?/g) || []).map((x) => parseFloat(x.replace(/,/g, "")));
+
+test("every opinion in the chorus has a plain line, and today's output fills it", () => {
+  for (const chorus of REAL) {
+    for (const op of chorus.opinions) {
+      assert.ok(PLAIN_NAMES.includes(op.name), `${op.name} has no plain line in plain.js`);
+      assert.ok(plainFor(op), `${op.name}: its plain line couldn't be filled from its output`);
+    }
+  }
+});
+
+test("every number a person says is one the opinion reported", () => {
+  for (const chorus of REAL) {
+    for (const op of chorus.opinions) {
+      const line = plainFor(op);
+      if (!line) continue;
+      const own = new Set(numbersIn(`${op.says} ${Object.values(op.details || {}).join(" ")}`));
+      for (const x of numbersIn(line)) assert.ok(own.has(x), `${op.name} says ${x}, which isn't in its output: "${line}"`);
+    }
+  }
+});
+
+test("plain lines are short enough to say, and say no ids", () => {
+  for (const op of REAL[0].opinions) {
+    const line = plainFor(op);
+    assert.ok(line.length <= 200, `${op.name}: ${line.length} characters`);
+    assert.doesNotMatch(line, /_|\bP\d+\b|BLOCK/, `${op.name}: "${line}"`);
+  }
+});
+
+test("a line that can't be filled falls back to the opinion's own words", () => {
+  const changed = { ...OPS[0], says: "A finding worded some new way.", details: {} };
+  assert.equal(plainFor(changed), null);
+  const line = lineFor(changed, { rng: seeded() });
+  assert.equal(line.plain, false);
+  assert.equal(line.said, "A finding worded some new way.");
+  assert.equal(plainFor({ name: "an_opinion_nobody_wrote_for", says: "x" }), null);
+});
+
+test("a reply that runs on keeps the sentence going", () => {
+  const rng = seeded(2);
+  for (let k = 0; k < 30; k++) {
+    const line = lineFor(OPS[0], { rng, after: "love" });
+    if (/[.?!]$/.test(line.opener)) continue;
+    assert.match(line.text, new RegExp(`^${line.opener} [a-z0-9]`), line.text);
+  }
 });

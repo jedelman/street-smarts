@@ -1,10 +1,11 @@
 // The chorus, out loud. Eavesdrop on someone and they say what one of the
-// pipeline's opinions found about this site: its own one-line finding, word
-// for word apart from a little tidying for the ear, after an opener that only
-// says how the opinion scored it (a love or a gripe, a shrug when it abstains).
-// The opener is ours; every finding is the opinion's. Lines come from
-// /vibe-render/clean_baseline_chorus.json (crates/street-smarts-conflict/
-// examples/chorus_of.rs, run by scripts/vibe-render.sh on the whole site).
+// pipeline's opinions found about this site, the way a person would say it
+// (plain.js: a line per opinion, every number in it the opinion's own), after
+// an opener that only says how the opinion scored it (a love or a gripe, a
+// shrug when it abstains). The log keeps the opinion's own words beside it.
+// Lines come from /vibe-render/clean_baseline_chorus.json
+// (crates/street-smarts-conflict/examples/chorus_of.rs, run by
+// scripts/vibe-render.sh on the whole site).
 //
 // The pure parts (picking a line, tidying it) are tested in Node:
 // tools/sparrow/chorus.test.mjs.
@@ -21,7 +22,7 @@ const OPENERS = {
   love: ["Honestly? I love it.", "Okay, this part works.", "Credit where it's due.", "Now this I like.", "Say what you want, this is good."],
   meh: ["It's... fine?", "Half right, I'd say.", "Could go either way.", "Mm. Partly.", "Not bad, not great."],
   gripe: ["Don't get me started.", "This drives me up the wall.", "It's a miss.", "Who signed off on this?", "Ugh."],
-  shrug: ["I can't even say.", "No opinion. Literally.", "Don't ask me.", "Pass.", "I've got nothing."],
+  shrug: ["Hm.", "Eh.", "Search me.", "Hah.", "Well."],
 };
 // Someone answering in a group: agreeing, or not.
 const REPLIES = {
@@ -29,6 +30,8 @@ const REPLIES = {
   differ: ["Sure, but", "Come on, though.", "See, I don't know.", "Hang on."],
   shrug: ["Don't look at me.", "No idea, myself.", "Can't help you there."],
 };
+
+import { plainFor, plainQuestion } from "./plain.js";
 
 const pick = (rng, xs) => xs[Math.floor(rng() * xs.length)];
 
@@ -106,7 +109,9 @@ export function pickOpinion(chorus, { near = new Set(), heard = new Set(), again
 
 /**
  * A line for opinion `op`. `after` is the mood of the line it answers, if
- * it's a reply in a group. Returns { mood, opener, finding, text, speech, cite }.
+ * it's a reply in a group. Returns { mood, opener, said, finding, plain, text,
+ * speech, cite }: `said` is what the person says (the plain line, or the
+ * opinion's own words when it has none), `finding` the opinion's own words.
  */
 export function lineFor(op, { rng = Math.random, after = null } = {}) {
   const mood = moodOf(op.value);
@@ -116,9 +121,13 @@ export function lineFor(op, { rng = Math.random, after = null } = {}) {
     else opener = pick(rng, mood === after ? REPLIES.agree : REPLIES.differ);
   } else opener = pick(rng, OPENERS[mood]);
   const finding = tidy(op.says);
-  const text = `${opener} ${finding}`;
+  const plainLine = plainFor(op);
+  const said = plainLine || finding;
+  // "Sure, but" runs straight on into the line: "Sure, but the rooms are...".
+  const runOn = opener && !/[.?!]$/.test(opener) && !/^(I\b|I'|Alexander|Salingaros)/.test(said);
+  const text = `${opener} ${runOn ? said[0].toLowerCase() + said.slice(1) : said}`;
   const score = op.value == null ? "no view" : op.value.toFixed(2);
-  return { mood, opener, finding, text, speech: forSpeech(text), cite: `${shortName(op)} · ${score}` };
+  return { mood, opener, said, finding, plain: !!plainLine, text, speech: forSpeech(text), cite: `${shortName(op)} · ${score}` };
 }
 
 /** The chorus's own question for the humans in it, said by a bystander. */
@@ -126,7 +135,9 @@ export function questionLine(chorus, rng = Math.random) {
   const qs = chorus.questions || [];
   if (!qs.length) return null;
   const q = pick(rng, qs);
-  return { mood: "question", opener: "", finding: q.question, text: q.question, speech: forSpeech(q.question), cite: "The chorus's question for humans" };
+  const plain = plainQuestion(q.question);
+  const said = plain || q.question;
+  return { mood: "question", opener: "", said, finding: q.question, plain: !!plain, text: said, speech: forSpeech(said), cite: "The chorus's question for humans" };
 }
 
 /**

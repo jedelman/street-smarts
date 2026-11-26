@@ -19,7 +19,7 @@ import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
 import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
-import { makeVoices, pickOpinion, lineFor, questionLine } from "./chorus.js";
+import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.js";
 
 const params = new URLSearchParams(location.search);
 const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
@@ -771,7 +771,8 @@ function nextLine() {
   $("bubble-text").textContent = line.text;
   $("bubble").hidden = false;
   logLine(`“${line.text}”`, "said");
-  logLine(line.cite, "pattern");
+  // The source, and (room permitting) the opinion's own words, so the plain version can be checked.
+  logLine(line.plain && !COARSE ? `${line.cite}: “${tidy(line.finding, 110)}”` : line.cite, "pattern");
   const away = people.people[line.who].pos.distanceTo(camera.position);
   const ms = voices.say(line.speech, line.who * 7 + 3, {
     muted: sound.muted, volume: clamp(1.15 - away / 25, 0.25, 1),
