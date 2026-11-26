@@ -514,7 +514,7 @@ mod tests {
             roof: None,
             canopies: vec![],
             roof_segments: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 

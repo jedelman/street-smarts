@@ -332,7 +332,7 @@ class Parts {
  * update(camera) }; `shops` lists each storefront's kit and the point on the
  * pavement in front of its door, for people to visit.
  */
-export function buildFrontages(scene, detail, { coarse = false } = {}) {
+export function buildFrontages(scene, detail, { coarse = false, uses = null } = {}) {
   const paintOf = (k) => k.paints[0];
   const letters = lettersAtlas(), stripes = stripesAtlas(paintOf), insides = insidesAtlas(), icons = iconsAtlas();
   const lambert = new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -385,6 +385,10 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
   const O = detail.openings;
   const walls = new Array(detail.nWalls);
   const glassCol = new THREE.Color(), lit = new THREE.Color("#f2c27a");
+  // P9's floor uses, by building id (from the element table): a floor of work reads as
+  // offices and studios, more of them lit, in cooler daylight than a home's lamps.
+  const useOf = (w, floor) => (uses && uses.get(detail.strings[w.building]) || "")[floor];
+  const office = new THREE.Color("#d9e8ee"), officeDim = new THREE.Color("#8fb0bd");
   for (let i = 0; i < detail.nOpenings; i++) {
     const o = i * 6;
     const wi = O[o], door = (O[o + 1] & 3) !== 0, floor = O[o + 1] >> 2; // kind: 0 window, 1 door, 2 P87 shop door
@@ -399,7 +403,9 @@ export function buildFrontages(scene, detail, { coarse = false } = {}) {
       add("glass", w, along, bottom + height * 0.72, 0.04, width * 0.55, height * 0.32, 1, "#d8b77a");
       continue;
     }
-    if (floor === 0 && w.public) {
+    if (useOf(w, floor) === "w") {
+      framed(r() < 0.55 ? office : officeDim);
+    } else if (floor === 0 && w.public) {
       // A ground-floor window onto a street or square: lit, a room you can see into.
       add("display", w, along, cy, 0.035, width, height, 1, col.setScalar(0.92), insides.rects.rooms);
     } else {

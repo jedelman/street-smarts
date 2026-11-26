@@ -143,7 +143,7 @@ mod tests {
             floors: Some(2), openings: vec![], interior_cells: vec![],
             wall_thickness_m,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     #[test]

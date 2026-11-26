@@ -285,7 +285,7 @@ mod tests {
             typology: Some("p107_solid_v01".into()),
             year_built: None, parcel_id: None, floors: Some(floors),
             openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None,
-            roof_segments: vec![], canopies: vec![], wall_niches: vec![],
+            roof_segments: vec![], canopies: vec![], wall_niches: vec![], floor_uses: vec![],
         }
     }
 

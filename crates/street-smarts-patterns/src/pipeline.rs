@@ -273,6 +273,12 @@
 //!      own entrance and windows are settled; before P161, whose sunny places
 //!      would otherwise count as squares. See p87_individually_owned_shops's
 //!      own module doc.
+//!   29c. P9 Scattered Work (once, site-scale): gives every floor a use
+//!      (`Building.floor_uses`): shops on ground floors with P87's shop doors,
+//!      workshops on those without, and homes upstairs with work added a
+//!      floor at a time across every building until it reaches its share of
+//!      the floor area. After P87 and P96 (it needs the shop doors and the
+//!      final story counts). See p9_scattered_work's own module doc.
 //!   30. P161 Sunny Place (once, site-scale): adds a small, real,
 //!      south-facing OpenSpace (reusing `OpenSpaceKind::Common` -- no
 //!      dedicated "Sunny" variant exists, see p161_sunny_place's own
@@ -336,6 +342,7 @@ use crate::p110_main_entrance::{P110MainEntrance, P110Params};
 use crate::p126_something_roughly_in_the_middle::{P126Params, P126SomethingRoughlyInTheMiddle};
 use crate::p171_tree_places::{P171Params, P171TreePlaces};
 use crate::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
+use crate::p9_scattered_work::{P9ScatteredWork, P9Params};
 use crate::p34_interchange::{P34Interchange, P34Params};
 use crate::p172_garden_growing_wild::{P172GardenGrowingWild, P172Params};
 use crate::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
@@ -382,6 +389,25 @@ use street_smarts_core::Scope;
 /// which wanted exactly this so a future check can tell "too small" apart
 /// from "geometry op produced garbage" instead of both looking identical
 /// after the fact.
+/// How tall this plan builds: El Born's heights, not Alexander's four
+/// stories. Jason, 2026-11-26: "push more for El Born rather than Gracia in
+/// terms of height", chosen as edge rings of 4 floors, the core at 8 (only
+/// P96's few widely spaced exceptions reach it) and an ordinary cap of 6.
+/// The operators' own defaults stay Alexander's (P21: four stories); this is
+/// the pipeline's choice against them, and the P21 opinion says so. Both
+/// this pipeline and the ledger's corrected pipeline read these.
+pub fn site_p29_params() -> P29Params {
+    P29Params { core_target_stories: 8.0, edge_target_stories: 4.0, ..P29Params::defaults() }
+}
+/// The ordinary cap P21 applies, raised to 6 for El Born. See `site_p29_params`.
+pub fn site_p21_params() -> P21Params {
+    P21Params { max_ordinary_stories: 6.0, ..P21Params::defaults() }
+}
+/// P96's cap matches P21's; its exceptions take the core ring's 8. See `site_p29_params`.
+pub fn site_p96_params() -> P96Params {
+    P96Params { max_ordinary_stories: 6.0, ..P96Params::defaults() }
+}
+
 pub fn run_per_block<F>(
     nbhd: &Neighborhood,
     block_ids: &[String],
@@ -487,7 +513,7 @@ pub fn run_corrected_pipeline_with_p37_traced(
     // polygon): P37 below tolerates a missing field exactly like a
     // pipeline that never ran P29 at all.
     let mut nbhd = baseline.clone();
-    if let Ok(sub29) = P29DensityRings.apply(&nbhd, parcel_id, &P29Params::defaults(), seed) {
+    if let Ok(sub29) = P29DensityRings.apply(&nbhd, parcel_id, &site_p29_params(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub29);
         trace.push(P29DensityRings.name());
     }
@@ -561,7 +587,7 @@ pub fn run_corrected_pipeline_with_p37_traced(
     // §4.2), so it runs right here, before P108, at its own real earliest
     // position. p96_number_of_stories (below) picks the very few
     // exceptions after P108 has produced final, merged footprints.
-    if let Ok(sub21) = P21FourStoryLimit.apply(&nbhd, "*", &P21Params::defaults(), seed) {
+    if let Ok(sub21) = P21FourStoryLimit.apply(&nbhd, "*", &site_p21_params(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub21);
         trace.push(P21FourStoryLimit.name());
     }
@@ -576,7 +602,7 @@ pub fn run_corrected_pipeline_with_p37_traced(
     // widely spaced" -- needs P108's final merged footprint to rank and
     // space them (PATTERN_ORDERING_AUDIT.md §4.2), so runs here, after
     // P108, not before it like P21 above.
-    if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &P96Params::defaults(), seed) {
+    if let Ok(sub96) = P96NumberOfStories.apply(&nbhd, "*", &site_p96_params(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub96);
         trace.push(P96NumberOfStories.name());
     }
@@ -797,6 +823,13 @@ pub fn run_corrected_pipeline_with_p37_traced(
     if let Ok(sub87) = P87IndividuallyOwnedShops.apply(&nbhd, "*", &P87Params::defaults(), seed) {
         nbhd = apply_subdivision(&nbhd, &sub87);
         trace.push(P87IndividuallyOwnedShops.name());
+    }
+
+    // P9 Scattered Work (once, site-scale): every floor gets a use, work
+    // scattered through the homes. See step 29c.
+    if let Ok(sub9) = P9ScatteredWork.apply(&nbhd, "*", &P9Params::defaults(), seed) {
+        nbhd = apply_subdivision(&nbhd, &sub9);
+        trace.push(P9ScatteredWork.name());
     }
 
     // P161 Sunny Place (once, site-scale): adds a small real south-facing

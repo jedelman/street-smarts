@@ -59,7 +59,7 @@ impl Opinion for P33NightLife {
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
 
-        let commercial: Vec<_> = n.parcels.iter().filter(|p| p.use_category.as_deref() == Some("commercial")).collect();
+        let commercial: Vec<_> = { let uses = crate::uses::Uses::of(n); n.parcels.iter().filter(|p| uses.is_commercial(p)).collect() };
         if commercial.len() < 2 {
             return OpinionOutput::NoView {
                 reason: format!(

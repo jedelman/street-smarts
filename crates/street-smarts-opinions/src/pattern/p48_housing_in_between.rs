@@ -58,14 +58,19 @@ impl Opinion for P48HousingInBetween {
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
 
-        let residential: Vec<_> = n.parcels.iter().filter(|p| p.use_category.as_deref() == Some("residential")).collect();
+        let uses = crate::uses::Uses::of(n);
+        let residential: Vec<_> = n.parcels.iter().filter(|p| uses.is_residential(p)).collect();
         if residential.is_empty() {
             return OpinionOutput::NoView {
                 reason: "No residential-use parcels in this neighborhood yet.".into(),
                 runtime_ms: timer.elapsed_ms(),
             };
         }
-        let nonresidential: Vec<_> = n.parcels.iter().filter(|p| is_nonresidential(&p.use_category)).collect();
+        // Shops or work at street level count, as does any other tag; the pipeline's own
+        // bookkeeping tags for building pads ("p95_...") don't say what a parcel is used for.
+        let nonresidential: Vec<_> = n.parcels.iter()
+            .filter(|p| uses.is_commercial(p) || (is_nonresidential(&p.use_category) && !p.use_category.as_deref().is_some_and(|c| c.starts_with("p95_") || c.starts_with("p37_"))))
+            .collect();
         if nonresidential.is_empty() {
             return OpinionOutput::NoView {
                 reason: "No nonresidential parcels to check housing adjacency against yet.".into(),

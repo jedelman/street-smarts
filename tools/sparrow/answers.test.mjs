@@ -4,7 +4,7 @@
 // every pattern named must be the one the element's own record names.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readElements, patternsOf, nounOf, answerOf, promptOf, touchable, arrivalOf, PATTERNS } from "../../public/sparrow/answers.js";
+import { readElements, patternsOf, nounOf, answerOf, promptOf, touchable, arrivalOf, PATTERNS, usesLine } from "../../public/sparrow/answers.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor } from "../../public/sparrow/camerawork.js";
 import { createGovernor, median, scaleRange } from "../../public/sparrow/governor.js";
 
@@ -158,4 +158,17 @@ test("light rail: P34 on the station, platform and track; the line is called a s
   assert.equal(lines[0], "A light rail platform.");
   assert.match(lines[1], /sketch/);
   assert.equal(lines[2], `P34 Interchange: ${PATTERNS[34].gist}.`);
+});
+
+test("a building's floors say what P9 made of them", () => {
+  assert.equal(usesLine("pwwlll"), "Shops at street level, work on the two floors above, homes on the three floors above that.");
+  assert.equal(usesLine("wllll"), "Workshops at street level, homes on the four floors above.");
+  assert.equal(usesLine(null), null);
+  const b = { group: "buildings", kind: "building_shaped", source: "p108_merged_3_building", typology: "p107_solid_v01", floors: 6, uses: "pwllll" };
+  assert.ok(patternsOf(b).includes(9), "work on a floor names P9");
+  assert.ok(!patternsOf({ ...b, uses: "plllll" }).includes(9), "no work, no P9");
+  assert.ok(answerOf(b).some((l) => l.startsWith("Shops at street level")));
+  assert.ok(answerOf(b).some((l) => l.startsWith("P9 Scattered Work")));
+  const [e] = readElements({ version: 1, strings: ["buildings", "building_shaped", "B1", "pwll"], elements: [[0, 1, 2, -1, 4, 3]] });
+  assert.equal(e.uses, "pwll");
 });

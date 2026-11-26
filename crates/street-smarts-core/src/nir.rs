@@ -347,6 +347,13 @@ pub struct Building {
     /// generator exists.
     #[serde(default)]
     pub wall_niches: Vec<WallNiche>,
+    /// What each floor is used for, ground floor first: "live" (homes),
+    /// "work" (offices, studios, workshops) or "play" (shops, cafes,
+    /// things to do). Set by P9 Scattered Work; empty means no generator
+    /// has assigned uses yet (readers should treat that as unknown, not as
+    /// any particular use).
+    #[serde(default)]
+    pub floor_uses: Vec<String>,
 }
 
 /// The real geometric family a roof belongs to. Only `Shed` is generated
@@ -744,7 +751,7 @@ mod building_wall_thickness_tests {
             roof: None,
             roof_segments: vec![],
             canopies: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         };
         let json = serde_json::to_string(&b).unwrap();
         let back: Building = serde_json::from_str(&json).unwrap();
@@ -771,7 +778,7 @@ mod roof_segment_canopy_niche_tests {
             height_m: None, typology: None, year_built: None, parcel_id: None,
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: None, roof: None,
-            roof_segments: vec![], canopies: vec![], wall_niches: vec![],
+            roof_segments: vec![], canopies: vec![], wall_niches: vec![], floor_uses: vec![],
         }
     }
 

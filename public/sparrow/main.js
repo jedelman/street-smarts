@@ -138,7 +138,7 @@ let present = [];
     }
   }
   // Every window, and storefronts at the doors that open onto a street or square.
-  if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE });
+  if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
   pigeons = buildPigeons(scene, pigeonSpots());

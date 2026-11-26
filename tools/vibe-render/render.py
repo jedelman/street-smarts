@@ -1323,7 +1323,8 @@ def build_scene(nbhd, context_path=None, include_interior_walls=False, punch_rea
 
     building_prov = Provenance(building_solids, canopy_records, wall_niche_records, interior_wall_solids, window_glow_records)
     for b in nbhd.get("buildings", []):
-        building_prov.mark(b, typology=b.get("typology"), floors=b.get("floors"))
+        building_prov.mark(b, typology=b.get("typology"), floors=b.get("floors"),
+                           uses="".join(u[:1] for u in b.get("floor_uses") or []) or None)  # P9: "pwwll", ground floor first
         height = b.get("height_m") or DEFAULT_BUILDING_HEIGHT_M
         parts = b["polygon"].get("parts") or [{"outer": b["polygon"]["outer"], "holes": b["polygon"].get("holes", [])}]
         for part in parts:
@@ -2654,7 +2655,8 @@ def export_glb(scene, out_path):
             name = f"{group}_{n_added}_{kind}"
             origin = getattr(piece, "origin", None) or {}
             elements[name] = {"group": group, "kind": kind, "source": origin.get("id"),
-                             "typology": origin.get("typology"), "floors": origin.get("floors")}
+                             "typology": origin.get("typology"), "floors": origin.get("floors"),
+                             "uses": origin.get("uses")}
             try:
                 asm.add(solid, name=name, color=cq.Color(r, g, b, solid_alpha))
             except Exception as e:

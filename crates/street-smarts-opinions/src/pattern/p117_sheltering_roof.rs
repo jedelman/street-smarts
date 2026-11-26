@@ -147,7 +147,7 @@ mod tests {
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![], wall_thickness_m: None,
             roof,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     fn nbhd(buildings: Vec<Building>) -> Neighborhood {

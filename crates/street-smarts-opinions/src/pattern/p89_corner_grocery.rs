@@ -61,7 +61,7 @@ impl Opinion for P89CornerGrocery {
     fn evaluate(&self, n: &Neighborhood) -> OpinionOutput {
         let timer = Timer::start();
 
-        let commercial: Vec<_> = n.parcels.iter().filter(|p| p.use_category.as_deref() == Some("commercial")).collect();
+        let commercial: Vec<_> = { let uses = crate::uses::Uses::of(n); n.parcels.iter().filter(|p| uses.is_commercial(p)).collect() };
         if commercial.is_empty() {
             return OpinionOutput::NoView {
                 reason: "No commercial-use parcels in this neighborhood yet.".into(),
@@ -168,7 +168,7 @@ mod tests {
     }
 
     fn building_on(id: &str, parcel_id: &str, x_m: f64, y_m: f64, floors: u32) -> Building {
-        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None, canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        Building { id: id.into(), polygon: square(x_m, y_m, 8.0), height_m: Some(6.0), typology: Some("p107_solid_v01".into()), year_built: None, parcel_id: Some(parcel_id.into()), floors: Some(floors), openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None, canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     fn street_along_x(y_m: f64) -> Street {

@@ -328,7 +328,7 @@ impl P107WingsOfLight {
                     interior_cells: vec![],
                     wall_thickness_m: None,
                     roof: None,
-                canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
+                canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], });
                 building_typology_assignments.push((building_id, BuildingTypology::SolidV01));
                 n_solid += 1;
             } else {
@@ -352,7 +352,7 @@ impl P107WingsOfLight {
                         interior_cells: vec![],
                         wall_thickness_m: None,
                         roof: None,
-                    canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
+                    canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], });
                     building_typology_assignments.push((building_id, BuildingTypology::SolidFallbackV01));
                     n_solid += 1;
                 } else {
@@ -373,7 +373,7 @@ impl P107WingsOfLight {
                         interior_cells: vec![],
                         wall_thickness_m: None,
                         roof: None,
-                    canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
+                    canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], });
                     new_open.push(OpenSpace {
                         id: format!("{}_P107_courtyard", parcel.id),
                         polygon: Polygon::from_ring(inner_ring),

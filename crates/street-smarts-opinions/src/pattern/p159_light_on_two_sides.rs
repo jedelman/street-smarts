@@ -331,7 +331,7 @@ mod tests {
             ],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);
         match out {
@@ -365,7 +365,7 @@ mod tests {
             openings: vec![win(0, false, 0.5), win(0, true, 0.5)],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);
         match out {
@@ -394,7 +394,7 @@ mod tests {
             openings: vec![win(0, false, 0.5), win(1, false, 0.5)],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b]);
         let out = P159LightOnTwoSides.evaluate(&n);
         match out {

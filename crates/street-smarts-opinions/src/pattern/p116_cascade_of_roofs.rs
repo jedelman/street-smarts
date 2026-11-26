@@ -157,7 +157,7 @@ mod tests {
             polygon: Polygon::from_ring(square_ring(10.0)),
             height_m: Some(9.0), typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None,
-            roof_segments, canopies: vec![], wall_niches: vec![],
+            roof_segments, canopies: vec![], wall_niches: vec![], floor_uses: vec![],
         }
     }
 

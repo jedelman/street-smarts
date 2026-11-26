@@ -227,6 +227,12 @@ pub const LANGUAGE: &[PatternNode] = &[
         why: "divides every ground floor that faces a street or square into very small shop fronts, each with its own ShopDoor. After P110 (the building's own entrance settled) and P165 (its windows placed, so doors fit between them), and before P161, whose sunny places would otherwise count as squares to face. ShopDoor isn't Door, so P110 and P102 don't see these",
     },
     PatternNode {
+        id: "p9_scattered_work", alexander_number: Some(9),
+        requires: &["p87_individually_owned_shops", "p96_number_of_stories"],
+        completes: &[],
+        why: "gives every floor a use and scatters work through the homes: shops on the ground floors P87 gave shop doors, workshops on the ones it didn't, and work added to upper floors a layer at a time across every building, so no part of the site gets work without homes or homes without work. Needs P96's final story counts and P87's shop doors",
+    },
+    PatternNode {
         id: "p161_sunny_place", alexander_number: Some(161),
         requires: &["p107_wings_of_light"],
         completes: &[],

@@ -198,7 +198,7 @@ mod tests {
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
             floors: None, openings: vec![], interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let out = P107WingsOfLightOpinion.evaluate(&nbhd(vec![b]));
         match out {
             OpinionOutput::Value { sub_scores, details, .. } => {

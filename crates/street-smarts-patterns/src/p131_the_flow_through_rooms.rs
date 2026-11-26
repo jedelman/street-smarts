@@ -417,7 +417,7 @@ mod tests {
             interior_cells: cells,
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     #[test]
@@ -484,7 +484,7 @@ mod tests {
             interior_cells: vec![mk("bay_0"), mk("bay_1"), mk("bay_2"), mk("bay_3")],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(vec![b]);
         let sub = P131TheFlowThroughRooms.apply(&n, "*", &P131Params::defaults(), 1).expect("should run");
         let cells = &sub.new_buildings[0].interior_cells;

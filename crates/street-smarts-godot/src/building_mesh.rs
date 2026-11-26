@@ -692,7 +692,7 @@ mod tests {
             roof: None,
             roof_segments: vec![],
             canopies: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 
@@ -727,7 +727,7 @@ mod tests {
             roof: None,
             roof_segments: vec![],
             canopies: vec![],
-            wall_niches: vec![],
+            wall_niches: vec![], floor_uses: vec![],
         }
     }
 

@@ -376,7 +376,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
             vec![common_patch("BLOCK_1_common", 0.0, 0.0, 50.0)],
@@ -412,7 +412,7 @@ mod tests {
             interior_cells: vec![],
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], };
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], };
         let n = nbhd(
             vec![block("BLOCK_1", 0.0, 0.0)],
             vec![common_patch("BLOCK_1_common", 0.0, 0.0, 50.0)],

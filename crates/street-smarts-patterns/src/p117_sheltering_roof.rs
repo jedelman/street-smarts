@@ -255,7 +255,7 @@ mod tests {
             polygon: Polygon::from_ring(square_ring(0.0, 0.0, 10.0)),
             height_m, typology: None, year_built: None, parcel_id: None, floors: None,
             openings: vec![], interior_cells: vec![], wall_thickness_m: None, roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], }
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], }
     }
 
     fn nbhd(buildings: Vec<Building>) -> Neighborhood {

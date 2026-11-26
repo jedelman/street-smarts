@@ -18,6 +18,7 @@ export const PATTERNS = {
   52: { name: "Network of Paths and Cars", gist: "the path system is the spine" },
   53: { name: "Main Gateways", gist: "a marker where the paths that enter the site cross its edge" },
   61: { name: "Small Public Squares", gist: "small enough to feel intimate, not desolate" },
+  9: { name: "Scattered Work", gist: "work scattered through the homes, so no part of town is all one or the other" },
   87: { name: "Individually Owned Shops", gist: "many very small shops along the street, each with its own door" },
   95: { name: "Building Complex", gist: "a cluster of buildings, not one tower on a lot" },
   98: { name: "Circulation Realms", gist: "distinct walking and driving zones" },
@@ -50,8 +51,9 @@ const NUMBER = ["", "one", "two", "three", "four", "five", "six", "seven", "eigh
 export function readElements(table) {
   if (!table || table.version !== 1) return [];
   const s = (i) => (i >= 0 ? table.strings[i] : null);
-  return table.elements.map(([g, k, src, typ, floors], index) => ({
+  return table.elements.map(([g, k, src, typ, floors, uses], index) => ({
     index, group: s(g), kind: s(k), source: s(src), typology: s(typ), floors: floors ?? null,
+    uses: uses == null ? null : s(uses), // P9's floor uses, ground floor first: "pwwll"
   }));
 }
 
@@ -110,6 +112,7 @@ export function patternsOf(el) {
         if (has(/_P95_cell_/) || /^p95_/.test(el.typology || "")) add(95);
         if (/^p107_/.test(el.typology || "")) add(107);
         if (has(/^p108_merged_/)) add(108);
+        if (/w/.test(el.uses || "")) add(9);
       }
   }
   return out;
@@ -198,6 +201,8 @@ export function answerOf(el) {
   if (el.group === "transit" || el.kind === "activity_transit") {
     lines.push("The line is a sketch from the direction of the Tide's Newtown Road station, not HRT's route; where the station stands is the pipeline's choice.");
   }
+  const floorsLine = usesLine(el.uses);
+  if (floorsLine) lines.push(floorsLine);
   if (el.group === "shops") {
     // Which shop it is, its paint and sign, are the walk's; where its door is, is the pipeline's.
     lines.push(el.p87 ? "Which shop is ours; its door is the pipeline's." : "At the building's own door; which shop is ours.");
@@ -213,6 +218,28 @@ export function answerOf(el) {
     if (pat) lines.push(`P${num} ${pat.name}: ${pat.gist}.`);
   }
   return lines;
+}
+
+/**
+ * What a building's floors are for, from P9's uses ("pwwll", ground floor
+ * first): "Shops at street level, work on the next two floors, homes on the
+ * three above." Null without uses.
+ */
+export function usesLine(uses) {
+  if (!uses) return null;
+  const ground = { p: "Shops at street level", w: "Workshops at street level", l: "Homes at street level" }[uses[0]];
+  const parts = [ground];
+  let i = 1;
+  while (i < uses.length) {
+    let j = i;
+    while (j < uses.length && uses[j] === uses[i]) j++;
+    const n = j - i, what = { w: "work", l: "homes", p: "shops" }[uses[i]];
+    const where = i === 1 ? (n === 1 ? "on the floor above" : `on the ${NUMBER[n] || n} floors above`)
+      : (n === 1 ? "on the next floor up" : `on the ${NUMBER[n] || n} floors above that`);
+    parts.push(`${what} ${where}`);
+    i = j;
+  }
+  return parts.join(", ") + ".";
 }
 
 /** A short line for stepping onto something new underfoot, or null. */

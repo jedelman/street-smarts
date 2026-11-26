@@ -286,7 +286,7 @@ mod tests {
             interior_cells: Vec::new(),
             wall_thickness_m: None,
             roof: None,
-        canopies: vec![], roof_segments: vec![], wall_niches: vec![], });
+        canopies: vec![], roof_segments: vec![], wall_niches: vec![], floor_uses: vec![], });
         n.streets.push(Street {
             id: "S1".into(),
             centerline: vec![],

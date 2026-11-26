@@ -373,12 +373,15 @@ pub const CASCADE_CONTRACTS: &[CascadeContract] = &[
         generator_pattern: 96,
         opinion: "p21_four_story_limit",
         opinion_pattern: 21,
-        check: CascadeCheck::MinValue(0.6),
+        check: CascadeCheck::MinValue(0.25),
         why: "data/apl-pattern-graph.json: P96's own larger-patterns list includes Four-Story \
               Limit (21). p96_number_of_stories is the real generator that assigns every pad's \
-              target_stories, which P107 turns into real height. Measured on the real fixture: \
-              Value 0.960 (93% of real floor area at or below 4 stories; the 2 real exceptions \
-              are >=80m apart). Floor set safely below that.",
+              target_stories, which P107 turns into real height. Since 2026-11-26 the pipeline \
+              builds to El Born's heights, not Alexander's (pipeline::site_p21_params: an \
+              ordinary cap of 6, Jason's choice), so the detector, which still measures against \
+              four stories, reads low on purpose: measured 0.374 on the real fixture (was 0.960 \
+              at a cap of 4). Floor set below that, so the contract still catches P96's output \
+              failing to reach the detector.",
     },
     // -- p107_wings_of_light (P107). --
     CascadeContract {

@@ -23,7 +23,7 @@ use street_smarts_core::Scope;
 use street_smarts_patterns::p107_wings_of_light::{P107Params, P107WingsOfLight};
 use street_smarts_patterns::p108_connected_buildings::{P108ConnectedBuildings, P108Params};
 use street_smarts_patterns::p124_activity_pockets::{P124ActivityPockets, P124Params};
-use street_smarts_patterns::p21_four_story_limit::{P21FourStoryLimit, P21Params};
+use street_smarts_patterns::p21_four_story_limit::P21FourStoryLimit;
 use street_smarts_patterns::p117_sheltering_roof::{P117Params, P117ShelteringRoof};
 use street_smarts_patterns::p118_roof_garden::{P118Params, P118RoofGarden};
 use street_smarts_patterns::p116_cascade_of_roofs::{P116CascadeOfRoofs, P116Params};
@@ -41,6 +41,8 @@ use street_smarts_patterns::p172_garden_growing_wild::{P172GardenGrowingWild, P1
 use street_smarts_patterns::p133_staircase_as_a_stage::{P133Params, P133StaircaseAsAStage};
 use street_smarts_patterns::p160_building_edge::{P160BuildingEdge, P160Params};
 use street_smarts_patterns::p87_individually_owned_shops::{P87IndividuallyOwnedShops, P87Params};
+use street_smarts_patterns::p9_scattered_work::{P9ScatteredWork, P9Params};
+use street_smarts_patterns::pipeline::{site_p21_params, site_p29_params, site_p96_params};
 use street_smarts_patterns::p34_interchange::{P34Interchange, P34Params};
 use street_smarts_patterns::p161_sunny_place::{P161Params, P161SunnyPlace};
 use street_smarts_patterns::p164_street_windows::{P164Params, P164StreetWindows};
@@ -48,12 +50,12 @@ use street_smarts_patterns::p165_opening_to_the_street::{P165OpeningToTheStreet,
 use street_smarts_patterns::p192_windows_overlooking_life::{P192Params, P192WindowsOverlookingLife};
 use street_smarts_patterns::p197_thick_walls::{P197Params, P197ThickWalls};
 use street_smarts_patterns::p221_natural_doors_and_windows::{P221NaturalDoorsAndWindows, P221Params};
-use street_smarts_patterns::p29_density_rings::{P29DensityRings, P29Params};
+use street_smarts_patterns::p29_density_rings::P29DensityRings;
 use street_smarts_patterns::p37_house_cluster::{P37HouseCluster, P37Params};
 use street_smarts_patterns::p53_main_gateways::{P53MainGateways, P53Params};
 use street_smarts_patterns::p61_small_public_squares::{P61Params, P61SmallPublicSquares};
 use street_smarts_patterns::p95_building_complex::{P95BuildingComplex, P95Params};
-use street_smarts_patterns::p96_number_of_stories::{P96NumberOfStories, P96Params};
+use street_smarts_patterns::p96_number_of_stories::P96NumberOfStories;
 use street_smarts_patterns::path_network::{PathNetwork, PathNetworkParams};
 use street_smarts_patterns::pipeline::allocate_squares_by_area;
 use street_smarts_patterns::{DynOperator, Parameters};
@@ -99,7 +101,7 @@ pub fn run_corrected_pipeline_via_ledger(
     // Needs the same raw parcel_id P37 is about to carve, not "*"; only
     // attaches a real DensityField, doesn't touch any parcel. P37 samples
     // it (if present) as it individuates each new block.
-    try_run(store, &P29DensityRings, parcel_id, &P29Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P29DensityRings, parcel_id, &site_p29_params().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P37HouseCluster, parcel_id, &P37Params::defaults().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &PathNetwork, "*", &PathNetworkParams::defaults().as_map(), seed, &mut cur, &mut commits);
     // Marks the site's own real perimeter boundary (just populated above)
@@ -138,11 +140,11 @@ pub fn run_corrected_pipeline_via_ledger(
     // here -- a pure per-pad field read that needs nothing from P108's
     // merge (PATTERN_ORDERING_AUDIT.md §4.2), so it runs at its own real
     // earliest position, before P108.
-    try_run(store, &P21FourStoryLimit, "*", &P21Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P21FourStoryLimit, "*", &site_p21_params().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P108ConnectedBuildings, "*", &P108Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // P96 now picks only the very few real exceptions to P21's cap, which
     // genuinely needs P108's final merged footprint to rank and space them.
-    try_run(store, &P96NumberOfStories, "*", &P96Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    try_run(store, &P96NumberOfStories, "*", &site_p96_params().as_map(), seed, &mut cur, &mut commits);
     try_run(store, &P107WingsOfLight, "*", &P107Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // No real dependency on P124/P127/P197 either direction (PATTERN_
     // ORDERING_AUDIT.md §4.3/§4.4: a free reorder) -- ordered here to
@@ -206,6 +208,8 @@ pub fn run_corrected_pipeline_via_ledger(
     try_run(store, &P34Interchange, "*", &P34Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Many very small shop fronts, each with its own ShopDoor. See pipeline.rs's own step 29b.
     try_run(store, &P87IndividuallyOwnedShops, "*", &P87Params::defaults().as_map(), seed, &mut cur, &mut commits);
+    // Every floor gets a use, work scattered through the homes. See pipeline.rs's own step 29c.
+    try_run(store, &P9ScatteredWork, "*", &P9Params::defaults().as_map(), seed, &mut cur, &mut commits);
     // Adds a small real south-facing open space next to a building that
     // lacks one. Runs after every other stage except P126 -- see
     // pipeline.rs's own step 30 doc for why (and the real P60 Accessible
