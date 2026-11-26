@@ -7,7 +7,7 @@
 #
 # It fills public/ the way the deploy needs it: the WASM app in public/pkg,
 # the vibe-render GLBs and renders in public/vibe-render, and the pipeline's
-# stage chain written into public/index.html. The tests and the other gates
+# stage chain written into public/read.html. The tests and the other gates
 # run in GitHub Actions (.github/workflows/ci.yml) on every PR; this only
 # refuses to deploy unpacked GLBs.
 #

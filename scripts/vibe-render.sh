@@ -53,7 +53,7 @@
 # If $PUBLISH_DIR is set, every render (isometric PNGs, floor-plan SVGs,
 # .glb) is also copied there under fixed filenames, ready
 # to ship as static site assets -- the gallery embedding them lives at the
-# TOP of public/index.html (section#vibe-gallery), not a separate page.
+# TOP of public/read.html (section#vibe-gallery), not a separate page.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -95,20 +95,20 @@ target/release/examples/chorus_of "$OUT_DIR/clean_baseline.json" > "$OUT_DIR/cle
 
 # Substitute the real, current pipeline stage order (language_graph::LANGUAGE,
 # the same table validate_order checks against the real traced pipeline
-# execution) into public/index.html's gallery caption, between the
+# execution) into public/read.html's gallery caption, between the
 # PIPELINE_CHAIN:START/END markers -- so that caption structurally cannot
 # drift from the real pipeline the way it silently did before (missing
 # P124/P117/P197 even before P118/P119/P160 were added). Plain python3, not
 # the render.py venv -- this only needs stdlib re, and runs before the venv
 # is set up below.
-echo "==> substituting real pipeline stage chain into public/index.html"
+echo "==> substituting real pipeline stage chain into public/read.html"
 CHAIN="$("$DUMP_CHAIN_BIN")"
 python3 - "$CHAIN" <<'PYEOF'
 import re
 import sys
 
 chain = sys.argv[1]
-path = "public/index.html"
+path = "public/read.html"
 with open(path, "r", encoding="utf-8") as f:
     html = f.read()
 new_html, n = re.subn(
@@ -169,7 +169,7 @@ done
 
 # What the whole-site plan adds up to (floor area, shop fronts, trees...), measured
 # from the pipeline's output and the GLB just rendered from it, for the landing
-# page's numbers (#adds-up in public/index.html, where the assumptions live).
+# page's numbers (#adds-up in public/read.html, where the assumptions live).
 if has_scenario clean_baseline; then
   echo "==> measuring clean_baseline for the landing page's numbers"
   "$VENV_DIR/bin/python" tools/vibe-render/plan_numbers.py "$OUT_DIR/clean_baseline.json" "$OUT_DIR/clean_baseline.glb" \

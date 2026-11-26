@@ -16,6 +16,8 @@ import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
+import { setupPanels, renderMoney, renderIterations } from "./panels.js";
+import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
@@ -25,7 +27,11 @@ import { computeFlows, lineFor as flowLineFor, summaryLine as flowSummary } from
 import { buildFlowLines } from "./flowlines.js";
 
 const params = new URLSearchParams(location.search);
-const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
+// The front page: the whole site, unless the address asks for another model.
+const GLB_URL = params.get("glb") || "/vibe-render/clean_baseline.glb";
+// The plan's measurements (plan_numbers.py), for the Money panel: published beside the model.
+const NUMBERS_URL = /\/vibe-render\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/\.glb$/, "_numbers.json")
+  : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
 const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
 const CHORUS_URL = params.get("chorus") || "/vibe-render/clean_baseline_chorus.json";
@@ -93,6 +99,7 @@ let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
+let panels = null, plan = null, moneyDone = false; // the flyout panels, the site map's image
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
 const voices = makeVoices(), heard = new Set();
@@ -1279,6 +1286,7 @@ function frame() {
   if (trees) trees.update(t, camera);
   if (frontages) frontages.update(camera);
   if (flowLines) flowLines.update(t, dt);
+  if (plan && panels && panels.current === "map" && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) drawMap();
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });
@@ -1360,7 +1368,7 @@ function setupUI() {
       if (e.code === "KeyT") (tour ? endTour("You take it from here.") : startTour());
       if (e.code === "KeyF") { if (bird.air) holdDownFor = 3; else takeOff(); }
       if (e.code === "KeyV") director.zoomBy(director.eyes > 0.5 ? 3 : 0.2);
-      if (e.code === "Escape") { if (tour) endTour(""); goal = null; }
+      if (e.code === "Escape") { if (panels && panels.current) { panels.close(); return; } if (tour) endTour(""); goal = null; }
     }
     if (/^(Space|Arrow|Key[WASDCQEF])/.test(e.code)) e.preventDefault();
     keys[e.code] = true;
@@ -1415,16 +1423,30 @@ function setupUI() {
   $("mute").addEventListener("click", toggleMute);
   if (flowsReady()) { $("flows").hidden = false; $("flows").addEventListener("click", toggleFlows); }
   $("mute").setAttribute("aria-pressed", String(sound.muted));
-  $("help-btn").addEventListener("click", () => { $("help").hidden = !$("help").hidden; });
-  $("help").addEventListener("click", () => { $("help").hidden = true; });
-  $("met").addEventListener("click", () => { $("met-panel").hidden = !$("met-panel").hidden; });
+  panels = setupPanels({
+    open(name) {
+      if (name === "map") openMap();
+      if (name === "money" && !moneyDone) {
+        moneyDone = true;
+        const body = $("money-body");
+        body.textContent = "Working it out…";
+        (NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null))
+          .then((n) => renderMoney(body, n && n.version === 1 ? n : null));
+      }
+    },
+  });
+  $("map-canvas").addEventListener("click", (e) => {
+    if (!plan) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    flyTo(plan.toWorld((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height));
+  });
   if (views.length) {
     $("inside").hidden = false;
     $("inside").addEventListener("click", () => peekInside((viewIndex + 1) % views.length));
   }
   setupIterations();
   for (const a of document.querySelectorAll("[data-model]")) {
-    const isCurrent = (a.dataset.model === "cluster" && !params.get("glb")) || (params.get("glb") || "").includes(a.dataset.model);
+    const isCurrent = a.dataset.model === "cluster" ? GLB_URL.includes("cluster_interior") : GLB_URL.includes("clean_baseline") && !params.get("iteration");
     a.setAttribute("aria-current", isCurrent ? "page" : "false");
   }
   if (STATS) $("stats").hidden = false;
@@ -1443,31 +1465,62 @@ function setupIterations() {
   fetch("/archive/index.json").then((r) => (r.ok ? r.json() : null)).then((idx) => {
     const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
     if (!its.length || HERO) return;
-    const sel = $("versions");
-    const opt = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; };
+    renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null);
+    $("its-btn").hidden = false;
     const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    sel.appendChild(opt("", "Now"));
-    for (const it of its.slice().reverse()) sel.appendChild(opt(it.id, `${short(it.date)} · ${it.title}`));
-    sel.value = ITERATION && its.some((i) => i.id === ITERATION) ? ITERATION : "";
-    sel.addEventListener("change", () => {
-      const id = sel.value;
-      location.href = id
-        ? `/walk.html?glb=/archive/${encodeURIComponent(id)}/clean_baseline.glb&chorus=/archive/${encodeURIComponent(id)}/chorus.json&iteration=${encodeURIComponent(id)}`
-        : "/walk.html?glb=/vibe-render/clean_baseline.glb";
-    });
-    sel.closest(".versions").hidden = false;
     const k = its.findIndex((i) => i.id === ITERATION);
     if (k >= 0) {
       const it = its[k], note = $("iteration-note");
       note.innerHTML = "";
       const b = document.createElement("b"); b.textContent = `Iteration ${k + 1} of ${its.length}: ${it.title}`;
       note.append(b, document.createTextNode(` (${short(it.date)}${it.pr ? `, PR #${it.pr}` : ""}). ${it.summary} `));
-      const back = document.createElement("a"); back.href = "/walk.html?glb=/vibe-render/clean_baseline.glb"; back.textContent = "Back to now";
+      const back = document.createElement("a"); back.href = "/"; back.textContent = "Back to now";
       note.append(back);
       note.hidden = false;
       logLine(`You're walking iteration ${k + 1} of ${its.length}: ${it.title}.`, "note");
     }
   }).catch(() => {});
+}
+/**
+ * The site map: the scene from straight above, rendered the first time the panel opens
+ * (sitemap.js), with the sparrow drawn on it while it's open.
+ */
+function openMap() {
+  if (!plan) {
+    const box = new THREE.Box3();
+    for (const e of site.elements) if (e.center && e.kind !== "context" && !e.box.isEmpty()) box.union(e.box);
+    if (box.isEmpty()) box.copy(site.bounds);
+    box.expandByVector(new THREE.Vector3(15, 0, 15));
+    plan = renderPlan(renderer, scene, box, COARSE ? 640 : 900);
+    const cv = $("map-canvas");
+    cv.width = plan.image.width; cv.height = plan.image.height;
+  }
+  drawMap();
+}
+function drawMap() {
+  const cv = $("map-canvas"), ctx = cv.getContext("2d");
+  ctx.drawImage(plan.image, 0, 0);
+  const [u, v] = plan.toMap(bird.pos.x, bird.pos.z), x = u * cv.width, y = v * cv.height, s = cv.width / 300;
+  // Where you're looking: a soft wedge along the camera's heading.
+  const look = Math.atan2(bird.pos.x - camera.position.x, bird.pos.z - camera.position.z);
+  ctx.fillStyle = "rgba(255, 210, 122, 0.28)";
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, 26 * s, Math.PI / 2 - look - 0.5, Math.PI / 2 - look + 0.5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#ffd27a"; ctx.strokeStyle = "#2a2116"; ctx.lineWidth = 2 * s;
+  ctx.beginPath(); ctx.arc(x, y, 5 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+/** From the map: a blink, and you're there, on the ground or the roof below. */
+function flyTo(p) {
+  const hit = castDown(p.x, site.bounds.max.y + 40, p.z, site.bounds.max.y + 120);
+  if (!hit) return;
+  $("fade").classList.add("on");
+  setTimeout(() => {
+    goal = null;
+    if (tour) endTour("");
+    placeBird({ x: p.x, y: hit.point.y + 0.3, z: p.z });
+    director.snapBehind();
+    $("fade").classList.remove("on");
+    if (COARSE) panels.close();
+  }, 360);
 }
 function hideHint() {
   if (hintGone) return;
