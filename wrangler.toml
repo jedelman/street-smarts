@@ -2,10 +2,18 @@ name = "street-smarts"
 compatibility_date = "2026-05-17"
 account_id = "543fde7feabd0af945bfae926ceea7ad"
 
-# v0.1 is pure static assets: HTML/JS/CSS + WASM bundle + JSON fixtures.
-# Workers Assets serves them with no Worker script needed.
+# Static assets (HTML/JS/CSS, the WASM bundle, the renders) are served by
+# Workers Assets. Requests that match no asset fall through to the script,
+# which serves the plan's archived iterations (/archive/*) from R2.
+main = "worker/index.js"
+
 [assets]
 directory = "public"
+binding = "ASSETS"
+
+[[r2_buckets]]
+binding = "ARCHIVE"
+bucket_name = "street-smarts-archive"
 
 # Cache: the WASM bundle and fixtures rarely change between releases;
 # default headers are fine for v0.1. Custom caching headers wait for v0.2.
