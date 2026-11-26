@@ -1374,6 +1374,7 @@ function setupUI() {
   addEventListener("keydown", (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
     if (!active) return;
+    if (!$("intro").hidden) { if (e.code === "Escape") closeIntro(false); return; } // buttons take Enter themselves
     if (HERO && e.code === "Escape") { toPage({ type: "done" }); return; }
     if (!e.repeat) {
       if (e.code === "Space") wantHop = true;
@@ -1466,7 +1467,12 @@ function setupUI() {
   }
   if (STATS) $("stats").hidden = false;
   $("hint").textContent = COARSE ? "Tap to go · drag to look · ▲ to fly" : "WASD to hop · hold Space to fly · drag to look · E to touch · T for a tour";
-  if (active) setTimeout(hideHint, 14000);
+  $("intro-tour").addEventListener("click", () => closeIntro(true));
+  $("intro-fly").addEventListener("click", () => closeIntro(false));
+  $("intro-again").addEventListener("click", () => { panels.close(); openIntro(); });
+  if (COARSE) $("intro-controls").innerHTML = "Tap to go, drag to look, hold &#9650; to fly; tap what glints to touch it.";
+  if (active && !params.has("debug") && !introSeen()) openIntro();
+  else if (active) setTimeout(hideHint, 14000);
   else { hintGone = true; $("hint").classList.add("gone"); }
 }
 /**
@@ -1536,6 +1542,21 @@ function flyTo(p) {
     $("fade").classList.remove("on");
     if (COARSE) panels.close();
   }, 360);
+}
+/** The intro: once per browser (remembered if storage allows), and again from How to play. */
+const INTRO_KEY = "street-smarts-intro-seen";
+function introSeen() { try { return localStorage.getItem(INTRO_KEY) === "1"; } catch { return false; } }
+function openIntro() {
+  $("intro").hidden = false;
+  hintGone = true; $("hint").classList.add("gone");
+  setTimeout(() => $("intro-tour").focus(), 50);
+}
+function closeIntro(tourToo) {
+  $("intro").hidden = true;
+  try { localStorage.setItem(INTRO_KEY, "1"); } catch { /* private window: it'll show again next time */ }
+  lastInputT = t;
+  if (tourToo && !tour) startTour();
+  else { hintGone = false; $("hint").classList.remove("gone"); setTimeout(hideHint, 9000); }
 }
 function hideHint() {
   if (hintGone) return;
