@@ -704,6 +704,31 @@
   .look h2 { font-size: 1rem; margin: 0 0 0.3rem; }
   .look p { margin: 0; font-size: 0.94rem; color: var(--muted); line-height: 1.5; }
   @media (max-width: 640px) { .look { grid-template-columns: 1fr; gap: 0.9rem; } }
+
+  /* What it adds up to: measured plan numbers and rough economics. */
+  .adds-up { margin: 0 0 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line); }
+  .adds-up h2 { font-size: 1.3rem; margin: 0 0 0.3rem; }
+  .adds-up h3 { font-size: 1.05rem; margin: 1.5rem 0 0.3rem; }
+  .adds-up p { margin: 0 0 0.8rem; }
+  .adds-lede { color: var(--muted); font-size: 0.94rem; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem 1.4rem; margin: 1.1rem 0 0.4rem; }
+  .stat b { display: block; font-size: 2rem; line-height: 1.1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 0.9rem; color: var(--muted); line-height: 1.4; }
+  .stat span span { color: inherit; font-size: inherit; }
+  @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
+  .bars { margin: 0.4rem 0 1rem; display: grid; gap: 0.45rem; }
+  .bars .row { display: grid; grid-template-columns: minmax(8rem, 13rem) 1fr 3.6rem; gap: 0.6rem; align-items: center; font-size: 0.86rem; }
+  .bars .row small { display: block; color: var(--muted); font-size: 0.78rem; }
+  .bars .track { height: 0.85rem; background: var(--highlight); border-radius: 2px; overflow: hidden; }
+  .bars .fill { height: 100%; background: var(--geo); }
+  .bars .fill.need { background: var(--equity); }
+  .bars .val { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 520px) { .bars .row { grid-template-columns: 1fr 3.4rem; } .bars .track { grid-column: 1 / -1; grid-row: 2; } }
+  .adds-how { margin-top: 1rem; font-size: 0.9rem; }
+  .adds-how summary { cursor: pointer; color: var(--muted); }
+  .adds-how ul { padding-left: 1.1rem; margin: 0.6rem 0; }
+  .adds-how li { margin: 0 0 0.45rem; }
+  .adds-sources { color: var(--muted); font-size: 0.84rem; }
   header .scenario-label { margin: 0; font-size: 0.85rem; color: var(--muted); }
   details.caveat-more { margin: 0 0 1rem; }
   details.caveat-more summary { cursor: pointer; color: var(--muted); font-size: 0.92rem; }
@@ -739,7 +764,7 @@
   <div class="hero-title">
     <h1>street-smarts</h1>
     <p class="tag">A Christopher Alexander provocation engine for neighborhood imagination. v0.1.</p>
-    <p class="hero-lede">The Military Circle site in Norfolk, VA, run through Alexander's pattern language. You're a sparrow: hop in, touch what glints, and it tells you which pattern put it there.</p>
+    <p class="hero-lede">The Military Circle site in Norfolk, VA, run through Alexander's pattern language: streets, squares, buildings, shops, trees and a light rail stop, all generated. You're a sparrow. Touch what glints and it names the pattern that put it there; get close to people and eavesdrop on what the chorus of opinions thinks of the place.</p>
   </div>
   <div class="hero-actions">
     <button type="button" class="hop" id="hero-hop">Hop in</button>
@@ -752,9 +777,51 @@
 <div class="wrap">
 
   <section class="look" aria-label="What you're looking at">
-    <div><h2>Real ground</h2><p>Military Circle, Norfolk: 25 City GIS parcels, 97.7 acres, with today's neighbors from Overture Maps around the edge.</p></div>
-    <div><h2>Generated, not drawn</h2><p>Every street, square, building, tree, roof garden and arcade comes out of the pattern pipeline, regenerated on every deploy.</p></div>
-    <div><h2>Ask it</h2><p>Touch anything and it names the pattern that placed it, read from the pipeline's own record. The people, benches and pigeons are ours; the benches sit where the patterns ask for sitting.</p></div>
+    <div><h2>Real ground</h2><p>Military Circle, Norfolk: the old mall site's 25 City GIS parcels, with today's neighbors from Overture Maps around the edge.</p></div>
+    <div><h2>Generated, not drawn</h2><p>Every street, square, building, shop door and tree, and the light rail stop, comes out of the pattern pipeline, regenerated on every deploy.</p></div>
+    <div><h2>Ask it</h2><p>Touch anything and it names the pattern that placed it. Eavesdrop on the people and they'll tell you what the chorus of opinions below thinks of it, good and bad. The people, benches and pigeons are ours.</p></div>
+  </section>
+
+  <section class="adds-up" id="adds-up" aria-labelledby="adds-up-h">
+    <h2 id="adds-up-h">What it adds up to, roughly</h2>
+    <p class="adds-lede">The plan's own measurements, taken on every deploy, run through a few stated assumptions. A sense of scale, not a pro forma.</p>
+    <div class="stats">
+      <div class="stat"><b data-n="floorSf">3.2M</b><span>square feet of floor space, about <span data-n="mallX">3.5</span>&times; the old mall's 935,000 (54% occupied in 2020)</span></div>
+      <div class="stat"><b data-n="homes">2,300</b><span>homes, if the upper floors are housing: about <span data-n="people">5,300</span> people. All of downtown Norfolk had 4,691 in 2023.</span></div>
+      <div class="stat"><b data-n="shops">740</b><span>shop fronts along <span data-n="frontageKm">4.1</span> km of street, <span data-n="p87">699</span> of them P87's own small doors</span></div>
+      <div class="stat"><b data-n="trees">2,229</b><span>trees, and a meadow on the open ground. No parking lots.</span></div>
+    </div>
+
+    <h3>The pull gap</h3>
+    <p>Filling <span data-n="shops">740</span> shop fronts takes about <b data-n="needed">$200M</b> a year in sales, at $300 a square foot. The people living upstairs would spend about <b data-n="spend">$37M</b> a year on the things shops sell, and maybe a third of it here: enough for about <b data-n="supported">45</b> shops.</p>
+    <div class="bars" id="adds-bars" aria-hidden="true"></div>
+    <p>The other <span data-n="outside">690</span> need about <b data-n="gap">$190M</b> a year from outside the site, roughly <span data-n="granbyX">3.4</span>&times; everything downtown's Granby sub-district sold in FY2023. That's on purpose. The plan is a frame for a regional destination, not a row of shops for the people upstairs, and the gap is the pull it would have to earn: from the light rail, from the region, and from offices and workshops taking some of those ground floors.</p>
+
+    <h3>The light rail</h3>
+    <p>HRT studied taking the Tide two miles from Newtown Road, past Sentara Leigh, to a last station on this site (an early estimate put it near $225M), then paused the study in August 2023 because the city hadn't settled where that station goes. It was still on hold in July 2025. The plan sketches an answer: a platform <span data-n="stationPath">133</span> m from its streets, at the end of a line from the direction of Newtown Road. It isn't HRT's route. Today the nearest station, Military Highway, is about 1 km away, across I&#8209;264.</p>
+
+    <details class="adds-how">
+      <summary>How the numbers are built</summary>
+      <ul>
+        <li><b>Measured from the plan</b> on every deploy (<code>tools/vibe-render/plan_numbers.py</code>): floor area is each building's footprint times its floors; upper floors are that minus the ground floor; shop fronts are the ones the render opens at street-facing doors.</li>
+        <li><b>Homes:</b> upper floors &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). The pipeline assigns no uses; every floor of offices means fewer homes and a bigger lunch crowd.</li>
+        <li><b>People:</b> 2.27 a household, Norfolk's average.</li>
+        <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment: BLS's 2023 survey, middle income fifth where published.</li>
+        <li><b>Shops:</b> 15 m deep, assumed, so a median <span data-n="frontM">5.6</span> m front is about <span data-n="shopSf">900</span> sq ft. $300 a square foot a year to stay open (a typical US store does about $325, by one vendor's figure). A third, 35%, of residents' spending stays on site: a planning guess between 25% and 45%, not sourced.</li>
+        <li><b>Not modeled:</b> taxes, jobs, visitors, and competition from nearby stores.</li>
+        <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres, the city's RFQ says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
+      </ul>
+      <p class="adds-sources">Sources:
+        <a href="https://census.gov/quickfacts/fact/table/norfolkcitycountyvirginia/PST045223" target="_blank" rel="noopener">Census QuickFacts, Norfolk (2019&ndash;2023)</a> ·
+        <a href="https://www.bls.gov/opub/reports/consumer-expenditures/2023/home.htm" target="_blank" rel="noopener">BLS, Consumer Expenditures in 2023</a> ·
+        <a href="https://norfolkdevelopment.com/wp-content/uploads/2020/09/Military-Circle-RFQ.pdf" target="_blank" rel="noopener">Norfolk EDA, Military Circle RFQ (2020)</a> ·
+        <a href="https://www.downtownnorfolk.org/_files/docs/downtownnorfolkvamarketassessmentfinal-2524.pdf" target="_blank" rel="noopener">Downtown Norfolk Council, Market Assessment (2023)</a> ·
+        <a href="https://gohrt.com/2020/01/naval-station-norfolk-transit-corridor-project/" target="_blank" rel="noopener">HRT, Naval Station Norfolk Transit Corridor</a> ·
+        <a href="https://www.whro.org/local-news/2021-08-16/hrt-looking-more-closely-at-light-rail-route-to-military-circle" target="_blank" rel="noopener">WHRO (2021)</a> ·
+        <a href="https://www.yahoo.com/news/end-line-light-rail-hampton-173700441.html" target="_blank" rel="noopener">The Virginian-Pilot (July 2025)</a> ·
+        <a href="https://www.shopify.com/enterprise/blog/sales-per-square-foot" target="_blank" rel="noopener">Shopify, sales per square foot</a>
+      </p>
+    </details>
   </section>
 
   <header>
@@ -774,19 +841,13 @@
     <details class="caveat-more">
     <summary>How these renders are made</summary>
     <p class="caveat">
-      Massing renders regenerated on every deploy, straight from the corrected pattern pipeline —
-      extruded polygon massing blocks (via cadquery/OpenCascade), still a gut check on <em>scale and
-      density</em>, not a finished architectural rendering. The 3D model below is live and
-      interactive — drag to orbit, scroll/pinch to zoom — the same real <code>.glb</code> mesh
-      available to download further down, not a pre-rendered screenshot. Window and door openings
-      <em>are</em> real
-      boolean cuts, placed by a real pattern operator (<code>p221_natural_doors_and_windows</code> —
-      Alexander's Pattern 221) reading each building's actual wall geometry and floor count, not
-      decoration. Ground-floor interiors (<code>p127</code>/<code>p129</code>/<code>p130</code>/
-      <code>p131</code>/<code>p133</code>) are real too — public-to-private depth gradient, common
-      area, entrance room, room connectivity, stair core — but upper floors still show wall/window
-      data only, no interior partition (see the largest-building floor plan below, and
-      <code>tools/vibe-render/render.py</code> in the repo for the full caveats).
+      Massing, regenerated from the pipeline on every deploy: polygons extruded with
+      cadquery/OpenCascade, a check on <em>scale and density</em>, not an architectural rendering.
+      Drag to orbit, scroll or pinch to zoom; it's the same <code>.glb</code> you can download below.
+      P221 places every window and door from each building's own walls and floors. The ground floors'
+      rooms are computed too (P127, P129, P130, P131, P133: public to private, a common area, an
+      entrance room, how rooms connect, a stair core); upper floors have walls and windows only. See
+      the floor plans below, and <code>tools/vibe-render/render.py</code> for the full caveats.
     </p>
     </details>
 
@@ -794,7 +855,7 @@
       <model-viewer src="/vibe-render/clean_baseline.glb" poster="/vibe-render/clean_baseline_isometric.png" alt="3D model of the clean-baseline scenario (Military Circle, Norfolk VA) -- drag to orbit" camera-controls touch-action="pan-y" skybox-image="/env/evening_road_01_puresky_1k.hdr" environment-image="/env/evening_road_01_puresky_1k.hdr" shadow-intensity="1" shadow-softness="0.6" exposure="1" loading="lazy" reveal="auto"></model-viewer>
       <figcaption>
         <h3>Clean baseline</h3>
-        <p>The real Military Circle site in Norfolk, VA -- a 97.7-acre assembly of 25 real Norfolk City GIS parcels (<code>MILITARY_CIRCLE_ASSEMBLED</code>, no existing entitlements), run through the full corrected pipeline (<!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P161 → P126 → P172 → P171<!-- PIPELINE_CHAIN:END -->). This list is generated straight from <code>language_graph::LANGUAGE</code> on every deploy (<code>scripts/vibe-render.sh</code>, <code>examples/dump_pipeline_chain.rs</code>) -- the same real order the pipeline actually executes in, not a hand-typed guess that can drift. Verified against real satellite imagery -- see <code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code> for the georeferenced overlay this was checked against. Shown in situ, in the interactive model itself (orbit around it to see): the surrounding gray massing is real neighboring building footprints from Overture Maps (OpenStreetMap + Microsoft ML Buildings, ODbL-1.0), not decoration. Only <code>clean_baseline</code> gets this treatment -- it's the one scenario with a real, geolocated site; the others' fixtures aren't real single addresses in the same way, so there's no honest "surrounding context" to show.</p>
+        <p>The whole Military Circle site (<code>MILITARY_CIRCLE_ASSEMBLED</code>: 25 Norfolk City GIS parcels, no existing entitlements), run through the pipeline in this order, which is written from <code>language_graph::LANGUAGE</code> on every deploy so it can't drift: <!-- PIPELINE_CHAIN:START -->P29 → P37 → P52 → P53 → P61 → P95 → P21 → P108 → P96 → P107 → P117 → P118 → P124 → P119 → P127 → P197 → P116 → P129 → P130 → P131 → P133 → P221 → P192 → P164 → P165 → P100 → P110 → P102 → P160 → P34 → P87 → P161 → P126 → P172 → P171<!-- PIPELINE_CHAIN:END -->. Checked against satellite imagery (<code>crates/street-smarts-ledger/examples/dump_lineage_map.rs</code>). The grey massing around it is today's neighbors, from Overture Maps (OpenStreetMap and Microsoft ML Buildings, ODbL-1.0).</p>
         <div class="svg-grid">
           <a class="svg-thumb" href="/vibe-render/clean_baseline_floorplan_ground.svg" target="_blank" rel="noopener">
             <img src="/vibe-render/clean_baseline_floorplan_ground.svg" alt="Clean baseline floor plan, ground" loading="lazy"><span>floor plan (ground)</span>
@@ -811,7 +872,7 @@
           <a href="/vibe-render/clean_baseline.glb" download>.glb</a>
           <a href="/walk.html?glb=/vibe-render/clean_baseline.glb">walk/fly through &rarr;</a>
         </div>
-        <p class="note">The same whole-site geometry, walked and flown as a house sparrow (<code>public/walk.html</code>): hop or fly anywhere, touch what glints, and it says which pattern placed it, read from each piece's own source id. Exterior only: this scenario's windows and doors are flat decals, so there's nothing behind a wall to go into. For a real interior, see the cluster below.</p>
+        <p class="note">Walk or fly it as a house sparrow (<code>public/walk.html</code>): touch what glints and it names the pattern that placed it, eavesdrop on the people, ride the tram. Outside only; for rooms, see the cluster below.</p>
       </figcaption>
     </figure>
 
@@ -822,14 +883,14 @@
       </div>
       <figcaption>
         <h3>One cluster, with interiors</h3>
-        <p>The same real <code>clean_baseline</code> pipeline output, cropped to ONE real building cluster (<code>tools/vibe-render/extract_cluster.py</code>: the building with the most real neighbors within 60m, plus everything else -- other buildings, open space, streets -- within that same 60m of its centroid; no field in the schema names a "cluster" directly, so this is a real geometric proxy, not a fabricated grouping). At this scale, real per-opening geometry becomes affordable in a way the whole-site model above can't be: every real <code>p221_natural_doors_and_windows</code> window and door is a real OpenCascade boolean cut punched through the actual wall mass (not a flat decal), and the ground floor's real <code>p127_intimacy_gradient</code> <code>InteriorCell</code> layout is repeated at every real floor with a real floor plate between them (the whole-site model's own 7,765 real openings alone would push either past Cloudflare's 25 MiB limit -- see <code>tools/vibe-render/render.py</code>'s own module doc for the real measured numbers behind that split). The exterior shell is SOLID, not translucent -- once a real punched opening is the real way to see through a wall, an opaque wall around it is just a real wall, the same way an actual building works; a translucent shell was only ever standing in for that before real punching existed. Interior room layout is ground floor only -- <code>InteriorCell.floor</code> is hard-coded 0 everywhere in this schema, so every floor above repeats that SAME real layout rather than a different one nobody computed; no stairs (P133 only carries a 2D stair-core footprint, no tread/riser geometry exists to render), no furniture, no room labels, no doors cut into the interior partitions themselves -- Alexander's own pattern language describes spatial relationships, not a prescribed use, and this project doesn't invent a program the pipeline has no way to know. Lit by a real early-evening sky HDRI, low golden sun (Poly Haven, CC0 -- see <code>public/env/*.provenance.json</code>) rather than flat ambient light, so real shadows and a real bright-exterior/dim-interior contrast show up as you orbit.</p>
-        <p>The "Room" buttons above jump the SAME real, live <code>&lt;model-viewer&gt;</code> camera to sit inside one real <code>InteriorCell</code>, aimed back out along whichever real direction has the most open real room depth to sit in (<code>tools/vibe-render/render.py</code>'s own <code>interior_camera_views</code>/<code>_best_interior_view_direction</code>) -- a real hardware-accelerated WebGL camera placed in the real model, not a separate pre-rendered image. No furniture or textures yet -- just real structure, real punched openings, and real sky-lit daylight (see the caption above), honestly plain rather than dressed up otherwise.</p>
+        <p>One building cluster cut from the same output: the building with the most neighbors within 60 m, and everything within 60 m of it (<code>tools/vibe-render/extract_cluster.py</code>; the schema has no "cluster," so this is a geometric stand-in). At this size every P221 window and door can be a true cut through the wall, which the whole site's openings would push past Cloudflare's 25 MiB limit (<code>tools/vibe-render/render.py</code> has the numbers), and you can see in through them to P127's rooms. Lit by an early-evening sky (Poly Haven, CC0).</p>
+        <p>What isn't there: the room layout is the ground floor's, repeated on every floor above, because the schema only has ground-floor rooms. No stairs, furniture, labels or interior doors; the patterns describe how spaces relate, not what they're for, and nothing here invents a use the pipeline doesn't know. The Room buttons put the model's camera inside one room, looking out its deepest way.</p>
         <div class="downloads">
           <span class="label">3D model:</span>
           <a href="/vibe-render/cluster_interior.glb" download>.glb</a>
           <a href="/walk.html">walk/fly through &rarr;</a>
         </div>
-        <p class="note">The same geometry, walked and flown as a house sparrow (<code>public/walk.html</code>), with an Inside button that drops you into the real ground-floor rooms above.</p>
+        <p class="note">Walk or fly it as a house sparrow (<code>public/walk.html</code>); the Inside button drops you into the ground-floor rooms.</p>
       </figcaption>
     </figure>
     <script>
@@ -1009,6 +1070,57 @@
   </footer>
 
 </div>
+
+<script>
+  // What it adds up to: the plan's measurements (tools/vibe-render/plan_numbers.py, on every
+  // deploy) times the assumptions stated in #adds-up's "How the numbers are built". If the
+  // measurements don't load, the figures written into the HTML stay (they're from 2026-11-26).
+  (function () {
+    var A = { usable: 0.85, homeSf: 900, perHome: 2.27, spendPerHome: 15662, onSite: 0.35, salesPsf: 300,
+              shopDepthM: 15, mallSf: 935000, granby: 55e6 };
+    var SF = 10.7639;
+    var num = function (v) { return Math.round(v).toLocaleString("en-US"); };
+    var money = function (v) { return "$" + Math.round(v / 1e6) + "M"; };
+    function fill(n) {
+      var floorSf = n.floor_area_m2 * SF, upperSf = n.upper_floor_area_m2 * SF;
+      var homes = upperSf * A.usable / A.homeSf;
+      var shopSf = n.shop_front_median_m * A.shopDepthM * SF;
+      var needed = n.shop_fronts * shopSf * A.salesPsf;
+      var spend = homes * A.spendPerHome, here = spend * A.onSite;
+      var supported = here / A.salesPsf / shopSf;
+      var gap = needed - here;
+      var v = {
+        floorSf: (floorSf / 1e6).toFixed(1) + "M", mallX: (floorSf / A.mallSf).toFixed(1),
+        homes: num(Math.round(homes / 100) * 100), people: num(Math.round(homes * A.perHome / 100) * 100),
+        shops: num(n.shop_fronts), frontageKm: (n.frontage_m / 1000).toFixed(1), p87: num(n.p87_shop_fronts),
+        trees: num(n.trees), needed: money(needed), spend: money(spend), supported: num(Math.round(supported / 5) * 5),
+        outside: num(Math.round((n.shop_fronts - supported) / 10) * 10), gap: money(Math.round(gap / 1e7) * 1e7),
+        granbyX: (gap / A.granby).toFixed(1), stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
+        frontM: n.shop_front_median_m.toFixed(1), shopSf: num(Math.round(shopSf / 50) * 50),
+      };
+      document.querySelectorAll("#adds-up [data-n]").forEach(function (el) {
+        if (v[el.dataset.n] != null) el.textContent = v[el.dataset.n];
+      });
+      var rows = [
+        ["To fill every shop front", num(n.shop_fronts) + " at $" + A.salesPsf + " a sq ft", needed, true],
+        ["Granby sub-district, downtown", "all its retail sales, FY2023", A.granby, false],
+        ["Everything residents spend in shops", num(homes) + " homes \u00d7 $15,662", spend, false],
+        ["What they'd spend here", Math.round(A.onSite * 100) + "% of that", here, false],
+      ];
+      var max = Math.max.apply(null, rows.map(function (r) { return r[2]; }));
+      document.getElementById("adds-bars").innerHTML = rows.map(function (r) {
+        return '<div class="row"><div>' + r[0] + "<small>" + r[1] + '</small></div><div class="track"><div class="fill' + (r[3] ? " need" : "") +
+          '" style="width:' + (100 * r[2] / max).toFixed(1) + '%"></div></div><div class="val">' + money(r[2]) + "</div></div>";
+      }).join("");
+    }
+    // The figures written in the HTML, measured 2026-11-26, until the live ones arrive.
+    var fallback = { floor_area_m2: 300625, upper_floor_area_m2: 230075, shop_fronts: 740, p87_shop_fronts: 699, frontage_m: 4082,
+                     shop_front_median_m: 5.58, trees: 2229, station_path_m: 133 };
+    fill(fallback);
+    fetch("/vibe-render/clean_baseline_numbers.json").then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (n) { if (n && n.version === 1) fill(n); }).catch(function () {});
+  })();
+</script>
 
 <script type="module">
   import init, { analyze_neighborhood, version, list_operators, subdivide_parcel } from "/pkg/street_smarts_web.js";

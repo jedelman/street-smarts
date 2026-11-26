@@ -167,6 +167,15 @@ for scenario in clean_baseline cluster_interior barrio_mallcore mallcore_seeding
   fi
 done
 
+# What the whole-site plan adds up to (floor area, shop fronts, trees...), measured
+# from the pipeline's output and the GLB just rendered from it, for the landing
+# page's numbers (#adds-up in public/index.html, where the assumptions live).
+if has_scenario clean_baseline; then
+  echo "==> measuring clean_baseline for the landing page's numbers"
+  "$VENV_DIR/bin/python" tools/vibe-render/plan_numbers.py "$OUT_DIR/clean_baseline.json" "$OUT_DIR/clean_baseline.glb" \
+    > "$OUT_DIR/clean_baseline_numbers.json"
+fi
+
 echo "==> done. Renders in $OUT_DIR/"
 ls "$OUT_DIR"/*.png "$OUT_DIR"/*.svg "$OUT_DIR"/*.glb 2>/dev/null
 
@@ -191,7 +200,7 @@ if [ -n "$PUBLISH_DIR" ]; then
   # camera-target/camera-orbit numbers -- see interior_camera_views' own
   # docstring) is a real, small, intentionally public artifact.
   cp "$OUT_DIR"/*_interior_views.json "$PUBLISH_DIR/" 2>/dev/null
-  # And the walk's chorus (see above): small, and meant to be public.
-  cp "$OUT_DIR"/*_chorus.json "$PUBLISH_DIR/" 2>/dev/null
+  # And the walk's chorus and the landing page's numbers (see above): small, and meant to be public.
+  cp "$OUT_DIR"/*_chorus.json "$OUT_DIR"/*_numbers.json "$PUBLISH_DIR/" 2>/dev/null
   ls "$PUBLISH_DIR"
 fi
