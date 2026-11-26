@@ -1276,6 +1276,9 @@
       var floorSf = n.floor_area_m2 * SF, upperSf = n.upper_floor_area_m2 * SF;
       costPsf = A.buildPsf * (1 + A.softShare) + landPsf(floorSf);
       var liveSf = (n.live_m2 != null ? n.live_m2 : n.upper_floor_area_m2) * SF, workSf = (n.work_m2 || 0) * SF, playSf = floorSf - liveSf - workSf;
+      // The whole plan's cost: each use's floors at RLB's hard cost for its kind, plus soft costs, plus the land.
+      var cost = { homes: liveSf * A.homesBuildPsf * (1 + A.softShare), work: workSf * A.officeBuildPsf * (1 + A.softShare), shops: playSf * A.buildPsf * (1 + A.softShare) };
+      cost.total = cost.homes + cost.work + cost.shops + A.landPaid;
       var homes = liveSf * A.usable / A.homeSf, people = homes * A.perHome;
       var lo = people * A.paris / 1000, hi = people * A.barcelona / 1000;
       var desks = (n.work_m2 || 0) * A.usable / A.m2PerDesk;
@@ -1298,6 +1301,9 @@
         landPsf: "$" + Math.round(landPsf(floorSf)), tdcPsf: "$" + Math.round(costPsf / 5) * 5,
         paidCut: Math.round((1 - breakEven(A.capital.paid) / breakEven(A.capital.public)) * 100) + "%",
         taxM: money((playSf * A.buildPsf + liveSf * A.homesBuildPsf + workSf * A.officeBuildPsf) * A.taxRate),
+        costB: "$" + (cost.total / 1e9).toFixed(1) + "B",
+        costHomes: money(cost.homes), costWork: money(cost.work), costShops: money(cost.shops), costLand: money(A.landPaid),
+        phase4: money(cost.total / 4), phase5: money(cost.total / 5),
         liveP: num(liveSf / floorSf * 100), workP: num(workSf / floorSf * 100), playP: num(playSf / floorSf * 100),
         bcnShops: num(Math.round(people * A.bcnShops / (A.bcnAll / 0.037) / 10) * 10),
         bcnServices: num(Math.round(people * A.bcnServices / (A.bcnAll / 0.037) / 10) * 10),
