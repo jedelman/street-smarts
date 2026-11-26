@@ -86,6 +86,13 @@ DUMP_CHAIN_BIN="target/release/examples/dump_pipeline_chain"
 echo "==> running corrected pipeline: clean_baseline"
 "$DUMP_BIN" data/eastside-baseline.json MILITARY_CIRCLE_ASSEMBLED "$SEED" "$OUT_DIR/clean_baseline.json"
 
+# The chorus on the whole site, slimmed for the walk: what its passers-by say
+# when you eavesdrop (public/sparrow/chorus.js). Small and public, unlike the
+# pipeline dump it's read from.
+echo "==> the chorus on clean_baseline (for the walk)"
+cargo build --release -p street-smarts-conflict --example chorus_of
+target/release/examples/chorus_of "$OUT_DIR/clean_baseline.json" > "$OUT_DIR/clean_baseline_chorus.json"
+
 # Substitute the real, current pipeline stage order (language_graph::LANGUAGE,
 # the same table validate_order checks against the real traced pipeline
 # execution) into public/index.html's gallery caption, between the
@@ -184,5 +191,7 @@ if [ -n "$PUBLISH_DIR" ]; then
   # camera-target/camera-orbit numbers -- see interior_camera_views' own
   # docstring) is a real, small, intentionally public artifact.
   cp "$OUT_DIR"/*_interior_views.json "$PUBLISH_DIR/" 2>/dev/null
+  # And the walk's chorus (see above): small, and meant to be public.
+  cp "$OUT_DIR"/*_chorus.json "$PUBLISH_DIR/" 2>/dev/null
   ls "$PUBLISH_DIR"
 fi
