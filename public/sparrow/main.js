@@ -19,10 +19,13 @@ import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
 import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
+import { makeVoices, pickOpinion, lineFor, questionLine } from "./chorus.js";
 
 const params = new URLSearchParams(location.search);
 const GLB_URL = params.get("glb") || "/vibe-render/cluster_interior.glb";
 const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
+// The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
+const CHORUS_URL = params.get("chorus") || "/vibe-render/clean_baseline_chorus.json";
 const STATS = params.has("stats");
 // Hero mode: embedded in the landing page. It runs the tour as attract mode and
 // takes no input until the page hands it over ("Hop in"); see index.html's #hero.
@@ -86,6 +89,8 @@ const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
+let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
+const voices = makeVoices(), heard = new Set();
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
 let tour = null; // { stops: [...], i, waitUntil }
 let focus = null, focusScore = Infinity;
@@ -140,6 +145,7 @@ let present = [];
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
   people = populate();
+  fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
   indexTouchables();
   present = [...new Set([...site.elements, ...shopTouchables].flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
   try { for (const n of JSON.parse(localStorage.getItem(metKey()) || "[]")) if (present.includes(n)) met.add(n); } catch { /* fresh */ }
@@ -148,7 +154,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird,
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop,
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -613,7 +619,19 @@ const REACH = { open: [0.6, 1.2], marker: [1.8, 3.2], canopy: [1.3, 3.4], garden
 const reachOf = (el) => (el.kind === "bench" ? [0.9, 0.6] : /^(plaza|common|pocket|undecided)$/.test(el.kind) ? REACH.open
   : el.kind === "roof_garden" ? REACH.garden : el.kind === "wall_niche" ? REACH.nook
   : el.kind.startsWith("canopy") ? REACH.canopy : REACH.marker);
+const PERSON_REACH = 3;
+const personEls = [];
+/** A person as a touchable, one stable object each (focus is held by identity). */
+function personEl(i) {
+  const el = personEls[i] || (personEls[i] = { kind: "person", group: "people", person: i, center: new THREE.Vector3(), box: new THREE.Box3() });
+  const p = people.people[i];
+  el.center.set(p.pos.x, p.pos.y + 1.1, p.pos.z);
+  el.box.min.set(p.pos.x - 0.3, p.pos.y, p.pos.z - 0.3);
+  el.box.max.set(p.pos.x + 0.3, p.pos.y + 1.8, p.pos.z + 0.3);
+  return el;
+}
 function anchorOf(el, out) {
+  if (el.kind === "person") return people.headOf(el.person, out).add(_tmp2.set(0, 0.3, 0));
   const b = el.box;
   if (/^(plaza|common|pocket|undecided)$/.test(el.kind)) {
     // A big space: glint where you are in it, near you.
@@ -645,6 +663,19 @@ function reachScan() {
       found.push({ el, score: dh + dy * 0.3 + big - facing * 0.3 });
     }
   }
+  // People: eavesdrop on them.
+  if (people) {
+    for (let i = 0; i < people.people.length; i++) {
+      const p = people.people[i];
+      const dh = Math.hypot(p.pos.x - bird.pos.x, p.pos.z - bird.pos.z), dy = bird.pos.y - p.pos.y;
+      if (dh > PERSON_REACH || dy < -0.6 || dy > 2.6) continue;
+      const el = personEl(i);
+      _tmp.subVectors(el.center, bird.pos).setY(0);
+      const facing = _tmp.lengthSq() > 0.01 ? _tmp.normalize().dot(_fwd) : 1;
+      // Someone right beside you is the likeliest thing you meant.
+      found.push({ el, score: dh * 0.6 - 1.2 - facing * 0.5 });
+    }
+  }
   found.sort((a, b) => a.score - b.score);
   // Hold steady: keep the current focus unless something is clearly better.
   const cur = found.find((f) => f.el === focus);
@@ -662,7 +693,9 @@ function showPrompt() {
   const p = $("prompt");
   if (!focus) { p.hidden = true; return; }
   p.hidden = false;
-  $("prompt-text").textContent = focus.kind === "bench" ? "Hop up on the bench" : promptOf(focus);
+  $("prompt-text").textContent = focus.kind === "bench" ? "Hop up on the bench"
+    : focus.kind === "person" ? (talk ? "Listening…" : "Eavesdrop")
+    : promptOf(focus);
 }
 
 // ---------------------------------------------------------------- touching things
@@ -670,6 +703,7 @@ let flare = 0, flareEl = null;
 function touch(el) {
   if (!el) { sparrow.chirp(); sound.chirp(); return; } // nothing in reach: a chirp anyway
   if (el.kind === "bench") { hopOnto(el.bench); return; }
+  if (el.kind === "person") { eavesdrop(el.person); return; }
   lastInputT = t;
   const lines = answerOf(el);
   logLine(lines[0], "what");
@@ -698,6 +732,79 @@ function touch(el) {
   if (el.center) director.lookAt(el);
 }
 function interact() { touch(focus); }
+
+// ---------------------------------------------------------------- eavesdropping: the chorus, out loud
+// Someone says what one of the opinions found (chorus.js); people talking in a
+// group answer each other, a gripe for a love. Their lines are the opinions'
+// own findings; only the openers ("Ugh.") are ours.
+function eavesdrop(i) {
+  lastInputT = t;
+  if (talk) return; // still talking: keep listening
+  if (!chorus) { logLine("They're talking, but you can't make out the words.", "note"); return; }
+  const p = people.people[i];
+  // What's around them: an opinion that looked at it is likelier to come up.
+  const near = new Set();
+  for (const e of site.elements) if (e.source && e.center && Math.abs(e.center.x - p.pos.x) < 45 && Math.abs(e.center.z - p.pos.z) < 45) near.add(e.source);
+  const speakers = [i, ...people.groupOf(i).slice(0, 2)];
+  const say = (who, against) => {
+    const op = pickOpinion(chorus, { near, heard, against });
+    heard.add(op.name);
+    return { who, ...lineFor(op, { after: against }) };
+  };
+  const lines = [say(i, null)];
+  if (speakers[1] != null) lines.push(say(speakers[1], lines[0].mood));
+  if (speakers[2] != null) {
+    const q = Math.random() < 0.4 ? questionLine(chorus) : null;
+    lines.push(q ? { who: speakers[2], ...q } : say(speakers[2], lines[1].mood));
+  }
+  talk = { lines, k: -1, speakers, who: -1 };
+  showPrompt();
+  nextLine();
+}
+function nextLine() {
+  if (!talk) return;
+  if (++talk.k >= talk.lines.length) { endTalk(); return; }
+  const line = talk.lines[talk.k];
+  const others = talk.speakers.filter((j) => j !== line.who);
+  const faceTo = others.length ? people.people[others[0]].pos : bird.pos; // alone, they tell the sparrow
+  talk.who = line.who;
+  $("bubble-text").textContent = line.text;
+  $("bubble").hidden = false;
+  logLine(`“${line.text}”`, "said");
+  logLine(line.cite, "pattern");
+  const away = people.people[line.who].pos.distanceTo(camera.position);
+  const ms = voices.say(line.speech, line.who * 7 + 3, {
+    muted: sound.muted, volume: clamp(1.15 - away / 25, 0.25, 1),
+    done: () => { if (!talk) return; people.speak(line.who, 0.2); setTimeout(nextLine, 380); },
+  });
+  people.speak(line.who, ms / 1000 + 1, faceTo);
+  director.lookAt(personEl(line.who)); // a two-shot: you and whoever's talking
+}
+function endTalk() {
+  if (talk && talk.who >= 0) people.speak(talk.who, 0);
+  talk = null;
+  $("bubble").hidden = true;
+  showPrompt();
+}
+const _head = new THREE.Vector3();
+/** Keeps the speech bubble over the speaker's head; ends the talk if you fly off. */
+function placeBubble() {
+  if (!talk || talk.who < 0) return;
+  people.headOf(talk.who, _head);
+  if (_head.distanceTo(bird.pos) > 30) { voices.stop(); endTalk(); return; }
+  _head.y += 0.4;
+  const far = _head.distanceTo(camera.position) > 45;
+  camera.updateMatrixWorld();
+  _head.project(camera);
+  const b = $("bubble");
+  if (far || _head.z > 1) { b.style.visibility = "hidden"; return; }
+  b.style.visibility = "visible";
+  // Off the edge of the frame (a tall talker over a small bird), it waits at the edge.
+  const w = b.offsetWidth, h = b.offsetHeight;
+  const x = clamp(((_head.x + 1) / 2) * innerWidth, w / 2 + 12, innerWidth - w / 2 - 12);
+  const y = clamp(((1 - _head.y) / 2) * innerHeight, h + 64, innerHeight - 90);
+  b.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+}
 
 // ---------------------------------------------------------------- tap to go
 const raycaster = new THREE.Raycaster();
@@ -1138,6 +1245,7 @@ function frame() {
   if (burst) { sound.flutter(); if (Math.random() < 0.5) setTimeout(() => sound.coo(), 400); }
   director.update(dt);
   world.follow(camera);
+  placeBubble();
   // Markers breathe; a touched one flares.
   flare = Math.max(0, flare - dt * 0.8);
   for (const m of site.meshes) {
@@ -1280,6 +1388,7 @@ function hideHint() {
 }
 function toggleMute() {
   const m = sound.toggle();
+  if (m && globalThis.speechSynthesis) speechSynthesis.cancel(); // a line in progress stops; the words stay on screen
   $("mute").setAttribute("aria-pressed", String(m));
   $("mute").textContent = m ? "♪ off" : "♪";
 }

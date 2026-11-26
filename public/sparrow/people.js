@@ -73,9 +73,11 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     skin: new THREE.Color(pick(rng, SKINS)), hair: new THREE.Color(pick(rng, HAIRS)),
     pos: new THREE.Vector3(), yaw: rng() * Math.PI * 2, state: "stand", timer: rng() * 6,
     phase: rng() * 6, speed: 1.15 + rng() * 0.35, path: null, seat: null, look: 0, crumbAt: -1e9, near: 0, sway: rng() * 6,
+    group: -1, speaking: 0, faceTo: null,
   });
   // A third sit, a sixth talk in groups, the rest walk.
   const free = seats.slice().sort(() => rng() - 0.5);
+  let lastGroup = -1, inGroup = 0;
   for (let i = 0; i < count; i++) {
     const p = makePerson();
     if (i < count / 3 && free.length) {
@@ -83,7 +85,12 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
       sitDown(p, seat);
       p.timer = 10 + rng() * 40;
     } else if (i < count / 2 && groups.length) {
-      const g = groups[Math.floor(rng() * groups.length)];
+      // Talkers come in twos and threes: the next one usually joins the last one's group.
+      const join = lastGroup >= 0 && inGroup < 3 && rng() < (inGroup < 2 ? 0.85 : 0.4);
+      const gi = join ? lastGroup : Math.floor(rng() * groups.length), g = groups[gi];
+      inGroup = join ? inGroup + 1 : 1;
+      lastGroup = gi;
+      p.group = gi;
       const a = rng() * Math.PI * 2, r = 1.4 + rng() * 0.6;
       p.pos.set(g.x + Math.sin(a) * r, g.y, g.z + Math.cos(a) * r);
       p.yaw = Math.atan2(g.x - p.pos.x, g.z - p.pos.z) + (rng() - 0.5) * 0.6;
@@ -162,6 +169,27 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
 
   return {
     count: n,
+    /** The crowd itself, read-only: pos, state ("walk", "sit", "talk", "stand"), group, speaking. */
+    people,
+    /** Others standing in person i's group (talkers by the same marker), nearest first. */
+    groupOf(i) {
+      const p = people[i];
+      if (p.group < 0 || p.state !== "talk") return [];
+      return people.map((q, j) => j).filter((j) => j !== i && people[j].group === p.group && people[j].state === "talk")
+        .sort((a, b) => people[a].pos.distanceToSquared(p.pos) - people[b].pos.distanceToSquared(p.pos));
+    },
+    /** Person i talks for `seconds`, facing `faceTo` ({x, z}) if given: walkers stop, hands move. */
+    speak(i, seconds, faceTo = null) {
+      const p = people[i];
+      p.speaking = seconds;
+      p.faceTo = faceTo;
+    },
+    /** Where person i's head is, for a speech bubble. */
+    headOf(i, out) {
+      const p = people[i];
+      const sitting = p.state === "sit";
+      return out.set(p.pos.x, p.pos.y + (sitting ? 1.25 : 1.75) * p.h * (H / 1.7), p.pos.z);
+    },
     /** Returns { crumb: true } when someone drops the sparrow a crumb. */
     update(dt, t, bird, camPos) {
       let crumb = false;
@@ -170,8 +198,21 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
         const far = p.pos.distanceToSquared(camPos) > 160 * 160;
         if (far && !first) continue; // out past the fog: leave them be
         p.timer -= dt;
-        // Behavior.
-        if (p.state === "walk") {
+        const speaking = p.speaking > 0;
+        if (speaking) {
+          p.speaking -= dt;
+          p.sway += dt * 1.6;
+          if (p.faceTo && p.state !== "sit") {
+            const want = Math.atan2(p.faceTo.x - p.pos.x, p.faceTo.z - p.pos.z);
+            let d = want - p.yaw;
+            d = Math.atan2(Math.sin(d), Math.cos(d));
+            p.yaw += d * Math.min(1, dt * 5);
+          }
+        }
+        // Behavior (someone mid-sentence stays put).
+        if (speaking && p.state === "walk") {
+          // Paused where they are.
+        } else if (p.state === "walk") {
           const w = p.path;
           w.d = Math.min(w.len, w.d + p.speed * dt);
           const f = w.len > 0 ? w.d / w.len : 1;
@@ -187,8 +228,8 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
         } else if (p.state === "sit") {
           if (p.timer <= 0) standUp(p);
         } else if (p.state === "talk") {
-          if (p.timer <= 0) { p.state = "stand"; p.timer = 0.5; }
-        } else if (p.timer <= 0) chooseWalk(p);
+          if (p.timer <= 0 && !speaking) { p.state = "stand"; p.timer = 0.5; }
+        } else if (p.timer <= 0 && !speaking) chooseWalk(p);
 
         // They notice the sparrow: heads turn to it.
         toBird.subVectors(bird.pos, p.pos);
@@ -208,7 +249,7 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
 
         // Pose (Ghent's: a negative hip angle swings a leg forward; a positive knee angle bends the shin back).
         let hipsY = LEG, hipA = [0, 0], kneeA = [0, 0], armA = [0.05, 0.05], lean = 0;
-        if (p.state === "walk") {
+        if (p.state === "walk" && !speaking) {
           const s = Math.sin(p.phase);
           hipA = [-s * 0.45, s * 0.45];
           kneeA = [Math.max(0, -s) * 0.7, Math.max(0, s) * 0.7];
@@ -223,6 +264,13 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
           p.sway += dt;
           lean = Math.sin(p.sway * 0.9) * 0.04;
           armA = [0.05 + Math.max(0, Math.sin(p.sway * 1.7)) * 0.5, 0.05];
+        }
+        if (speaking) {
+          // Talking with their hands.
+          lean = Math.sin(p.sway * 1.1) * 0.05;
+          armA = p.state === "sit"
+            ? [-0.7 - Math.max(0, Math.sin(p.sway * 2.3)) * 0.6, -0.7]
+            : [-0.2 - Math.max(0, Math.sin(p.sway * 2.3)) * 0.9, -0.1 - Math.max(0, Math.sin(p.sway * 1.7 + 1)) * 0.6];
         }
         Q.setFromEuler(E.set(0, p.yaw, 0));
         // Someone walking right through the camera fills the frame: don't draw them that close.
