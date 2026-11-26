@@ -33,6 +33,25 @@
   .hud a[aria-current="page"], .hud button[aria-pressed="true"] { background: var(--accent); color: #2a2116; border-color: var(--accent); }
   .hud button:focus-visible, .hud a:focus-visible, #prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .models { display: inline-flex; gap: 0; }
+  /* Earlier iterations of the plan (/archive/index.json, served from R2). */
+  .versions select {
+    font: inherit; font-size: 0.82rem; line-height: 1.2; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 999px; padding: 0.42rem 1.6rem 0.42rem 0.8rem; cursor: pointer;
+    -webkit-appearance: none; appearance: none; max-width: 15rem;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+    background-position: calc(100% - 0.85rem) 55%, calc(100% - 0.55rem) 55%; background-size: 0.3rem 0.3rem; background-repeat: no-repeat;
+  }
+  .versions select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #iteration-note {
+    position: fixed; z-index: 10; left: max(0.75rem, env(safe-area-inset-left)); top: calc(max(0.75rem, env(safe-area-inset-top)) + 2.7rem);
+    max-width: min(26rem, calc(100vw - 1.5rem)); font-size: 0.8rem; line-height: 1.35; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 0.7rem; padding: 0.45rem 0.7rem;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  #iteration-note b { color: var(--accent); }
+  #iteration-note a { color: var(--accent); }
+  @media (pointer: coarse) { #iteration-note { top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.3rem); } }
   .models a:first-child { border-radius: 999px 0 0 999px; }
   .models a:last-child { border-radius: 0 999px 999px 0; margin-left: -1px; }
 
@@ -150,7 +169,9 @@
     <a data-model="clean_baseline" href="/walk.html?glb=/vibe-render/clean_baseline.glb">Whole site</a>
     <a data-model="cluster" href="/walk.html">One cluster</a>
   </span>
+  <label class="versions" hidden title="Earlier iterations of the plan"><span class="vh">Iteration</span><select id="versions"></select></label>
 </div>
+<div id="iteration-note" hidden></div>
 
 <div class="hud top-right">
   <button type="button" id="met" title="Patterns you've met here">Patterns <span id="met-count">0 / 0</span></button>
@@ -180,7 +201,7 @@
   <h2>You're a house sparrow</h2>
   <p><b>Desktop:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to hop, <kbd>Shift</kbd> to hurry. <kbd>Space</kbd> hops; hold it to fly, and keep holding to climb. <kbd>C</kbd> to come down; let go and you glide. Drag to look, scroll to zoom (all the way in to see through your own eyes). Click anywhere to go there. <kbd>E</kbd> touches what glints. <kbd>T</kbd> for a tour, <kbd>M</kbd> for sound.</p>
   <p><b>Phone:</b> tap to go there, drag to look, pinch to zoom. Hold &#9650; to fly, &#9660; to come down.</p>
-  <p>The buildings, streets, squares, trees and meadow are the pipeline's real output: tap a tree to perch in it. So is every window and door, and which walls face a street or a square. A shop stands at each door onto one, most of them P87 Individually Owned Shops' own small doors; what kind of shop, its paint, sign and awning, are ours, after the Ghent Streets storefronts. The light rail is P34 Interchange: its station stands where the pipeline put it, at the end of a sketch of the Tide from the direction of Newtown Road (HRT's own extension is paused). Wait on the platform, or hop up on the tram's roof and ride. Get close to someone and <kbd>E</kbd> eavesdrops: they say what one of the chorus's opinions found about this site, the way a person would say it, and people standing together argue it out. Every number they say is the opinion's own, and the log shows the opinion's own words beside them; only the openers ("Ugh." or "Now this I like.") are theirs. The tram and its timetable, the sparrow, the people, the benches, the pigeons, the breeze, the sky and the ground beyond the site are not data. The benches go where the patterns ask for sitting: around each P126 marker, along P61 squares, facing the sun in P161 sunny places.</p>
+  <p>The buildings, streets, squares, trees and meadow are the pipeline's real output: tap a tree to perch in it. So is every window and door, and which walls face a street or a square. A shop stands at each door onto one, most of them P87 Individually Owned Shops' own small doors; what kind of shop, its paint, sign and awning, are ours, after the Ghent Streets storefronts. The light rail is P34 Interchange: its station stands where the pipeline put it, at the end of a sketch of the Tide from the direction of Newtown Road (HRT's own extension is paused). Wait on the platform, or hop up on the tram's roof and ride. Get close to someone and <kbd>E</kbd> eavesdrops: they say what one of the chorus's opinions found about this site, the way a person would say it, and people standing together argue it out. The <b>iteration</b> menu walks earlier versions of the plan, rebuilt from the commits that shipped them, each with today's chorus to eavesdrop on. Every number they say is the opinion's own, and the log shows the opinion's own words beside them; only the openers ("Ugh." or "Now this I like.") are theirs. The tram and its timetable, the sparrow, the people, the benches, the pigeons, the breeze, the sky and the ground beyond the site are not data. The benches go where the patterns ask for sitting: around each P126 marker, along P61 squares, facing the sun in P161 sunny places.</p>
   <p>Add <code>?stats</code> to the address to see the frame rate.</p>
 </div>
 

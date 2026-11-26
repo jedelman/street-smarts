@@ -82,7 +82,7 @@ def main(nbhd_path, glb_path):
         "play_m2": round(by_use["play"]),
         "uses_assigned": any(b.get("floor_uses") for b in n["buildings"]),
         "shop_fronts": len(shops),
-        "p87_shop_fronts": sum(1 for row in shops if row[7]),
+        "p87_shop_fronts": sum(1 for row in shops if len(row) > 7 and row[7]),  # rows before P87 had no flag
         "frontage_m": round(sum(widths)),
         "shop_front_median_m": round(statistics.median(widths), 2) if widths else 0,
         "trees": len(n.get("trees") or []),

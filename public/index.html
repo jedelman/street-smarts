@@ -729,6 +729,19 @@
   .adds-how ul { padding-left: 1.1rem; margin: 0.6rem 0; }
   .adds-how li { margin: 0 0 0.45rem; }
   .adds-sources { color: var(--muted); font-size: 0.84rem; }
+  /* How it got here: archived iterations (/archive/index.json). */
+  .iterations { margin: 0 0 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line); }
+  .iterations h2 { font-size: 1.3rem; margin: 0 0 0.3rem; }
+  .its { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 1rem; }
+  .its li { display: grid; grid-template-columns: 9rem 1fr; gap: 0.9rem; align-items: start; }
+  .its img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; background: var(--highlight); border: 1px solid var(--line); }
+  .its h3 { font-size: 1rem; margin: 0; }
+  .its .when { color: var(--muted); font-size: 0.82rem; }
+  .its p { margin: 0.2rem 0; font-size: 0.92rem; }
+  .its .facts { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .its a.walk { font-size: 0.86rem; }
+  .its li.now h3::after { content: " · now"; color: var(--warn); font-weight: normal; }
+  @media (max-width: 520px) { .its li { grid-template-columns: 6.5rem 1fr; } }
   .capital { display: inline-flex; flex-wrap: wrap; gap: 0; margin: 0.3rem 0 0.7rem; }
   .capital button { font: inherit; font-size: 0.86rem; background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 0.35rem 0.75rem; cursor: pointer; margin-left: -1px; }
   .capital button:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
@@ -878,6 +891,12 @@
         <a href="https://www.yahoo.com/news/end-line-light-rail-hampton-173700441.html" target="_blank" rel="noopener">The Virginian-Pilot (July 2025)</a>
       </p>
     </details>
+  </section>
+
+  <section class="iterations" id="iterations" aria-labelledby="iterations-h" hidden>
+    <h2 id="iterations-h">How it got here</h2>
+    <p class="adds-lede">Each step, rebuilt from the commit that shipped it and kept as it was. Walk any of them; the people in each say what today's chorus thinks of that version.</p>
+    <ol class="its" id="its"></ol>
   </section>
 
   <header>
@@ -1126,6 +1145,34 @@
   </footer>
 
 </div>
+
+<script>
+  // How it got here: the archived iterations (worker/index.js serves /archive/* from R2;
+  // tools/vibe-render/archive_milestone.py adds to it). Hidden when there's no archive.
+  (function () {
+    fetch("/archive/index.json").then(function (r) { return r.ok ? r.json() : null; }).then(function (idx) {
+      var its = idx && idx.iterations || [];
+      if (!its.length) return;
+      var num = function (v) { return v == null ? "—" : Math.round(v).toLocaleString("en-US"); };
+      var esc = function (t) { var d = document.createElement("div"); d.textContent = t == null ? "" : String(t); return d.innerHTML; };
+      var ol = document.getElementById("its");
+      ol.innerHTML = its.map(function (it, k) {
+        var s = it.stats || {}, base = "/archive/" + encodeURIComponent(it.id) + "/";
+        var sf = s.floor_area_m2 ? (s.floor_area_m2 * 10.7639 / 1e6).toFixed(1) + "M sq ft" : null;
+        var facts = [s.buildings ? s.buildings + " buildings" : null, s.floors_max ? "up to " + s.floors_max + " floors" : null, sf,
+                     s.shop_fronts ? num(s.shop_fronts) + " shop fronts" : null, s.trees ? num(s.trees) + " trees" : null,
+                     s.work_m2 ? Math.round(s.work_m2 / s.floor_area_m2 * 100) + "% work" : null].filter(Boolean).join(" · ");
+        var date = new Date(it.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        var walk = "/walk.html?glb=" + base + "clean_baseline.glb&chorus=" + base + "chorus.json&iteration=" + encodeURIComponent(it.id);
+        return '<li class="' + (k === its.length - 1 ? "now" : "") + '">' +
+          (it.files && it.files.indexOf("isometric.png") >= 0 ? '<img src="' + base + 'isometric.png" alt="' + esc(it.title) + ', isometric render" loading="lazy">' : "<div></div>") +
+          "<div><h3>" + (k + 1) + ". " + esc(it.title) + '</h3><div class="when">' + date + (it.pr ? ' · <a href="https://github.com/jedelman/street-smarts/pull/' + it.pr + '" target="_blank" rel="noopener">PR #' + it.pr + "</a>" : "") +
+          "</div><p>" + esc(it.summary) + '</p><div class="facts">' + facts + '</div><a class="walk" href="' + walk + '">Walk it &#8599;</a></div></li>';
+      }).join("");
+      document.getElementById("iterations").hidden = false;
+    }).catch(function () {});
+  })();
+</script>
 
 <script>
   // What it adds up to: the plan's measurements (tools/vibe-render/plan_numbers.py, on every

@@ -1373,6 +1373,7 @@ function setupUI() {
     $("inside").hidden = false;
     $("inside").addEventListener("click", () => peekInside((viewIndex + 1) % views.length));
   }
+  setupIterations();
   for (const a of document.querySelectorAll("[data-model]")) {
     const isCurrent = (a.dataset.model === "cluster" && !params.get("glb")) || (params.get("glb") || "").includes(a.dataset.model);
     a.setAttribute("aria-current", isCurrent ? "page" : "false");
@@ -1381,6 +1382,43 @@ function setupUI() {
   $("hint").textContent = COARSE ? "Tap to go · drag to look · ▲ to fly" : "WASD to hop · hold Space to fly · drag to look · E to touch · T for a tour";
   if (active) setTimeout(hideHint, 14000);
   else { hintGone = true; $("hint").classList.add("gone"); }
+}
+/**
+ * Earlier iterations of the plan, from /archive/index.json (worker/index.js
+ * serves the archive from R2; tools/vibe-render/archive_milestone.py adds
+ * to it). Choosing one reloads the walk on that iteration's model and its
+ * chorus. Without an archive (a local copy, say) the menu stays hidden.
+ */
+function setupIterations() {
+  const ITERATION = params.get("iteration");
+  fetch("/archive/index.json").then((r) => (r.ok ? r.json() : null)).then((idx) => {
+    const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
+    if (!its.length || HERO) return;
+    const sel = $("versions");
+    const opt = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; };
+    const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    sel.appendChild(opt("", "Now"));
+    for (const it of its.slice().reverse()) sel.appendChild(opt(it.id, `${short(it.date)} · ${it.title}`));
+    sel.value = ITERATION && its.some((i) => i.id === ITERATION) ? ITERATION : "";
+    sel.addEventListener("change", () => {
+      const id = sel.value;
+      location.href = id
+        ? `/walk.html?glb=/archive/${encodeURIComponent(id)}/clean_baseline.glb&chorus=/archive/${encodeURIComponent(id)}/chorus.json&iteration=${encodeURIComponent(id)}`
+        : "/walk.html?glb=/vibe-render/clean_baseline.glb";
+    });
+    sel.closest(".versions").hidden = false;
+    const k = its.findIndex((i) => i.id === ITERATION);
+    if (k >= 0) {
+      const it = its[k], note = $("iteration-note");
+      note.innerHTML = "";
+      const b = document.createElement("b"); b.textContent = `Iteration ${k + 1} of ${its.length}: ${it.title}`;
+      note.append(b, document.createTextNode(` (${short(it.date)}${it.pr ? `, PR #${it.pr}` : ""}). ${it.summary} `));
+      const back = document.createElement("a"); back.href = "/walk.html?glb=/vibe-render/clean_baseline.glb"; back.textContent = "Back to now";
+      note.append(back);
+      note.hidden = false;
+      logLine(`You're walking iteration ${k + 1} of ${its.length}: ${it.title}.`, "note");
+    }
+  }).catch(() => {});
 }
 function hideHint() {
   if (hintGone) return;
