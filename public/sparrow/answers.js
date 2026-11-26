@@ -11,6 +11,8 @@
 //
 // Pure, so Node can test it: tools/sparrow/answers.test.mjs.
 
+import { BUSINESSES } from "./shopfronts.js";
+
 export const PATTERNS = {
   34: { name: "Interchange", gist: "a station that is a center: continuous with the streets, ringed by homes and workplaces" },
   37: { name: "House Cluster", gist: "each cluster of houses set apart by common land" },
@@ -36,11 +38,8 @@ export const PATTERNS = {
   172: { name: "Garden Growing Wild", gist: "the open ground grows as meadow, with no bare earth" },
 };
 
-// The walk's shop kinds (frontages.js KITS), as nouns.
-const SHOP_NOUNS = {
-  coffee: "coffee shop", books: "bookshop", bistro: "bistro", studio: "design studio", bakery: "bakery",
-  grocer: "grocer's", florist: "florist's", hardware: "hardware store", records: "record shop", tailor: "tailor's",
-};
+// The walk's businesses (shopfronts.js BUSINESSES), as nouns.
+const SHOP_NOUNS = Object.fromEntries(BUSINESSES.map((b) => [b.id, b.noun]));
 
 // P171's forms, as the tree's own kind names them.
 const TREE_NOUNS = { avenue: "tree in an avenue", square: "tree ringing a square", umbrella: "spreading tree", grove: "tree in a grove" };

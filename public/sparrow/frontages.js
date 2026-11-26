@@ -17,34 +17,12 @@
 // each kind of part is drawn only within its own distance (a window's glass
 // from anywhere, a sill or a café chair only up close).
 import * as THREE from "three";
+import { BUSINESSES, chooseBusiness, growFront } from "./shopfronts.js";
 
-// ---------------------------------------------------------------- the kits
-// The first four are the Ghent explorer's (same signs, paints and awnings); the
-// rest are ours, for a site with forty shops instead of one.
-const GHENT_TRIMS = ["#efe6d2", "#e2d3ac", "#f6f1e7", "#c9b78a"];
-const GHENT_BRICKS = ["#8a4a36", "#9a5a40", "#7a3f30", "#a8705a"];
-export const KITS = [
-  { id: "coffee", sign: "COFFEE", font: "700 92px Georgia, 'Times New Roman', serif", ink: "#f3ede0",
-    paints: ["#2f4a3a", "#34503c", "#2f5d62", "#3e5a3a"], stripes: ["#2f4a3a", "#efe6d2"], inside: "counter", props: "cafe", icon: "cup" },
-  { id: "books", sign: "BOOKS", font: "700 92px Georgia, 'Times New Roman', serif", ink: "#f3ede0",
-    paints: ["#6b2430", "#5a2a2a", "#7a3b2e", "#4a2a3a"], stripes: ["#6b2430", "#efe6d2"], inside: "shelves", props: "books", icon: "book" },
-  { id: "bistro", sign: "BISTRO", font: "italic 600 92px Georgia, 'Times New Roman', serif", ink: "#f0d9a8",
-    paints: ["#1f2a44", "#1a1714", "#3b2a3f", "#22313b"], stripes: ["#8a2b1f", "#f0e3c8"], inside: "lamps", props: "bistro", icon: "glass" },
-  { id: "studio", sign: "STUDIO", font: "500 80px 'DM Mono', ui-monospace, Menlo, monospace", ink: "#1a1714",
-    paints: ["#1d1f22", "#2b2d31", "#3a3d42"], band: "#f3f1ec", stripes: null, inside: "desks", props: null, icon: "square" },
-  { id: "bakery", sign: "BAKERY", font: "700 92px Georgia, 'Times New Roman', serif", ink: "#f6efe0",
-    paints: ["#8b5a2b", "#a0522d", "#6e4b3a"], stripes: ["#c9a46a", "#f6efe0"], inside: "bread", props: "cafe", icon: "loaf" },
-  { id: "grocer", sign: "GROCER", font: "800 86px 'Helvetica Neue', Arial, sans-serif", ink: "#f2ecd8",
-    paints: ["#3f6b35", "#2f5d3a", "#4a5a2a"], stripes: ["#3f6b35", "#f2ecd8"], inside: "produce", props: "crates", icon: "apple" },
-  { id: "florist", sign: "FLOWERS", font: "italic 700 88px Georgia, 'Times New Roman', serif", ink: "#f6efe0",
-    paints: ["#7a4a6b", "#5e3b5e", "#8a5a7a"], stripes: ["#c96a8a", "#f6efe0"], inside: "flowers", props: "buckets", icon: "flower" },
-  { id: "hardware", sign: "HARDWARE", font: "800 80px 'Helvetica Neue', Arial, sans-serif", ink: "#f2d27a",
-    paints: ["#8a2b1f", "#2b3a55", "#3a2f22"], stripes: ["#c8a23a", "#2b2b2b"], inside: "tools", props: "crates", icon: "hammer" },
-  { id: "records", sign: "RECORDS", font: "700 84px 'Courier New', ui-monospace, monospace", ink: "#e9d9a8",
-    paints: ["#1f2a44", "#3b2a3f", "#2a2a2a"], stripes: ["#d9b46a", "#1f2a44"], inside: "records", props: "aframe", icon: "disc" },
-  { id: "tailor", sign: "TAILOR", font: "500 88px Georgia, 'Times New Roman', serif", ink: "#efe6d2",
-    paints: ["#2b2d31", "#3a3d42", "#4a3a2a"], stripes: null, inside: "racks", props: null, icon: "scissors" },
-];
+// ---------------------------------------------------------------- the businesses
+// Which business stands at each shop front, and how its front grows: the
+// L-system in shopfronts.js. KITS is kept as a name for the list.
+export const KITS = BUSINESSES;
 
 const G = 3.5; // the ground floor's height (render.py FLOOR_TO_FLOOR_M)
 const ST = G - 0.62; // top of the storefront, under the sign band
@@ -132,7 +110,8 @@ function stripesAtlas(paintOf) {
 }
 
 /** What you see through a shop's glass, one tile per kind of interior (after the explorer's windowTexture). */
-const INSIDES = ["counter", "shelves", "lamps", "desks", "bread", "produce", "flowers", "tools", "records", "racks", "rooms"];
+const INSIDES = ["counter", "shelves", "lamps", "desks", "bread", "produce", "flowers", "tools", "records", "racks", "rooms",
+  "bottles", "bikes", "office", "models", "school", "salon"];
 function insidesAtlas() {
   const tw = 256, th = 128, cols = 4, rows = Math.ceil(INSIDES.length / cols);
   const [c, g] = canvas(tw * cols, th * rows);
@@ -149,7 +128,8 @@ function insidesAtlas() {
     g.beginPath(); g.rect(x0, y0, tw, th); g.clip();
     g.translate(x0, y0);
     const bg = { counter: "#f3d6a6", shelves: "#f1d29a", lamps: "#e8b67c", desks: "#e9eef3", bread: "#f4dcae", produce: "#efe2b8",
-      flowers: "#f3e3d3", tools: "#e6dcc6", records: "#e4c89a", racks: "#ece3d3", rooms: "#e9cf9e" }[kind];
+      flowers: "#f3e3d3", tools: "#e6dcc6", records: "#e4c89a", racks: "#ece3d3", rooms: "#e9cf9e",
+      bottles: "#d9b483", bikes: "#e6e2d8", office: "#eef1f2", models: "#f6f5f1", school: "#fbf3d9", salon: "#f1e6e0" }[kind];
     g.fillStyle = bg; g.fillRect(0, 0, tw, th);
     if (kind === "shelves" || kind === "records" || kind === "tools") {
       const colors = kind === "records" ? ["#1a1714", "#7a2430", "#d9b46a", "#2f4a3a", "#3d4f7a"]
@@ -194,6 +174,38 @@ function insidesAtlas() {
       const colors = ["#2b2d31", "#6b2430", "#3d4f7a", "#c9b78a", "#4a3a2a"];
       for (let k = 0; k < 16; k++) { g.fillStyle = pickOf(rng, colors); g.fillRect(6 + k * 15, 33, 11, 40 + rng() * 20); }
       lamp(128, 14);
+    } else if (kind === "bottles") { // a wine shop: racks of bottles, lamplit
+      for (let r = 0; r < 3; r++) {
+        g.fillStyle = "#5a3a1e"; g.fillRect(0, 34 + r * 34, tw, 4);
+        for (let x = 6; x < tw - 6; x += 9) { g.fillStyle = pickOf(rng, ["#3a1a1e", "#2a3a22", "#4a1f24", "#c9b37a"]); g.fillRect(x, 12 + r * 34, 6, 22); }
+      }
+      lamp(64, 10); lamp(192, 10);
+    } else if (kind === "bikes") { // a bike shop: bikes hung on the wall, one on the stand
+      g.strokeStyle = "#2a3036"; g.lineWidth = 3;
+      for (let k = 0; k < 4; k++) { const x = 34 + k * 60; g.beginPath(); g.arc(x - 14, 40, 12, 0, Math.PI * 2); g.arc(x + 14, 40, 12, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(x - 14, 40); g.lineTo(x, 26); g.lineTo(x + 14, 40); g.stroke(); }
+      g.fillStyle = "#8a2b1f"; g.fillRect(90, 96, 76, 6); g.fillStyle = "#5b6670"; g.fillRect(124, 80, 8, 30);
+    } else if (kind === "office") { // an accountant's: desks, screens, a plant, a filing wall
+      g.fillStyle = "#c9cfd3"; g.fillRect(0, 10, tw, 40);
+      for (let k = 0; k < 8; k++) { g.fillStyle = "#e9edf0"; g.fillRect(6 + k * 31, 14, 26, 32); }
+      g.fillStyle = "#8a7a62"; for (let k = 0; k < 2; k++) g.fillRect(20 + k * 120, 92, 96, 6);
+      g.fillStyle = "#2a3036"; for (let k = 0; k < 2; k++) g.fillRect(48 + k * 120, 70, 30, 20);
+      g.fillStyle = "#55704a"; g.beginPath(); g.arc(236, 78, 12, 0, Math.PI * 2); g.fill();
+    } else if (kind === "models") { // architects: white models on a long table, drawings pinned up
+      g.fillStyle = "#e4e2dc"; for (let k = 0; k < 6; k++) g.fillRect(10 + k * 41, 10, 32, 24);
+      g.fillStyle = "#c9c4b8"; g.fillRect(0, 86, tw, 6);
+      g.fillStyle = "#ffffff"; for (let k = 0; k < 7; k++) { const h = 10 + rng() * 22; g.fillRect(14 + k * 34, 86 - h, 16 + rng() * 10, h); }
+      lamp(70, 6); lamp(186, 6);
+    } else if (kind === "school") { // a little school: drawings in the window, small chairs, a rug
+      for (let k = 0; k < 7; k++) { g.fillStyle = pickOf(rng, ["#d9772f", "#2f7a8a", "#f2c94a", "#c23f2a", "#5a8a3a", "#8a4a8a"]); g.fillRect(8 + k * 35, 10 + (k % 2) * 6, 26, 22); }
+      g.fillStyle = "#e0a030"; g.beginPath(); g.arc(200, 28, 10, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#7fb0c8"; g.fillRect(30, 100, 190, 20);
+      for (let k = 0; k < 4; k++) { g.fillStyle = pickOf(rng, ["#d9772f", "#2f7a8a", "#5a8a3a"]); g.fillRect(40 + k * 46, 80, 18, 14); g.fillRect(44 + k * 46, 94, 3, 8); g.fillRect(54 + k * 46, 94, 3, 8); }
+    } else if (kind === "salon") { // a hairdresser's: mirrors, chairs, a lamp over each
+      for (let k = 0; k < 4; k++) {
+        g.fillStyle = "#c9d6dc"; g.fillRect(14 + k * 61, 14, 40, 52);
+        g.fillStyle = "#1a1714"; g.fillRect(20 + k * 61, 80, 28, 22); g.fillRect(32 + k * 61, 102, 4, 18);
+        lamp(34 + k * 61, 8);
+      }
     } else { // rooms: a lived-in back room behind a ground-floor window that isn't a shop
       g.fillStyle = "#c9a878"; g.fillRect(0, 80, tw, 48);
       g.fillStyle = "#7a5a3a"; g.fillRect(40, 60, 70, 30); g.fillRect(160, 40, 36, 50);
@@ -207,7 +219,7 @@ function insidesAtlas() {
 
 /** Blade-sign icons, light on transparent. */
 function iconsAtlas() {
-  const s = 128, names = [...new Set(KITS.map((k) => k.icon))];
+  const s = 128, names = [...new Set([...KITS.map((k) => k.icon), "bike", "scooter"])];
   const [c, g] = canvas(s * names.length, s);
   const rects = {};
   names.forEach((name, i) => {
@@ -225,6 +237,16 @@ function iconsAtlas() {
     else if (name === "flower") { for (let k = 0; k < 6; k++) { g.beginPath(); g.arc(Math.cos(k) * 20, Math.sin(k) * 20 - 6, 13, 0, Math.PI * 2); g.fill(); } g.fillRect(-3, 10, 6, 34); }
     else if (name === "hammer") { g.fillRect(-30, -30, 60, 18); g.fillRect(-6, -14, 12, 50); }
     else if (name === "disc") { g.beginPath(); g.arc(0, 0, 36, 0, Math.PI * 2); g.fill(); g.fillStyle = "#1a1714"; g.beginPath(); g.arc(0, 0, 8, 0, Math.PI * 2); g.fill(); }
+    else if (name === "comb") { g.fillRect(-36, -14, 72, 12); for (let k = 0; k < 9; k++) g.fillRect(-34 + k * 8, -2, 4, 22); }
+    else if (name === "bottle") { g.fillRect(-12, -6, 24, 44); g.fillRect(-5, -36, 10, 32); }
+    else if (name === "ledger") { g.strokeRect(-30, -36, 60, 72); for (let k = 0; k < 4; k++) g.fillRect(-20, -22 + k * 14, 40, 4); }
+    else if (name === "setsquare") { g.beginPath(); g.moveTo(-34, 34); g.lineTo(34, 34); g.lineTo(-34, -34); g.closePath(); g.stroke(); }
+    else if (name === "abc") { g.font = "800 44px 'Helvetica Neue', Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("ABC", 0, 2); }
+    else if (name === "bike") {
+      g.beginPath(); g.arc(-30, 16, 20, 0, Math.PI * 2); g.arc(30, 16, 20, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(-30, 16); g.lineTo(-8, -14); g.lineTo(22, -14); g.lineTo(30, 16); g.moveTo(-8, -14); g.lineTo(2, 16); g.lineTo(22, -14); g.moveTo(-14, -24); g.lineTo(-2, -24); g.moveTo(22, -14); g.lineTo(18, -28); g.stroke();
+    }
+    else if (name === "scooter") { g.beginPath(); g.arc(-26, 26, 10, 0, Math.PI * 2); g.arc(26, 26, 10, 0, Math.PI * 2); g.fill(); g.fillRect(-28, 14, 56, 6); g.fillRect(20, -34, 6, 50); g.fillRect(10, -36, 26, 6); }
     else if (name === "scissors") { g.beginPath(); g.arc(-14, 20, 11, 0, Math.PI * 2); g.arc(14, 20, 11, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(-8, 10); g.lineTo(18, -34); g.moveTo(8, 10); g.lineTo(-18, -34); g.stroke(); }
     g.restore();
     rects[name] = [i / names.length, 0, 1 / names.length, 1];
@@ -416,125 +438,32 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
 
   // ---- the shop fronts (after the explorer's buildRun)
   const shops = [];
-  const lastKit = new Map();
+  const lastBiz = new Map();
   for (const { row } of [...shopsByWall.values()].flat()) {
     const [wi, lo, hi, doorAt, doorWidth, , underArcade, p87] = row;
     const w = walls[wi] || (walls[wi] = wallAt(wi));
     const id = `${detail.strings[w.building] || w.building}:${wi}:${lo.toFixed(1)}`;
     const rng = rngFor(id);
-    // Neighbours differ: no kit repeats within two doors along a wall.
-    const recent = lastKit.get(wi) || [];
-    const choices = KITS.map((_, k) => k).filter((k) => !recent.includes(k));
-    const ki = choices[Math.floor(rng() * choices.length)];
-    lastKit.set(wi, [ki, ...recent].slice(0, 2));
-    const kit = KITS[ki];
-    const paint = pickOf(rng, kit.paints), trim = kit.id === "studio" ? "#d9d6cf" : pickOf(rng, GHENT_TRIMS);
-    const brick = pickOf(rng, GHENT_BRICKS);
-    const bulk = kit.id === "studio" ? "plain" : pickOf(rng, ["panel", "panel", "brick"]);
-    const pier = bulk === "brick" || rng() < 0.5 ? brick : paint;
-    const awning = !!kit.stripes && !underArcade && rng() < 0.85; // a P119 arcade is shelter enough
-    const awnTilt = 0.32 + rng() * 0.12;
-    const L = hi - lo;
-    const at = doorAt - lo;
-    // Positions along the run (0..L) map to the wall's own `along`.
-    const X = (x) => lo + x;
-    const entryW = Math.min(2.4, Math.max(1.5, doorWidth + 0.5));
-    const e0 = at - entryW / 2, e1 = at + entryW / 2;
-
-    const nb = Math.max(1, Math.round(L / BAY));
-    const bounds = Array.from({ length: nb + 1 }, (_, i) => (L * i) / nb);
-    const spans = [];
-    for (let i = 0; i < nb; i++) {
-      const a = bounds[i], b = bounds[i + 1];
-      if (b > e0 && a < e1) {
-        if (e0 - a > 0.9) spans.push([a, e0 - 0.18]);
-        if (b - e1 > 0.9) spans.push([e1 + 0.18, b]);
+    // Neighbours differ: no business repeats within two doors along a wall.
+    const recent = lastBiz.get(wi) || [];
+    const biz = chooseBusiness(rng, recent);
+    lastBiz.set(wi, [biz.id, ...recent].slice(0, 2));
+    const bi = KITS.indexOf(biz);
+    const L = hi - lo, at = doorAt - lo;
+    const X = (x) => lo + x; // positions along the run (0..L) map to the wall's own `along`
+    const grown = growFront({ biz, L, at, doorWidth, rng, arcade: !!underArcade, flip: w.flip });
+    for (const q of grown.parts) {
+      const color = typeof q.color === "number" ? col.setScalar(q.color) : q.color;
+      const tex = q.tex;
+      if (tex && tex.atlas === "letters") {
+        const lr = letters.rects[bi], lw = Math.min(L - 0.6, q.sy * lr.aspect);
+        add("letters", w, X(q.x), q.y, q.out, lw, lw / lr.aspect, 1, "#ffffff", lr.uv);
         continue;
       }
-      spans.push([a, b]);
+      const rect = !tex ? undefined : tex.atlas === "insides" ? insides.rects[tex.name] : tex.atlas === "icons" ? icons.rects[tex.name] : stripes.rect(bi);
+      add(q.k, w, X(q.x), q.y, q.out, q.sx, q.sy, q.sz, color, rect, q.rx, q.ry);
     }
-    const piers = new Set(bounds.filter((x) => x <= e0 - 0.3 || x >= e1 + 0.3));
-    piers.add(e0 - 0.18); piers.add(e1 + 0.18);
-    for (const x of piers) {
-      add("detail", w, X(x), ST / 2, 0.09, 0.36, ST, 0.22, pier);
-      if (!awning) add("near", w, X(x), ST - 0.1, 0.18, 0.3, 0.26, 0.3, trim); // capitals, where no awning hides them
-    }
-    for (const [a0, b0] of spans) {
-      const a = a0 + 0.2, b = b0 - 0.2, sw = b - a, cx = X((a + b) / 2);
-      if (sw < 0.6) continue;
-      add("detail", w, cx, 0.275, 0.06, sw, 0.55, 0.14, bulk === "brick" ? brick : paint); // bulkhead
-      if (bulk === "panel") add("near", w, cx, 0.28, 0.14, sw - 0.2, 0.34, 0.02, trim);
-      add("detail", w, cx, 0.58, 0.08, sw + 0.1, 0.07, 0.24, trim); // sill
-      add("display", w, cx, (GLASS_TOP + 0.62) / 2, 0.035, sw, GLASS_TOP - 0.62, 1, col.setScalar(1), insides.rects[kit.inside]);
-      if (sw > 2.4) add("near", w, cx, (GLASS_TOP + 0.62) / 2, 0.06, 0.07, GLASS_TOP - 0.62, 0.08, paint); // mullion
-      add("detail", w, cx, GLASS_TOP + 0.04, 0.06, sw + 0.05, 0.08, 0.12, paint);
-      add("glass", w, cx, ST - 0.26, 0.035, sw, 0.42, 1, "#4a3826"); // transom
-      if (awning) {
-        const d = 1.25;
-        // The canvas: a quad laid along the slope (a plane faces +z; tipped by
-        // -(90° - tilt) about x it faces up and out, falling away from the wall).
-        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d / 2, 0.14 + Math.cos(awnTilt) * d / 2, sw + 0.15, d, 1,
-          col.setScalar(1), stripes.rect(ki), awnTilt - Math.PI / 2);
-        add("awnings", w, cx, ST - 0.02 - Math.sin(awnTilt) * d - 0.12, 0.14 + Math.cos(awnTilt) * d, sw + 0.15, 0.24, 1,
-          col.setScalar(0.92), stripes.rect(ki)); // the valance
-      }
-    }
-    // The entry, flush with the wall: a painted door with a glass light, side lights, a transom.
-    const doorLeaf = Math.min(1.1, Math.max(0.9, doorWidth));
-    add("mid", w, X(at), 1.12, 0.03, doorLeaf, 2.24, 0.06, paint);
-    add("glass", w, X(at), 1.45, 0.065, doorLeaf * 0.66, 1.2, 1, "#d8b77a");
-    add("near", w, X(at) + 0.36 * w.flip, 1.05, 0.08, 0.06, 0.06, 0.08, "#b8913f"); // brass
-    add("detail", w, X(at), 2.3, 0.06, entryW, 0.1, 0.12, trim);
-    add("glass", w, X(at), (2.36 + ST) / 2, 0.035, entryW, ST - 2.36, 1, "#4a3826");
-    const side = (entryW - doorLeaf) / 2 - 0.08;
-    if (side > 0.2) for (const sd of [-1, 1]) {
-      add("display", w, X(at) + sd * (doorLeaf / 2 + 0.04 + side / 2), 1.2, 0.035, side, 2.0, 1, col.setScalar(1), insides.rects[kit.inside]);
-    }
-    // The sign band, its lettering, and the cornice over the whole run.
-    add("mid", w, X(L / 2), ST + 0.28, 0.16, L - 0.1, 0.56, 0.12, kit.band || paint);
-    const lr = letters.rects[ki];
-    const lh = 0.36, lw = Math.min(L - 0.6, lh * lr.aspect);
-    add("letters", w, X(L / 2), ST + 0.28, 0.225, lw, lw / lr.aspect, 1, "#ffffff", lr.uv);
-    add("mid", w, X(L / 2), G - 0.04, 0.2, L + 0.3, 0.16, 0.42, trim);
-    // A blade sign beside the door.
-    const bx = X(Math.min(L - 0.3, e1 + 0.18));
-    add("near", w, bx, 2.4, 0.72, 0.05, 0.05, 1.05, "#1d1b19");
-    add("near", w, bx, 2.22, 0.25, 0.04, 0.4, 0.04, "#1d1b19");
-    add("detail", w, bx, 2.08, 0.82, 0.03, 0.46, 0.62, paint);
-    for (const sd of [-1, 1]) add("icons", w, bx + sd * 0.018 * w.flip, 2.08, 0.82, 0.5, 0.36, 1, "#ffffff", icons.rects[kit.icon], 0, sd * Math.PI / 2);
-    // On the pavement in front: the kit's own props.
-    const props = kit.props;
-    const ahead = (x, out) => ({ x: X(x), out });
-    if (props === "cafe" || props === "bistro") {
-      const n = props === "bistro" ? 3 : 2;
-      for (let k = 0; k < n; k++) {
-        const p = ahead(((k + 0.5) * L) / n, 2.3 + (k % 2) * 0.3);
-        if (Math.abs(p.x - X(at)) < 1.2) continue;
-        add("near", w, p.x, 0.74, p.out, 0.72, 0.04, 0.72, props === "bistro" ? "#f2ece0" : "#e8e0cc");
-        add("near", w, p.x, 0.37, p.out, 0.06, 0.72, 0.06, "#2a2622");
-        for (const sd of [-1, 1]) {
-          add("near", w, p.x + sd * 0.62, 0.45, p.out, 0.4, 0.04, 0.4, "#2a2622");
-          add("near", w, p.x + sd * 0.8, 0.68, p.out, 0.04, 0.42, 0.4, "#2a2622");
-        }
-      }
-    } else if (props === "books") {
-      add("near", w, X(at) - 2.2 * w.flip, 0.55, 1.0, 1.4, 0.7, 0.6, "#5a3a1e");
-      for (let k = 0; k < 10; k++) add("near", w, X(at) - (2.8 - k * 0.12) * w.flip, 1.03, 1.0, 0.09, 0.26, 0.2, pickOf(rng, ["#7a2430", "#2f4a3a", "#d9b46a", "#3d4f7a", "#a8643a", "#efe6d2"]));
-    } else if (props === "crates" || props === "buckets") {
-      const fill = props === "crates" ? ["#c23f2a", "#e0a030", "#6a9a3a", "#d9c04a"] : ["#c96a8a", "#f2c94a", "#e8e0f0", "#f08a4a"];
-      for (let k = 0; k < 4; k++) {
-        const x = X(at) + (k < 2 ? -1 : 1) * (1.6 + (k % 2) * 0.7);
-        add("near", w, x, 0.25, 0.7, 0.6, 0.5, 0.45, props === "crates" ? "#7a5a3a" : "#5b6670");
-        add("near", w, x, 0.55, 0.7, 0.52, 0.12, 0.38, pickOf(rng, fill));
-      }
-    } else if (props === "aframe") {
-      for (const sd of [-1, 1]) add("near", w, X(at) + 1.4 * w.flip, 0.42, 1.6 + sd * 0.13, 0.55, 0.85, 0.03, "#2b2b2b", undefined, sd * 0.2);
-    }
-    if (rng() < 0.6) for (const sd of [-1, 1]) { // planters either side of the door
-      const x = X(at) + sd * (entryW / 2 + 0.5);
-      add("near", w, x, 0.25, 0.5, 0.5, 0.5, 0.5, "#6b5a46");
-      add("near", w, x, 0.72, 0.5, 0.56, 0.48, 0.56, "#55704a");
-    }
+    const kit = biz;
     const front = new THREE.Vector3().copy(w.A).addScaledVector(w.u, X(at)).addScaledVector(w.n, 1.6);
     shops.push({ kit: kit.id, door: front, wall: wi, p87: p87 === 1, building: detail.strings[w.building] || null });
   }
