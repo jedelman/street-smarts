@@ -1150,7 +1150,16 @@ function populate() {
   const spots = [], groups = [];
   for (const e of site.elements) {
     if (!e.center) continue;
-    if (e.group === "plazas" && /^(plaza|common|pocket)$/.test(e.kind) && openSky(e)) spots.push({ x: e.center.x, y: e.box.max.y, z: e.center.z });
+    if (e.group === "plazas" && /^(plaza|common|pocket)$/.test(e.kind) && openSky(e)) {
+      spots.push({ x: e.center.x, y: e.box.max.y, z: e.center.z });
+      // A square gets a group or two standing about in it.
+      const sx = e.box.max.x - e.box.min.x, sz = e.box.max.z - e.box.min.z;
+      for (let k = 0, nG = sx * sz > 900 ? 2 : 1; k < nG; k++) {
+        const x = e.center.x + (rng() - 0.5) * sx * 0.5, z = e.center.z + (rng() - 0.5) * sz * 0.5;
+        const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+        if (hit && site.elementOfHit(hit) === e) groups.push({ x, y: hit.point.y, z });
+      }
+    }
     if (e.group === "activity" && openSky(e)) {
       groups.push({ x: e.center.x, y: e.box.min.y, z: e.center.z });
       spots.push({ x: e.center.x + 1.8, y: e.box.min.y, z: e.center.z + 1.8 });
@@ -1164,13 +1173,16 @@ function populate() {
       }
     }
   }
-  // Shop doors: people stop by.
+  // Shop doors: people stop by; outside a café or a bakery, now and then, a few stand and talk.
   for (const s of frontages ? frontages.shops : []) {
     const hit = castDownModel(s.door.x, site.bounds.max.y + 20, s.door.z, site.bounds.max.y + 60);
-    if (hit) spots.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
+    if (!hit) continue;
+    spots.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
+    if (/^(coffee|bistro|bakery)$/.test(s.kit) && rng() < 0.35) groups.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
   }
   if (!spots.length && !benches.length) return null;
-  const count = Math.min(COARSE ? 36 : 72, Math.max(8, benches.length * 2 + groups.length * 2 + Math.floor(spots.length / 2)));
+  // About 320 people (140 on a phone); the walkers among them stay around you (people.js).
+  const count = Math.min(COARSE ? 140 : 320, Math.max(12, benches.length * 2 + groups.length * 3 + Math.floor(spots.length / 2)));
   return buildPeople(scene, {
     benches, spots, groups, count, rng,
     clearLine: (a, b) => {

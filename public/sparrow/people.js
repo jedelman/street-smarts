@@ -52,9 +52,23 @@ function part(geo, count, scene) {
   return mesh;
 }
 
+// Walking together, side by side: where each companion keeps to, relative to whoever leads
+// (x to the leader's right, z ahead), by the group's size.
+const SLOTS = {
+  2: [[0.7, 0]],
+  3: [[0.7, 0], [-0.7, 0]],
+  4: [[0.7, 0], [-0.7, 0], [0.35, -0.9]],
+};
+// How walkers come: alone, in twos, threes and fours (ours).
+const SIZES = [[1, 0.34], [2, 0.4], [3, 0.17], [4, 0.09]];
+
 /**
  * opts: { benches, spots: [{x,y,z}] places worth walking to, groups: [{x,y,z}] where a few stand and talk,
  *         count, rng, clearLine(a, b) -> bool, groundAt(x, z, near) -> y }
+ *
+ * About a fifth sit, a fifth stand talking in groups, and the rest walk, alone or together.
+ * Walkers who end up far from you, out of sight, come back on the streets behind you, so
+ * wherever you go there are people about.
  */
 export function buildPeople(scene, { benches, spots, groups, count, rng, clearLine, groundAt }) {
   // Seats: two per bench, a little back from the seat's middle.
@@ -67,41 +81,66 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     }
   }
   const people = [];
-  const makePerson = () => ({
-    h: (1.6 + rng() * 0.25) / H,
+  const makePerson = (child = false) => ({
+    h: (child ? 1.05 + rng() * 0.3 : 1.6 + rng() * 0.25) / H,
     top: new THREE.Color(pick(rng, TOPS)), bottom: new THREE.Color(pick(rng, BOTTOMS)),
     skin: new THREE.Color(pick(rng, SKINS)), hair: new THREE.Color(pick(rng, HAIRS)),
     pos: new THREE.Vector3(), yaw: rng() * Math.PI * 2, state: "stand", timer: rng() * 6,
     phase: rng() * 6, speed: 1.15 + rng() * 0.35, path: null, seat: null, look: 0, crumbAt: -1e9, near: 0, sway: rng() * 6,
     group: -1, speaking: 0, faceTo: null,
+    walker: false, leader: -1, slot: null, followers: null, recycleT: rng() * 2,
   });
-  // A third sit, a sixth talk in groups, the rest walk.
   const free = seats.slice().sort(() => rng() - 0.5);
-  let lastGroup = -1, inGroup = 0;
-  for (let i = 0; i < count; i++) {
+  // Sitting: about a fifth, as many as the benches seat.
+  const nSit = Math.min(free.length, Math.round(count * 0.2));
+  for (let i = 0; i < nSit; i++) {
     const p = makePerson();
-    if (i < count / 3 && free.length) {
-      const seat = free.pop();
-      sitDown(p, seat);
-      p.timer = 10 + rng() * 40;
-    } else if (i < count / 2 && groups.length) {
-      // Talkers come in twos and threes: the next one usually joins the last one's group.
-      const join = lastGroup >= 0 && inGroup < 3 && rng() < (inGroup < 2 ? 0.85 : 0.4);
-      const gi = join ? lastGroup : Math.floor(rng() * groups.length), g = groups[gi];
-      inGroup = join ? inGroup + 1 : 1;
-      lastGroup = gi;
-      p.group = gi;
-      const a = rng() * Math.PI * 2, r = 1.4 + rng() * 0.6;
-      p.pos.set(g.x + Math.sin(a) * r, g.y, g.z + Math.cos(a) * r);
-      p.yaw = Math.atan2(g.x - p.pos.x, g.z - p.pos.z) + (rng() - 0.5) * 0.6;
-      p.state = "talk";
-      p.timer = 20 + rng() * 60;
-    } else if (spots.length) {
-      const sp = spots[Math.floor(rng() * spots.length)];
-      p.pos.set(sp.x + (rng() - 0.5) * 2, sp.y, sp.z + (rng() - 0.5) * 2);
-      p.timer = rng() * 4;
-    } else continue;
+    sitDown(p, free.pop());
+    p.timer = 10 + rng() * 40;
     people.push(p);
+  }
+  // Standing and talking: groups of two to four, each at its own spot (squares, markers, café doors).
+  const anchors = groups.map((g, gi) => gi).sort(() => rng() - 0.5);
+  const nTalk = anchors.length ? Math.round(count * 0.2) : 0;
+  for (let made = 0, a = 0; made < nTalk && a < anchors.length * 2; a++) {
+    const gi = anchors[a % anchors.length], g = groups[gi];
+    const size = 2 + (rng() < 0.5 ? 1 : 0) + (rng() < 0.2 ? 1 : 0);
+    const child = size > 2 && rng() < 0.3;
+    for (let k = 0; k < size; k++) {
+      const p = makePerson(child && k === size - 1);
+      const ang = (k / size) * Math.PI * 2 + rng() * 0.6, r = 0.9 + rng() * 0.4;
+      p.pos.set(g.x + Math.sin(ang) * r, g.y, g.z + Math.cos(ang) * r);
+      p.yaw = Math.atan2(g.x - p.pos.x, g.z - p.pos.z) + (rng() - 0.5) * 0.5;
+      p.state = "talk";
+      p.group = gi;
+      p.timer = 25 + rng() * 70;
+      people.push(p);
+    }
+    made += size;
+  }
+  // Walking: alone, or together; a family now and then. Their groups are numbered after the spots'.
+  let dyn = groups.length;
+  const sizeOf = () => { let r = rng(); for (const [n, w] of SIZES) { if ((r -= w) <= 0) return n; } return 1; };
+  while (people.length < count && spots.length) {
+    const size = Math.min(sizeOf(), count - people.length);
+    const sp = spots[Math.floor(rng() * spots.length)];
+    const lead = makePerson();
+    lead.walker = true;
+    lead.pos.set(sp.x + (rng() - 0.5) * 2, sp.y, sp.z + (rng() - 0.5) * 2);
+    lead.timer = rng() * 4;
+    const li = people.push(lead) - 1;
+    if (size > 1) {
+      lead.group = dyn++;
+      lead.followers = [];
+      const family = size > 2 && rng() < 0.4;
+      SLOTS[size].forEach((slot, k) => {
+        const f = makePerson(family && k === size - 2);
+        f.walker = true; f.leader = li; f.slot = slot; f.group = lead.group;
+        f.speed = lead.speed;
+        place(f, lead);
+        lead.followers.push(people.push(f) - 1);
+      });
+    }
   }
   const n = people.length;
   const thighs = part(new THREE.BoxGeometry(0.13, LEG / 2, 0.15), n * 2, scene);
@@ -115,6 +154,36 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     torsos.setColorAt(i, p.top); heads.setColorAt(i, p.skin); hairs.setColorAt(i, p.hair);
   });
   for (const mesh of [thighs, shins, torsos, arms, heads, hairs]) if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+  /** A companion at their place beside the leader. */
+  function place(f, lead) {
+    const c = Math.cos(lead.yaw), sn = Math.sin(lead.yaw);
+    f.pos.set(lead.pos.x + f.slot[0] * c + f.slot[1] * sn, lead.pos.y, lead.pos.z - f.slot[0] * sn + f.slot[1] * c);
+    f.yaw = lead.yaw;
+  }
+  /**
+   * A walker (and their companions) far away comes back on a street near the sparrow, behind
+   * the camera so no one pops into view; `anywhere` (the first frame, under the opening crane
+   * shot) drops the behind.
+   */
+  function bringBack(p, camPos, bird, anywhere = false) {
+    const fx = bird.pos.x - camPos.x, fz = bird.pos.z - camPos.z, fl = Math.hypot(fx, fz) || 1;
+    for (let tries = 0; tries < 24; tries++) {
+      const sp = spots[Math.floor(rng() * spots.length)];
+      const dx = sp.x - bird.pos.x, dz = sp.z - bird.pos.z, d = Math.hypot(dx, dz);
+      if (d < (anywhere ? 8 : 25) || d > 120) continue;
+      if (!anywhere && (dx * fx + dz * fz) / (d * fl) > -0.2) continue; // behind you
+      if (p.path && p.path.seat && p.path.seat.taken === p) p.path.seat.taken = null;
+      p.path = null;
+      p.pos.set(sp.x + (rng() - 0.5) * 2, sp.y, sp.z + (rng() - 0.5) * 2);
+      p.yaw = rng() * Math.PI * 2;
+      p.state = "stand";
+      p.timer = rng() * 2;
+      for (const j of p.followers || []) { const f = people[j]; place(f, p); f.state = "stand"; }
+      return true;
+    }
+    return false;
+  }
 
   function sitDown(p, seat) {
     p.seat = seat; seat.taken = p;
@@ -130,7 +199,7 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
   /** Somewhere to walk to: a bench with room, a square, a marker; in a straight, clear line. */
   function chooseWalk(p) {
     for (let tries = 0; tries < 8; tries++) {
-      const wantSeat = rng() < 0.45;
+      const wantSeat = !p.followers && rng() < 0.45; // a group walks on together
       let to, seat = null;
       if (wantSeat) {
         const open = seats.filter((s) => !s.taken && Math.hypot(s.x - p.pos.x, s.z - p.pos.z) < 70);
@@ -195,6 +264,13 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
       let crumb = false;
       for (let i = 0; i < n; i++) {
         const p = people[i];
+        // A walker far from the sparrow, between walks (or very far), comes back somewhere behind you.
+        if (p.walker && p.leader < 0 && spots.length) {
+          const d2 = p.pos.distanceToSquared(bird.pos);
+          p.recycleT -= dt;
+          if (first ? d2 > 120 * 120 : p.recycleT <= 0 && ((d2 > 170 * 170 && p.state !== "walk") || d2 > 260 * 260)) bringBack(p, camPos, bird, first);
+          if (p.recycleT <= 0) p.recycleT = 1 + rng();
+        }
         const far = p.pos.distanceToSquared(camPos) > 160 * 160;
         if (far && !first) continue; // out past the fog: leave them be
         p.timer -= dt;
@@ -209,8 +285,27 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
             p.yaw += d * Math.min(1, dt * 5);
           }
         }
-        // Behavior (someone mid-sentence stays put).
-        if (speaking && p.state === "walk") {
+        // Behavior (someone mid-sentence stays put; a group waits for whoever's talking).
+        const groupTalking = p.followers && p.followers.some((j) => people[j].speaking > 0);
+        if (p.leader >= 0) {
+          // A companion: beside the leader while they walk, turned to the others when they stop.
+          const L = people[p.leader];
+          if (L.state === "walk" && !(L.speaking > 0) && !L.followers.some((j) => people[j].speaking > 0) && !speaking) {
+            const c = Math.cos(L.yaw), sn = Math.sin(L.yaw);
+            const tx = L.pos.x + p.slot[0] * c + p.slot[1] * sn, tz = L.pos.z - p.slot[0] * sn + p.slot[1] * c;
+            const k = Math.min(1, dt * 6);
+            p.pos.x += (tx - p.pos.x) * k; p.pos.z += (tz - p.pos.z) * k; p.pos.y = L.pos.y;
+            p.yaw = L.yaw;
+            p.phase = L.phase + p.slot[0];
+            p.state = "walk";
+          } else if (!speaking) {
+            if (p.state === "walk") p.state = "talk";
+            const want = Math.atan2(L.pos.x - p.pos.x, L.pos.z - p.pos.z);
+            let d = want - p.yaw;
+            d = Math.atan2(Math.sin(d), Math.cos(d));
+            p.yaw += d * Math.min(1, dt * 3);
+          }
+        } else if ((speaking || groupTalking) && p.state === "walk") {
           // Paused where they are.
         } else if (p.state === "walk") {
           const w = p.path;
@@ -223,13 +318,23 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
           if (f >= 1) {
             p.path = null;
             if (w.seat && w.seat.taken === p) { sitDown(p, w.seat); p.timer = 12 + rng() * 35; }
+            else if (p.followers) { p.state = "talk"; p.timer = 5 + rng() * 15; } // together: they stop and talk
             else { p.state = "stand"; p.timer = 1 + rng() * 5; }
           }
         } else if (p.state === "sit") {
           if (p.timer <= 0) standUp(p);
         } else if (p.state === "talk") {
-          if (p.timer <= 0 && !speaking) { p.state = "stand"; p.timer = 0.5; }
-        } else if (p.timer <= 0 && !speaking) chooseWalk(p);
+          if (p.followers && !speaking) {
+            // Turned to the others.
+            let cx = 0, cz = 0;
+            for (const j of p.followers) { cx += people[j].pos.x; cz += people[j].pos.z; }
+            const want = Math.atan2(cx / p.followers.length - p.pos.x, cz / p.followers.length - p.pos.z);
+            let d = want - p.yaw;
+            d = Math.atan2(Math.sin(d), Math.cos(d));
+            p.yaw += d * Math.min(1, dt * 3);
+          }
+          if (p.timer <= 0 && !speaking && !groupTalking) { p.state = "stand"; p.timer = 0.5; }
+        } else if (p.timer <= 0 && !speaking && !groupTalking) chooseWalk(p);
 
         // They notice the sparrow: heads turn to it.
         toBird.subVectors(bird.pos, p.pos);
