@@ -739,6 +739,15 @@
   .captable td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--line); }
   .captable td small { display: block; color: var(--muted); font-size: 0.78rem; }
   .captable tr.on td { background: var(--highlight); }
+  .mix { display: grid; gap: 0.5rem; margin: 0.4rem 0 1rem; font-size: 0.86rem; }
+  .mix .row { display: grid; grid-template-columns: minmax(8rem, 13rem) 1fr; gap: 0.6rem; align-items: center; }
+  .mix .row small { display: block; color: var(--muted); font-size: 0.78rem; }
+  .mix .stack { display: flex; height: 1.3rem; border-radius: 2px; overflow: hidden; background: var(--highlight); }
+  .mix .stack span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.74rem; white-space: nowrap; overflow: hidden; }
+  .mix .live { background: var(--geo); } .mix .work { background: #4d5f7a; } .mix .play { background: var(--warn); }
+  .mix .key { color: var(--muted); font-size: 0.8rem; }
+  .mix .key i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin: 0 0.25rem 0 0.6rem; vertical-align: -0.05rem; }
+  @media (max-width: 520px) { .mix .row { grid-template-columns: 1fr; gap: 0.2rem; } }
   header .scenario-label { margin: 0; font-size: 0.85rem; color: var(--muted); }
   details.caveat-more { margin: 0 0 1rem; }
   details.caveat-more summary { cursor: pointer; color: var(--muted); font-size: 0.92rem; }
@@ -823,6 +832,12 @@
     <p>If every dollar the people upstairs spend in shops stayed here, about <b data-n="spend">$37M</b> a year, it would carry about <b data-n="supported">160</b> shops at that break-even. The other <span data-n="outside">580</span> need about <b data-n="gap">$130M</b> a year from outside the site, roughly <span data-n="granbyX">2.4</span>&times; everything downtown's Granby sub-district sold in FY2023. That's on purpose: the plan is a frame for a regional destination, and the gap is the pull it would have to earn.</p>
     <div class="bars" id="adds-bars" aria-hidden="true"></div>
 
+    <h3>Against the doom loop</h3>
+    <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that hold their value mix living, working and playing. Downtowns lost theirs because they were mostly work. By floor area, this plan is nearly all living:</p>
+    <div class="mix" id="adds-mix" aria-hidden="true"></div>
+    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Unless some of those upper floors become offices, studios and workshops, the plan trades one monoculture for another, with shops that wait all day for people to come home. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station.</p>
+    <p>Their other levers, and what each looks like held in common. More homes for sale, not just for rent: here, limited-equity co-ops and land-trust homes, which keep the gains with the people who live there. Place management, which they mean as business improvement districts: here, the neighborhood running its own streets and squares. Faster permits and incentives for reuse: the city's call. And the tax base: at Norfolk's rate, the plan's buildings would pay about <b data-n="taxM">$11M</b> a year in real estate tax if assessed at what they cost to build, before counting the land.</p>
+
     <h3>The light rail</h3>
     <p>HRT studied taking the Tide two miles from Newtown Road, past Sentara Leigh, to a last station on this site (an early estimate put it near $225M), then paused the study in August 2023 because the city hadn't settled where that station goes. It was still on hold in July 2025. The plan sketches an answer: a platform <span data-n="stationPath">133</span> m from its streets, at the end of a line from the direction of Newtown Road. It isn't HRT's route. Today the nearest station, Military Highway, is about 1 km away, across I&#8209;264.</p>
 
@@ -835,10 +850,14 @@
         <li><b>Rent at cost:</b> the middle of RLB's $205&ndash;290 hard cost for strip retail in Charlotte (Q3 2026; no land, design or financing fees, so low), paid off as a loan, plus $10.33 a square foot a year to run (IREM's 2024 national figure for offices, taxes included; no public retail figure). A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.85%, over 30 years (our term); already paid for is running costs only.</li>
         <li><b>A shop's break-even:</b> rent for 900 sq ft plus Norfolk's living wage for one adult ($47,273, MIT) divided by a 31.1% gross margin, the average for all US retail in 2022 (Census). Margins run from 28% at grocers and 31% at wine shops to 45% at book and hobby stores and 51% at clothing stores. Cafés and restaurants keep about 68% after food and drink, but pay staff: this doesn't model them.</li>
         <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment (BLS, 2023, middle income fifth where published).</li>
-        <li><b>Not modeled:</b> taxes, jobs, visitors, competition from nearby stores, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
+        <li><b>Live, work, play:</b> the plan's upper floors counted as living and its ground floors as play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest). The WalkUP balance (31% live, 42% work, 26% play) and the downtown mix (15.9%, 69.7%, 14.5%) are from the authors' summary; it doesn't say whether they're shares of floor area or of value, and the full report is a flipbook we couldn't read. Their WalkUPs are regional urban cores, not suburban redevelopments.</li>
+        <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for the ground floors (strip retail, $205&ndash;290) and $298 for the upper floors (multifamily, $220&ndash;375). Assessments needn't match cost; land isn't counted.</li>
+        <li><b>Not modeled:</b> jobs, what office workers would spend nearby, visitors, competition from nearby stores, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
         <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres, the city's RFQ says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
       </ul>
       <p class="adds-sources">Sources:
+        <a href="https://www.cushmanwakefield.com/en/united-states/insights/reimagining-cities-disrupting-the-urban-doom-loop" target="_blank" rel="noopener">Cushman &amp; Wakefield and Places Platform, Reimagining Cities: Disrupting the Urban Doom Loop</a> ·
+        <a href="https://norfolk.gov/m/faq?cat=48" target="_blank" rel="noopener">City of Norfolk, real estate tax rate</a> ·
         <a href="https://www.paris.fr/pages/avec-28-commerces-pour-1000-habitants-paris-maintient-sa-densite-commerciale-a-un-haut-niveau-26008" target="_blank" rel="noopener">Ville de Paris / Apur (2023)</a> ·
         <a href="https://ajuntament.barcelona.cat/comerc/en/commercial-census-2024" target="_blank" rel="noopener">Barcelona commercial census (2024)</a> ·
         <a href="https://www.rlb.com/wp-content/uploads/sites/4/2026/09/Q3-2026-QCR.pdf" target="_blank" rel="noopener">RLB, North America Quarterly Cost Report (Q3 2026)</a> ·
@@ -1115,6 +1134,8 @@
       usable: 0.85, homeSf: 900, perHome: 2.27, spendPerHome: 15662,       // ours; Census; BLS
       paris: 28, barcelona: 37,                                            // per 1,000 residents: Apur 2023; Barcelona 2024
       buildPsf: (205 + 290) / 2, runPsf: 10.33,                            // RLB Q3 2026 (Charlotte strip retail, hard); IREM 2024
+      homesBuildPsf: (220 + 375) / 2, taxRate: 1.23 / 100,                 // RLB Q3 2026 (Charlotte multifamily, hard); City of Norfolk
+      walkup: [31, 42, 26], downtown: [15.9, 69.7, 14.5],                  // C&W / Places Platform, Reimagining Cities (summary)
       shopSf: 900, livingWage: 47273, margin: 0.311,                       // ours; MIT; Census ARTS 2022
       granby: 55e6,                                                        // Downtown Norfolk Council, FY2023
       capital: {
@@ -1156,6 +1177,8 @@
         gap: money(Math.round(gap / 1e7) * 1e7), granbyX: (gap / A.granby).toFixed(1),
         stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
         bankNet: "$" + Math.round(rentPsf(A.capital.bank) - A.runPsf), publicNet: "$" + Math.round(rentPsf(A.capital.public) - A.runPsf),
+        taxM: money(((floorSf - upperSf) * A.buildPsf + upperSf * A.homesBuildPsf) * A.taxRate),
+        frontShare: num(Math.min(100, n.shop_fronts * A.shopSf / (floorSf - upperSf) * 100)),
       };
       document.querySelectorAll("#adds-up [data-n]").forEach(function (el) { if (v[el.dataset.n] != null) el.textContent = v[el.dataset.n]; });
       bars("adds-fronts", [
@@ -1174,6 +1197,16 @@
         ["Granby sub-district, downtown", "all its retail sales, FY2023", A.granby, money(A.granby), false],
       ]);
       document.querySelectorAll("#adds-up .capital button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.cap === cap)); });
+      var live = upperSf / floorSf * 100, play = 100 - live;
+      var stack = function (l, w, p) {
+        var seg = function (cls, x) { return x > 0 ? '<span class="' + cls + '" style="width:' + x + '%">' + (x >= 9 ? Math.round(x) + "%" : "") + "</span>" : ""; };
+        return '<div class="stack">' + seg("live", l) + seg("work", w) + seg("play", p) + "</div>";
+      };
+      document.getElementById("adds-mix").innerHTML =
+        '<div class="row"><div>This plan<small>upper floors as homes</small></div>' + stack(live, 0, play) + "</div>" +
+        '<div class="row"><div>The WalkUP balance<small>Cushman &amp; Wakefield</small></div>' + stack(A.walkup[0], A.walkup[1], A.walkup[2]) + "</div>" +
+        '<div class="row"><div>Downtowns in their study</div>' + stack(A.downtown[0], A.downtown[1], A.downtown[2]) + "</div>" +
+        '<div class="key"><i class="live"></i>live<i class="work"></i>work<i class="play"></i>play</div>';
     }
     document.querySelectorAll("#adds-up .capital button").forEach(function (b) {
       b.addEventListener("click", function () { cap = b.dataset.cap; fill(); });
