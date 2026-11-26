@@ -7,7 +7,7 @@
 // an operator, things in reach that glint and answer when touched, and a
 // count of the patterns you've met.
 import * as THREE from "three";
-import { loadSite } from "./model.js";
+import { loadSite, waterTime } from "./model.js";
 import { buildWorld, blobTexture, SUN_DIR } from "./world.js";
 import { buildSparrow } from "./sparrow.js";
 import { buildGlints, buildPigeons } from "./life.js";
@@ -16,6 +16,7 @@ import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
+import { buildWetland } from "./wetland.js";
 import { setupPanels, renderMoney, renderIterations } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
@@ -99,6 +100,7 @@ let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
+let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
 let panels = null, plan = null, moneyDone = false; // the flyout panels, the site map's image
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
@@ -158,6 +160,11 @@ let present = [];
       sculptures = buildSculptures(scene, els.map((el, i) => ({ el, x: el.center.x, y: el.box.min.y, z: el.center.z, seed: seedOf(`${el.source}:${i}`) })));
     }
   }
+  // P64's wetland: what grows and stands in it.
+  wetland = buildWetland(scene, site, trees, (x, z) => {
+    const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+    return hit ? { y: hit.point.y, el: site.elementOfHit(hit) } : null;
+  }, { coarse: COARSE });
   // Every window, and storefronts at the doors that open onto a street or square.
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
@@ -175,7 +182,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -1215,6 +1222,12 @@ function populate() {
       const y = Math.max(a.y, b.y) + 0.9;
       const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
       if (len < 0.5) return true;
+      // Nobody walks across a pond or a stream (P64's water).
+      for (let k = 1, n = Math.ceil(len / 2.5); k < n; k++) {
+        const hit = castDownModel(a.x + dx * k / n, site.bounds.max.y + 20, a.z + dz * k / n, site.bounds.max.y + 60);
+        const el = hit && site.elementOfHit(hit);
+        if (el && (el.kind === "pond" || el.kind === "stream")) return false;
+      }
       _ray.origin.set(a.x, y, a.z);
       _ray.direction.set(dx / len, 0, dz / len);
       return !firstHit(len);
@@ -1286,6 +1299,8 @@ function frame() {
   if (trees) trees.update(t, camera);
   if (frontages) frontages.update(camera);
   if (flowLines) flowLines.update(t, dt);
+  waterTime.value = t;
+  if (wetland) wetland.update(t);
   if (plan && panels && panels.current === "map" && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) drawMap();
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;

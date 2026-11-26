@@ -66,6 +66,10 @@ def main(nbhd_path, glb_path):
             by_use[u] = by_use.get(u, 0.0) + a
     widths = [row[2] - row[1] for row in shops]  # hi - lo, metres along the wall
     open_space = sum(polygon_area_m2(o["polygon"]) for o in n.get("open_space") or [])
+    # P64's wetland: open water (ponds and streams) and the marsh round it.
+    cover = n.get("ground_cover") or []
+    water = sum(polygon_area_m2(g["polygon"]) for g in cover if g.get("kind") in ("pond", "stream"))
+    marsh = sum(polygon_area_m2(g["polygon"]) for g in cover if g.get("kind") == "marsh")
     link = next((s for s in n.get("streets") or [] if s["id"].endswith("_p34_link")), None)
     stations = sum(len(t.get("stations") or []) for t in n.get("transit") or [])
 
@@ -87,6 +91,10 @@ def main(nbhd_path, glb_path):
         "shop_front_median_m": round(statistics.median(widths), 2) if widths else 0,
         "trees": len(n.get("trees") or []),
         "open_space_m2": round(open_space),
+        "ponds": sum(1 for g in cover if g.get("kind") == "pond"),
+        "water_m2": round(water),
+        "marsh_m2": round(marsh),
+        "cypress": sum(1 for t in n.get("trees") or [] if t.get("form") == "cypress"),
         "transit_stations": stations,
         "station_path_m": round(line_length_m(link["centerline"])) if link else None,
     }

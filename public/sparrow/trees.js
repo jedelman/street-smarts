@@ -11,7 +11,7 @@ const CROWN_SQUASH = 0.9; // pack_glb.CROWN_SQUASH
 const CHUNK_M = 130; // chunk size: about 25 chunks on clean_baseline, 2 draws each
 const NEAR_M = 60; // a chunk within this of the camera draws full crowns
 // Used when a loader leaves the instance colors out (pack_glb.TREE_CROWN_COLORS).
-const FORM_COLORS = { grove: "#3f6b35", avenue: "#4d7d3e", square: "#5b8c43", umbrella: "#35602e" };
+const FORM_COLORS = { grove: "#3f6b35", avenue: "#4d7d3e", square: "#5b8c43", umbrella: "#35602e", cypress: "#a3562b" };
 
 /**
  * From the loaded glTF scene: the crown and trunk InstancedMeshes, taken out of
@@ -44,7 +44,8 @@ export function buildTrees(scene, { crowns, trunks, base }, elements, groundAt, 
   for (let i = 0; i < n; i++) {
     crowns.getMatrixAt(i, m);
     m.decompose(p, q, s);
-    list.push({ x: p.x, z: p.z, cy: p.y, r: s.x, top: p.y + CROWN_SQUASH * s.x, el: elements[base + i] || null });
+    // The crown's own height (s.y: CROWN_SQUASH crown radii for most trees, more for P64's tall, narrow cypress).
+    list.push({ x: p.x, z: p.z, cy: p.y, r: s.x, top: p.y + s.y, el: elements[base + i] || null });
   }
 
   // A breeze: the upper crown sways, each tree on its own phase.

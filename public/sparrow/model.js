@@ -104,6 +104,25 @@ function shadeWalls(material) {
   };
 }
 
+/** The water's clock (P64's ponds and streams ripple): main.js sets .value each frame. */
+export const waterTime = { value: 0 };
+/** Open water: a sheen that catches the sun, and a slow ripple in it. */
+function waterMaterial(color) {
+  const m = new THREE.MeshPhongMaterial({ color, specular: 0x9cc0c4, shininess: 90 });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = waterTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWPos;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float uTime;\nvarying vec3 vWPos;")
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+        normal = normalize(normal + vec3(sin(vWPos.x * 0.9 + uTime * 1.3) + sin(vWPos.z * 1.7 - uTime * 0.8) * 0.5, 0.0,
+                                         cos(vWPos.z * 0.8 + uTime * 1.1) + cos(vWPos.x * 1.5 + uTime * 0.6) * 0.5) * 0.05);`);
+  };
+  return m;
+}
+
 function assemble({ elements, pieces }) {
   const bounds = new THREE.Box3();
   const boxes = elements.map(() => new THREE.Box3());
@@ -138,8 +157,9 @@ function assemble({ elements, pieces }) {
     const color = src.color ? src.color.clone() : new THREE.Color("#999999");
     const isContext = kinds.size === 1 && kinds.has("context");
     if (isContext) color.lerp(new THREE.Color("#d9cfc0"), 0.35); // backdrop, not the model
-    const m = new THREE.MeshLambertMaterial({ color });
-    shadeWalls(m, kinds);
+    const isWater = kinds.size > 0 && [...kinds].every((k) => k === "pond" || k === "stream");
+    const m = isWater ? waterMaterial(color) : new THREE.MeshLambertMaterial({ color });
+    if (!isWater) shadeWalls(m, kinds);
     // A slight brightness difference per solid, so neighbors read apart (style, not data).
     const tint = new Float32Array(pos.count).fill(1);
     for (let k = 0; k < r.length; k += 3) {

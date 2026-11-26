@@ -236,6 +236,8 @@ struct Site {
     streets: Vec<(Vec<Pt2>, f64)>,
     markers: Vec<Pt2>,
     squares: Vec<(String, Shape)>,
+    /// P64's ponds, marshes and streams: no tree P171 plants stands in them.
+    water: Vec<Shape>,
 }
 
 impl Site {
@@ -254,7 +256,7 @@ impl Site {
                 return false;
             }
         }
-        !self.markers.iter().any(|m| m.dist(p) < MARKER_CLEARANCE_M)
+        !self.markers.iter().any(|m| m.dist(p) < MARKER_CLEARANCE_M) && !self.water.iter().any(|w| w.contains(p))
     }
     fn in_square(&self, p: Pt2) -> bool {
         self.squares.iter().any(|(_, s)| s.contains(p))
@@ -362,10 +364,22 @@ impl PatternOperator for P171TreePlaces {
                 .filter(|o| matches!(o.kind, OpenSpaceKind::Plaza | OpenSpaceKind::Pocket) && o.polygon.area_m2() > 0.0)
                 .map(|o| (o.id.clone(), Shape::new(local(&o.polygon.outer), o.polygon.holes.iter().map(local).collect())))
                 .collect(),
+            // The marsh's outer ring covers its pond too, so the holes don't matter here.
+            water: nbhd
+                .ground_cover
+                .iter()
+                .filter(|g| matches!(g.kind.as_str(), "pond" | "marsh" | "stream"))
+                .map(|g| Shape::new(local(&g.polygon.outer), vec![]))
+                .collect(),
         };
 
         let mut rng = Prng::new(seed);
         let mut planting = Planting { trees: Vec::new(), grid: HashMap::new(), min_gap: params.min_gap_m };
+        // Trees already planted (P64's cypress) crowd new ones too; they're dropped from the output below.
+        for t in &nbhd.trees {
+            planting.plant(planar::lnglat_to_local(&t.location, &origin), t.height_m, t.crown_radius_m, "existing");
+        }
+        let n_existing = planting.trees.len();
         let mut steps = Vec::new();
 
         // 1. Avenues: both sides of every street, one size per street.
@@ -475,6 +489,7 @@ impl PatternOperator for P171TreePlaces {
         let new_trees: Vec<Tree> = planting
             .trees
             .iter()
+            .skip(n_existing)
             .enumerate()
             .map(|(i, &(p, height_m, crown_radius_m, form))| Tree {
                 id: format!("p171_{form}_{i:04}"),
