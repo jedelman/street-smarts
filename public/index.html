@@ -812,7 +812,7 @@
     </div>
 
     <h3>How many ground floors can the people upstairs carry?</h3>
-    <p><span data-n="shops">740</span> shop fronts for about <span data-n="people">5,300</span> people is about <b data-n="per1000">140</b> for every 1,000. Paris has 28 ground-floor shops, cafés and services per 1,000 residents, Barcelona 37, and both have tourists and commuters helping. By the block model's own measure, the people upstairs carry about <b data-n="carried">150 to 200</b> of the <span data-n="shops">740</span>. The rest are the bet: pull from the light rail and the region, or studios, workshops and offices where the plan draws shops.</p>
+    <p><span data-n="shops">740</span> shop fronts for about <span data-n="people">5,300</span> people is about <b data-n="per1000">140</b> for every 1,000. Paris has 28 ground-floor shops, cafés and services per 1,000 residents, Barcelona 37, and both have tourists and commuters helping. By the block model's own measure, the people upstairs carry about <b data-n="carried">150 to 200</b> ground floors, and most of those aren't shops. Of Barcelona's 61,875 ground-floor businesses, 21,167 are shops and 33,740 are services: hairdressers, clinics, agencies, repair, offices at street level. At Barcelona's rates, the people here would carry about <b data-n="bcnShops">70</b> shops and <b data-n="bcnServices">110</b> services. The rest of the <span data-n="shops">740</span> fronts are the bet: pull from the light rail and the region, or work.</p>
     <div class="bars" id="adds-fronts" aria-hidden="true"></div>
 
     <h3>What a shop here has to sell</h3>
@@ -833,9 +833,9 @@
     <div class="bars" id="adds-bars" aria-hidden="true"></div>
 
     <h3>Against the doom loop</h3>
-    <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that hold their value mix living, working and playing. Downtowns lost theirs because they were mostly work. By floor area, this plan is nearly all living:</p>
+    <p>Cushman &amp; Wakefield and Christopher Leinberger studied 208 walkable urban places in 15 US cities, which they call WalkUPs: 3% of those cities' land, 26% of their real estate value, 37% of their tax revenue. The ones that do best mix living, working and playing; downtowns lost value because they were mostly work. Their best mix, by floor area, averages 42% work (anywhere from 24% to 62% can work), 31% living and 26% play. And WalkUPs, they write, are not &ldquo;bedroom communities, where residential tends to be between 80% to 90% of all inventory.&rdquo; This plan is 77% living:</p>
     <div class="mix" id="adds-mix" aria-hidden="true"></div>
-    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Unless some of those upper floors become offices, studios and workshops, the plan trades one monoculture for another, with shops that wait all day for people to come home. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station.</p>
+    <p>The mall was the doom loop's suburban cousin: one use, and when the shopping left, nothing held the place up. Unless some of those upper floors become offices, studios and workshops, the plan trades one monoculture for another, with shops that wait all day for people to come home. In the study, 70% of these places' foot traffic came from people visiting things to do. That's the pull the gap above needs, and shops are only part of it: a market hall, music, a hotel by the station. Some of what the people here need takes more of them, too: a walkable grocery store wants 5,000 to 10,000 homes nearby before it opens, and the plan has about <span data-n="homes">2,300</span>.</p>
     <p>Their other levers, and what each looks like held in common. More homes for sale, not just for rent: here, limited-equity co-ops and land-trust homes, which keep the gains with the people who live there. Place management, which they mean as business improvement districts: here, the neighborhood running its own streets and squares. Faster permits and incentives for reuse: the city's call. And the tax base: at Norfolk's rate, the plan's buildings would pay about <b data-n="taxM">$11M</b> a year in real estate tax if assessed at what they cost to build, before counting the land.</p>
 
     <h3>The light rail</h3>
@@ -846,11 +846,11 @@
       <ul>
         <li><b>Measured from the plan</b> on every deploy (<code>tools/vibe-render/plan_numbers.py</code>): floor area is each building's footprint times its floors; upper floors are that minus the ground floor; shop fronts are the ones the render opens at street-facing doors.</li>
         <li><b>Homes:</b> upper floors &times; 85% usable &divide; 900 sq ft a home, our assumption (range: 80% and 1,000 sq ft, to 88% and 800). The pipeline assigns no uses; every floor of offices means fewer homes and a bigger lunch crowd. <b>People:</b> 2.27 a household, Norfolk's average.</li>
-        <li><b>Ground floors per resident:</b> Paris, 60,846 ground-floor shops, bars, restaurants and services, 28 per 1,000 residents (Apur's 2023 census); Barcelona, 61,875 ground-floor businesses, 3.7 per 100 (2024). City-wide figures, with visitors' and commuters' spending in them, so a ceiling for what residents alone carry.</li>
+        <li><b>Ground floors per resident:</b> Paris, 60,846 ground-floor shops, bars, restaurants and services, 28 per 1,000 residents (Apur's 2023 census); Barcelona, 61,875 ground-floor businesses, 3.7 per 100 (2024), of which 21,167 are shops and 33,740 services; its residents (about 1.67 million) are implied by those two figures. City-wide figures, with visitors' and commuters' spending in them, so a ceiling for what residents alone carry; Barcelona's census credits its density to &ldquo;urban compactness and the large number of visitors.&rdquo;</li>
         <li><b>Rent at cost:</b> the middle of RLB's $205&ndash;290 hard cost for strip retail in Charlotte (Q3 2026; no land, design or financing fees, so low), paid off as a loan, plus $10.33 a square foot a year to run (IREM's 2024 national figure for offices, taxes included; no public retail figure). A bank loan is the prime rate, 7.00%, over 25 years (our term); public money is the 10-year Treasury rate, 4.85%, over 30 years (our term); already paid for is running costs only.</li>
         <li><b>A shop's break-even:</b> rent for 900 sq ft plus Norfolk's living wage for one adult ($47,273, MIT) divided by a 31.1% gross margin, the average for all US retail in 2022 (Census). Margins run from 28% at grocers and 31% at wine shops to 45% at book and hobby stores and 51% at clothing stores. Cafés and restaurants keep about 68% after food and drink, but pay staff: this doesn't model them.</li>
         <li><b>Spending:</b> $15,662 a household a year on food at home and out, clothes, alcohol, furnishings, housekeeping, personal care, reading and a quarter of entertainment (BLS, 2023, middle income fifth where published).</li>
-        <li><b>Live, work, play:</b> the plan's upper floors counted as living and its ground floors as play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest). The WalkUP balance (31% live, 42% work, 26% play) and the downtown mix (15.9%, 69.7%, 14.5%) are from the authors' summary; it doesn't say whether they're shares of floor area or of value, and the full report is a flipbook we couldn't read. Their WalkUPs are regional urban cores, not suburban redevelopments.</li>
+        <li><b>Live, work, play:</b> the plan's upper floors counted as living and its ground floors as play (shop fronts take about <span data-n="frontShare">88</span>% of them; entrances and common rooms the rest). The report's shares are of real estate inventory by square footage. Its optimal mix, found by a random-forest model balancing place-based GDP and value per square foot, averages 42.0% work (90% band 23.8&ndash;61.7%), 31.8% living (22.8&ndash;46.6%) and 26.2% play (17.0&ndash;31.0%); downtowns are 69.7% work, 15.9% living and 14.5% play. It sets aside suburban WalkUPs, &ldquo;redevelopment of edge cities&rdquo; among them, which is what this site would be. The grocery threshold is from the same report.</li>
         <li><b>Tax:</b> Norfolk's real estate rate, $1.23 per $100 of assessed value, on the middle of RLB's Charlotte hard costs: $248 a square foot for the ground floors (strip retail, $205&ndash;290) and $298 for the upper floors (multifamily, $220&ndash;375). Assessments needn't match cost; land isn't counted.</li>
         <li><b>Not modeled:</b> jobs, what office workers would spend nearby, visitors, competition from nearby stores, and the shopkeeper living upstairs at cost too, which would lower the pay a shop has to cover.</li>
         <li><b>The acreage disagrees:</b> the site's perimeter in the data measures 69 acres, the city's RFQ says about 89 with parking and outparcels, and the project page says 97.7. Nothing here is per acre.</li>
@@ -1133,9 +1133,10 @@
     var A = {
       usable: 0.85, homeSf: 900, perHome: 2.27, spendPerHome: 15662,       // ours; Census; BLS
       paris: 28, barcelona: 37,                                            // per 1,000 residents: Apur 2023; Barcelona 2024
+      bcnShops: 21167, bcnServices: 33740, bcnAll: 61875,                  // Barcelona 2024 commercial census
       buildPsf: (205 + 290) / 2, runPsf: 10.33,                            // RLB Q3 2026 (Charlotte strip retail, hard); IREM 2024
       homesBuildPsf: (220 + 375) / 2, taxRate: 1.23 / 100,                 // RLB Q3 2026 (Charlotte multifamily, hard); City of Norfolk
-      walkup: [31, 42, 26], downtown: [15.9, 69.7, 14.5],                  // C&W / Places Platform, Reimagining Cities (summary)
+      walkup: [31.8, 42.0, 26.2], downtown: [15.9, 69.7, 14.5],            // C&W / Places Platform, Reimagining Cities, p. 75 and summary
       shopSf: 900, livingWage: 47273, margin: 0.311,                       // ours; MIT; Census ARTS 2022
       granby: 55e6,                                                        // Downtown Norfolk Council, FY2023
       capital: {
@@ -1178,6 +1179,8 @@
         stationPath: n.station_path_m == null ? "—" : num(n.station_path_m),
         bankNet: "$" + Math.round(rentPsf(A.capital.bank) - A.runPsf), publicNet: "$" + Math.round(rentPsf(A.capital.public) - A.runPsf),
         taxM: money(((floorSf - upperSf) * A.buildPsf + upperSf * A.homesBuildPsf) * A.taxRate),
+        bcnShops: num(Math.round(people * A.bcnShops / (A.bcnAll / 0.037) / 10) * 10),
+        bcnServices: num(Math.round(people * A.bcnServices / (A.bcnAll / 0.037) / 10) * 10),
         frontShare: num(Math.min(100, n.shop_fronts * A.shopSf / (floorSf - upperSf) * 100)),
       };
       document.querySelectorAll("#adds-up [data-n]").forEach(function (el) { if (v[el.dataset.n] != null) el.textContent = v[el.dataset.n]; });
@@ -1204,7 +1207,7 @@
       };
       document.getElementById("adds-mix").innerHTML =
         '<div class="row"><div>This plan<small>upper floors as homes</small></div>' + stack(live, 0, play) + "</div>" +
-        '<div class="row"><div>The WalkUP balance<small>Cushman &amp; Wakefield</small></div>' + stack(A.walkup[0], A.walkup[1], A.walkup[2]) + "</div>" +
+        '<div class="row"><div>Their best mix<small>Cushman &amp; Wakefield, mean</small></div>' + stack(A.walkup[0], A.walkup[1], A.walkup[2]) + "</div>" +
         '<div class="row"><div>Downtowns in their study</div>' + stack(A.downtown[0], A.downtown[1], A.downtown[2]) + "</div>" +
         '<div class="key"><i class="live"></i>live<i class="work"></i>work<i class="play"></i>play</div>';
     }
