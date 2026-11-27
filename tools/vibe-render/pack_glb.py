@@ -299,6 +299,8 @@ TREE_CROWN_COLORS = {  # sRGB; P171's forms, a shade apart so a square's ring re
 }
 # Bald cypress stands tall and narrow, on a trunk that flares at the water.
 CYPRESS_CROWN = (0.72, 1.75)  # crown width and height, in crown radii
+# Other narrow forms, from a city's tree inventory (tools/ghent): conifers stand taller than they're wide.
+FORM_CROWN = {"cypress": CYPRESS_CROWN, "cone": (0.75, 2.0), "pine": (0.9, 1.35)}
 TREE_TRUNK_COLOR = "#5b4433"
 CROWN_SQUASH = 0.9  # crown height over crown width
 TRUNK_BASE_Y = -0.05  # just below the meadow's top, so every trunk meets the ground
@@ -366,18 +368,19 @@ def unit_trunk(sides=5):
     return np.array(pos), np.array(nrm)
 
 
-def tree_instances(trees):
+def tree_instances(trees, colors=None):
     """Per-tree transforms for `unit_crown` and `unit_trunk`, glTF axes (Y up,
     -Z north). `trees` are dicts with local metres `x`, `y` (east, north),
     `height_m`, `crown_radius_m`, `form`, `id`. Returns a dict of float32
     arrays: crown_t, crown_s, trunk_t, trunk_s (n, 3), rot (n, 4), color (n, 3,
-    linear)."""
+    linear). `colors` maps a form to its sRGB crown colour, over TREE_CROWN_COLORS."""
+    palette = {**TREE_CROWN_COLORS, **(colors or {})}
     n = len(trees)
     out = {k: np.zeros((n, 3), np.float32) for k in ("crown_t", "crown_s", "trunk_t", "trunk_s", "color")}
     out["rot"] = np.zeros((n, 4), np.float32)
     for i, t in enumerate(trees):
         r, h = t["crown_radius_m"], t["height_m"]
-        wide, tall = CYPRESS_CROWN if t["form"] == "cypress" else (1.0, CROWN_SQUASH)
+        wide, tall = FORM_CROWN.get(t["form"], (1.0, CROWN_SQUASH))
         cy = h - tall * r
         out["crown_t"][i] = (t["x"], cy, -t["y"])
         out["crown_s"][i] = (wide * r, tall * r, wide * r)
@@ -387,11 +390,11 @@ def tree_instances(trees):
         yaw = 2 * np.pi * _hash01(t["id"], "yaw")
         out["rot"][i] = (0, np.sin(yaw / 2), 0, np.cos(yaw / 2))
         shade = 0.85 + 0.3 * _hash01(t["id"], "shade")
-        out["color"][i] = np.clip(_srgb_to_linear(TREE_CROWN_COLORS.get(t["form"], TREE_CROWN_COLORS["grove"])) * shade, 0, 1)
+        out["color"][i] = np.clip(_srgb_to_linear(palette.get(t["form"], palette["grove"])) * shade, 0, 1)
     return out
 
 
-def add_trees(gltf, bin_chunk, trees):
+def add_trees(gltf, bin_chunk, trees, colors=None):
     """Append `trees` (see `tree_instances`) to a packed glTF as two instanced
     meshes plus one element each. Returns (gltf, bin)."""
     if not trees:
@@ -408,7 +411,7 @@ def add_trees(gltf, bin_chunk, trees):
         return strings.index(s)
     base = len(table["elements"])
     for t in trees:
-        table["elements"].append([intern("trees"), intern(t["form"]), intern(t["id"]), -1, None, -1, None])
+        table["elements"].append([intern("trees"), intern(t["form"]), intern(t["id"]), intern(t.get("typology")), t.get("floors"), -1, None])
 
     def add_accessor(arr, ctype, atype, target=None, minmax=False):
         blob.extend(b"\0" * (-len(blob) % 4))
@@ -423,7 +426,7 @@ def add_trees(gltf, bin_chunk, trees):
         gltf["accessors"].append(acc)
         return len(gltf["accessors"]) - 1
 
-    inst = tree_instances(trees)
+    inst = tree_instances(trees, colors)
     gltf.setdefault("materials", [])
     for name, (pos, nrm), color, t_key, s_key, colors in (
         ("tree_crowns", unit_crown(), [1, 1, 1, 1], "crown_t", "crown_s", True),
@@ -475,7 +478,11 @@ def add_trees_file(path, trees):
 #             2 a P87 shop door), along, bottom, width, height (centimetres)
 #   shops     rows of [wall, lo, hi, door, door_width, door_height, arcade,
 #             p87] (metres along the wall; arcade 1 when a P119 arcade
-#             covers it; p87 1 when its door is a P87 shop door)
+#             covers it; p87 1 when its door is a P87 shop door), then, where a
+#             pipeline chose them, [typology, business, source, first]: how the
+#             front meets the street ("storefront", or "house", "flats" and
+#             "institution", which keep their doors and windows), the business,
+#             the element's source and the first floor's height (tools/ghent)
 # About 120 KB for clean_baseline's 9,784 openings.
 
 def add_detail(gltf, bin_chunk, detail):
@@ -503,15 +510,18 @@ def add_detail(gltf, bin_chunk, detail):
     o = np.array([[x["wall"], kinds.get(x["kind"], 0) | (x["floor"] << 2),
                    cm(x["along"]), cm(x["z"]), cm(x["width"]), cm(x["height"])] for x in openings], np.uint16)
     r2 = lambda v: round(float(v), 2)
+    chosen = any("typology" in x for x in shops)
+    extra = (lambda x: [x.get("typology"), x.get("business"), x.get("source"), r2(x.get("first") or 0)]) if chosen else (lambda x: [])
     table["detail"] = {
         "version": 2,
         "walls": {"bufferView": add_view(w), "count": len(walls),
                   "fields": ["ax", "az", "dx", "dz", "nx", "nz", "length", "flags", "building"]},
         "openings": {"bufferView": add_view(o), "count": len(openings),
                      "fields": ["wall", "kindFloor", "along", "bottom", "width", "height"]},
-        "shops": {"fields": ["wall", "lo", "hi", "door", "doorWidth", "doorHeight", "arcade", "p87"],
+        "shops": {"fields": ["wall", "lo", "hi", "door", "doorWidth", "doorHeight", "arcade", "p87"]
+                  + (["typology", "business", "source", "first"] if chosen else []),
                   "rows": [[x["wall"], r2(x["lo"]), r2(x["hi"]), r2(x["door"]), r2(x["door_width"]), r2(x["door_height"]),
-                            1 if x.get("arcade") else 0, 1 if x.get("p87") else 0] for x in shops]},
+                            1 if x.get("arcade") else 0, 1 if x.get("p87") else 0] + extra(x) for x in shops]},
     }
     gltf["buffers"][0]["byteLength"] = len(blob)
     return gltf, bytes(blob)

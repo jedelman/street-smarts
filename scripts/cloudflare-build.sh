@@ -6,8 +6,9 @@
 #   Python          3.11, from .python-version     (cadquery's wheels)
 #
 # It fills public/ the way the deploy needs it: the WASM app in public/pkg,
-# the vibe-render GLBs and renders in public/vibe-render, and the pipeline's
-# stage chain written into public/read.html. The tests and the other gates
+# the vibe-render GLBs and renders in public/vibe-render, the pipeline's
+# stage chain written into public/read.html, and Ghent Streets' model in
+# public/sites/ghent-streets (built from the committed survey and proposal). The tests and the other gates
 # run in GitHub Actions (.github/workflows/ci.yml) on every PR; this only
 # refuses to deploy unpacked GLBs.
 #
@@ -56,5 +57,8 @@ fi
 echo "==> rendering the vibe-render gallery"
 PUBLISH_DIR=public/vibe-render bash scripts/vibe-render.sh
 
+echo "==> building Ghent Streets' model from its survey and proposal (no network)"
+tools/vibe-render/.venv/bin/python3 tools/ghent/build.py --check
+
 echo "==> checking the GLBs are packed"
-tools/vibe-render/.venv/bin/python3 tools/vibe-render/check_packed.py public/vibe-render/*.glb
+tools/vibe-render/.venv/bin/python3 tools/vibe-render/check_packed.py public/vibe-render/*.glb public/sites/ghent-streets/model.glb

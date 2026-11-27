@@ -201,3 +201,16 @@
     #hint { top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.4rem); }
     #flows-legend { margin-left: 0; }
   }
+
+/* Lists of places (a site's Corners panel) and a place's card (its Place panel). */
+ol.corners { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+ol.corners li { padding: 0.18rem 0; font-size: 0.86rem; }
+ol.corners li.street { margin-top: 0.7rem; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+ol.corners .status { font-size: 0.74rem; opacity: 0.75; }
+ol.corners .status.converted { color: var(--accent); opacity: 1; }
+ol.tours { padding-left: 1.1rem; }
+ol.tours li { margin-bottom: 0.6rem; }
+.flyout figure.photo { margin: 0.4rem 0 0.7rem; }
+.flyout figure.photo img { width: 100%; height: auto; display: block; border-radius: 6px; }
+.flyout figure.photo figcaption { font-size: 0.7rem; opacity: 0.7; margin-top: 0.25rem; }
+.flyout p.links { font-size: 0.82rem; }

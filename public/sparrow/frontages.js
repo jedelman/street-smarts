@@ -17,7 +17,7 @@
 // each kind of part is drawn only within its own distance (a window's glass
 // from anywhere, a sill or a café chair only up close).
 import * as THREE from "three";
-import { BUSINESSES, chooseBusiness, growFront } from "./shopfronts.js";
+import { BUSINESSES, chooseBusiness, growFront, growKeep } from "./shopfronts.js";
 
 // ---------------------------------------------------------------- the businesses
 // Which business stands at each shop front, and how its front grows: the
@@ -394,14 +394,18 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
   const add = (kind, w, along, up, out, sx, sy, sz, color, uv, tilt, yaw) =>
     parts.add(kind, place(w, along, up, out, sx, sy, sz, tilt, yaw), typeof color === "string" ? col.set(color) : color, uv);
 
-  // Which ground-floor openings a shop front replaces.
+  // Which ground-floor openings a shop front replaces. A row a pipeline typed (tools/ghent) names its business
+  // and how it meets the street: a "storefront" replaces them, like a generated plan's; any other typology
+  // keeps the building's own doors and windows, and the new use shows through them.
   const shopsByWall = new Map();
   for (const row of detail.shops) {
     const [wall, lo, hi] = row;
+    const typology = row[8] || null, biz = row[9] ? BUSINESSES.find((b) => b.id === row[9]) || null : null;
+    const keep = !!typology && typology !== "storefront";
     if (!shopsByWall.has(wall)) shopsByWall.set(wall, []);
-    shopsByWall.get(wall).push({ lo, hi, row });
+    shopsByWall.get(wall).push({ lo, hi, row, typology, biz, keep, windows: [], door: null });
   }
-  const inShop = (wall, along) => (shopsByWall.get(wall) || []).some((s) => along > s.lo - 0.1 && along < s.hi + 0.1);
+  const shopAt = (wall, along) => (shopsByWall.get(wall) || []).find((s) => along > s.lo - 0.1 && along < s.hi + 0.1) || null;
 
   // ---- every window and door that isn't part of a shop front
   const O = detail.openings;
@@ -415,8 +419,23 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     const o = i * 6;
     const wi = O[o], door = (O[o + 1] & 3) !== 0, floor = O[o + 1] >> 2; // kind: 0 window, 1 door, 2 P87 shop door
     const along = O[o + 2] / 100, bottom = O[o + 3] / 100, width = O[o + 4] / 100, height = O[o + 5] / 100;
-    if (floor === 0 && inShop(wi, along)) continue;
+    const sh = floor === 0 ? shopAt(wi, along) : null;
+    if (sh && !sh.keep) continue;
     const w = walls[wi] || (walls[wi] = wallAt(wi));
+    if (sh && sh.keep && sh.biz) {
+      // Kept where it is, and lit: through it, what the ground floor holds now.
+      const cy0 = bottom + height / 2;
+      if (door) {
+        sh.door = { x: along - sh.lo, top: bottom + height };
+        add("windows", w, along, cy0, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, sh.biz.paints[0]);
+        add("glass", w, along, bottom + height * 0.72, 0.04, width * 0.55, height * 0.32, 1, "#f2c27a");
+      } else {
+        sh.windows.push({ x: along - sh.lo, y1: bottom + height, w: width });
+        add("windows", w, along, cy0, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, "#f2c27a");
+        add("display", w, along, cy0, 0.036, width, height, 1, col.setScalar(1), insides.rects[sh.biz.inside] || insides.rects.rooms);
+      }
+      continue;
+    }
     const r = rngFor(`${wi}:${i}`);
     const cy = bottom + height / 2;
     const framed = (color) => add("windows", w, along, cy, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, color);
@@ -439,24 +458,27 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
   // ---- the shop fronts (after the explorer's buildRun)
   const shops = [];
   const lastBiz = new Map();
-  for (const { row } of [...shopsByWall.values()].flat()) {
+  for (const sh of [...shopsByWall.values()].flat()) {
+    const { row } = sh;
     const [wi, lo, hi, doorAt, doorWidth, , underArcade, p87] = row;
     const w = walls[wi] || (walls[wi] = wallAt(wi));
     const id = `${detail.strings[w.building] || w.building}:${wi}:${lo.toFixed(1)}`;
     const rng = rngFor(id);
-    // Neighbours differ: no business repeats within two doors along a wall.
+    // The pipeline's business where it chose one; else ours, and neighbours differ: none repeats within two doors.
     const recent = lastBiz.get(wi) || [];
-    const biz = chooseBusiness(rng, recent);
+    const biz = sh.biz || chooseBusiness(rng, recent);
     lastBiz.set(wi, [biz.id, ...recent].slice(0, 2));
     const bi = KITS.indexOf(biz);
     const L = hi - lo, at = doorAt - lo;
     const X = (x) => lo + x; // positions along the run (0..L) map to the wall's own `along`
-    const grown = growFront({ biz, L, at, doorWidth, rng, arcade: !!underArcade, flip: w.flip });
+    const grown = sh.keep
+      ? growKeep({ biz, L, door: sh.door || { x: at, top: 2.6 }, windows: sh.windows, rng, flip: w.flip })
+      : growFront({ biz, L, at, doorWidth, rng, arcade: !!underArcade, flip: w.flip });
     for (const q of grown.parts) {
       const color = typeof q.color === "number" ? col.setScalar(q.color) : q.color;
       const tex = q.tex;
       if (tex && tex.atlas === "letters") {
-        const lr = letters.rects[bi], lw = Math.min(L - 0.6, q.sy * lr.aspect);
+        const lr = letters.rects[bi], lw = Math.min(q.cap || L - 0.6, q.sy * lr.aspect);
         add("letters", w, X(q.x), q.y, q.out, lw, lw / lr.aspect, 1, "#ffffff", lr.uv);
         continue;
       }
@@ -465,7 +487,7 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     }
     const kit = biz;
     const front = new THREE.Vector3().copy(w.A).addScaledVector(w.u, X(at)).addScaledVector(w.n, 1.6);
-    shops.push({ kit: kit.id, door: front, wall: wi, p87: p87 === 1, building: detail.strings[w.building] || null });
+    shops.push({ kit: kit.id, door: front, wall: wi, p87: p87 === 1, building: row[10] || detail.strings[w.building] || null, typology: sh.typology });
   }
 
   const meshes = parts.build(scene);

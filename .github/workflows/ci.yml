@@ -74,6 +74,9 @@ jobs:
       - name: Generate vibe-render gallery
         run: PUBLISH_DIR=public/vibe-render scripts/vibe-render.sh
 
+      - name: Build Ghent Streets' model (and check its committed bundle is current)
+        run: tools/vibe-render/.venv/bin/python3 tools/ghent/build.py --check
+
       - name: Verify required outputs
         run: |
           test -f public/index.html
@@ -89,10 +92,11 @@ jobs:
           test -f public/vibe-render/cluster_interior_isometric.png
           test -f public/vibe-render/cluster_interior.glb
           test -f public/vibe-render/cluster_interior_interior_views.json
+          test -f public/sites/ghent-streets/model.glb
           echo "All required outputs present."
 
       - name: GLBs are packed (one draw call per material, not per face)
-        run: tools/vibe-render/.venv/bin/python3 tools/vibe-render/check_packed.py public/vibe-render/*.glb
+        run: tools/vibe-render/.venv/bin/python3 tools/vibe-render/check_packed.py public/vibe-render/*.glb public/sites/ghent-streets/model.glb
 
       - name: Visual regression check (isometric renders)
         # HARDENING_SPEC.md §4 -- perceptual-hash gate, not just a human

@@ -1,0 +1,51 @@
+{
+ "version": 1,
+ "parcels": 1043,
+ "status": {
+  "converted": 306,
+  "existing": 36,
+  "nothing-to-adapt": 62,
+  "not-eligible": 639
+ },
+ "converted_in_hcg2": 197,
+ "converted_by_rule": {
+  "nfk2050-arterial": 196,
+  "nfk2050-innovation": 10,
+  "nfk2050-activity": 17,
+  "corner": 68,
+  "graydon-blow": 74
+ },
+ "converted_by_kind": {
+  "food": 146,
+  "retail": 96,
+  "services": 64
+ },
+ "converted_by_typology": {
+  "house": 196,
+  "flats": 90,
+  "institution": 15,
+  "storefront": 5
+ },
+ "converted_by_business": {
+  "accountant": 12,
+  "architect": 11,
+  "bakery": 15,
+  "bikes": 9,
+  "bistro": 74,
+  "books": 17,
+  "coffee": 72,
+  "design": 15,
+  "florist": 16,
+  "greengrocer": 19,
+  "hairdresser": 21,
+  "hardware": 10,
+  "records": 10,
+  "tailor": 5
+ },
+ "unit_sqft_total": 676998,
+ "buildings": 1715,
+ "roofs_inferred": 1274,
+ "trees": 4092,
+ "corners": 83,
+ "built": "2026-11-27"
+}

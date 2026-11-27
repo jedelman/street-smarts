@@ -42,7 +42,7 @@ const GLB_URL = params.get("glb") || fromSite(SITE.model);
 // The plan's measurements, for panels like Money: published beside the model, or in the iteration's archive folder.
 const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
   : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
-const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
+const VIEWS_URL = SITE.views === false ? null : GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
 const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
 const TOURS = Array.isArray(SITE.tours) ? SITE.tours : [];
@@ -111,6 +111,7 @@ let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
 let panels = null, plan = null; // the flyout panels, the site map's image
+let lastPlace = null; // the last place touched that has a card
 const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
@@ -129,10 +130,16 @@ let present = [];
   try {
     const [s, v] = await Promise.all([
       loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
-      fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      VIEWS_URL ? fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []) : [],
     ]);
     site = s;
     views = Array.isArray(v) ? v : [];
+    // A waypoint's place: the biggest building whose source it names.
+    for (const w of site.waypoints ? site.waypoints.values() : []) {
+      if (!w.source) continue;
+      w.el = site.elements.filter((e) => e.source === w.source && e.group === "buildings" && e.center)
+        .sort((a, b) => (b.area || 0) - (a.area || 0))[0] || null;
+    }
   } catch (e) {
     fail(`Couldn’t load the model (${e && e.message ? e.message : "network error"}). Try reloading.`);
     return;
@@ -184,7 +191,7 @@ let present = [];
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
   people = populate();
-  fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
+  if (CHORUS_URL) fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
   indexTouchables();
   present = [...new Set([...site.elements, ...shopTouchables].flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
   try { for (const n of JSON.parse(localStorage.getItem(metKey()) || "[]")) if (present.includes(n)) met.add(n); } catch { /* fresh */ }
@@ -231,6 +238,14 @@ function metKey() { return `street-smarts-met:${GLB_URL}`; }
 function spawn() {
   const els = site.elements;
   const center = site.bounds.getCenter(new THREE.Vector3());
+  const wp = SITE.spawn && SITE.spawn.waypoint && site.waypoints && site.waypoints.get(SITE.spawn.waypoint);
+  if (wp) {
+    // Where the site says to start: a waypoint, facing what it looks at.
+    placeBird(wp.stand);
+    bird.heading = Math.atan2(wp.look.x - wp.stand.x, wp.look.z - wp.stand.z);
+    director.snapBehind();
+    return;
+  }
   const gate = els.find((e) => e.kind === "activity_gateway" && e.group === "activity" && e.center);
   let at, face;
   if (gate) {
@@ -621,6 +636,7 @@ function meet(el) {
   }
 }
 function updateMet() {
+  if (!$("met-count")) return;
   $("met-count").textContent = `${met.size} / ${present.length}`;
   const list = $("met-list");
   list.innerHTML = "";
@@ -642,7 +658,7 @@ function indexTouchables() {
   }));
   // Shop fronts: look in (a P87 shop names its pattern).
   const shopEls = (frontages ? frontages.shops : []).map((s) => ({
-    group: "shops", kind: s.kit, p87: s.p87, source: s.building,
+    group: "shops", kind: s.kit, p87: s.p87, source: s.building, facts: site.facts && s.building ? site.facts[s.building] || null : null,
     center: new THREE.Vector3(s.door.x, 1.2, s.door.z),
     box: new THREE.Box3(new THREE.Vector3(s.door.x - 1.2, 0, s.door.z - 1.2), new THREE.Vector3(s.door.x + 1.2, 2.6, s.door.z + 1.2)),
   }));
@@ -759,6 +775,12 @@ function touch(el) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (el.facts && (el.facts.photo || el.facts.streetview || el.facts.case) && $("place-btn")) {
+    // A place with a card (the assessor's photo, Street View, a case study): the Place panel shows it.
+    lastPlace = el;
+    $("place-btn").hidden = false;
+    if (panels && panels.current === "place") renderLive("place");
+  }
   if (sculptures && sculptures.byElement.has(el)) {
     logLine(sculptures.byElement.get(el) === "cat"
       ? "On it, a bronze cat, sitting, round as a loaf, its tail wrapped round its paws: after Fernando Botero. Ours, not data."
@@ -1025,6 +1047,14 @@ function approachOf(el) {
     p.set(clamp(bird.pos.x, b.min.x - 1.2, b.max.x + 1.2), b.min.y, clamp(bird.pos.z, b.min.z - 1.2, b.max.z + 1.2));
   }
   return p;
+}
+/** A live panel (site.json `live`): its module renders afresh each time it opens, and when what it shows changes. */
+function renderLive(name) {
+  const mod = SITE.renderers && SITE.renderers[name];
+  const body = $(`${name}-body`);
+  if (!mod || !body) return;
+  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, flyTo, goToElement }))
+    .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
 }
 /** Fly to an element and touch it on arrival (a panel's list of places, say). */
 function goToElement(el) {
@@ -1305,6 +1335,14 @@ function populate() {
         if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
       }
     }
+    if (e.group === "sidewalks") {
+      // Sidewalks: plenty of places to be going.
+      for (let k = 0; k < 600; k++) {
+        const x = e.box.min.x + rng() * (e.box.max.x - e.box.min.x), z = e.box.min.z + rng() * (e.box.max.z - e.box.min.z);
+        const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+        if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
+      }
+    }
     if (e.group === "streets") {
       // A few points along each street, where it's open to the sky.
       for (let k = 0; k < 10; k++) {
@@ -1553,7 +1591,8 @@ function setupUI() {
     open(name) {
       if (name === "map") openMap();
       const mod = SITE.renderers && SITE.renderers[name];
-      if (mod && !rendered.has(name)) {
+      if (mod && (SITE.live || []).includes(name)) renderLive(name);
+      else if (mod && !rendered.has(name)) {
         // The site's own panel (Money, say): its module renders into #<name>-body the first time it opens.
         rendered.add(name);
         const body = $(`${name}-body`);
@@ -1661,7 +1700,7 @@ function flyTo(p) {
   }, 360);
 }
 /** The intro: once per browser (remembered if storage allows), and again from How to play. */
-const INTRO_KEY = "street-smarts-intro-seen";
+const INTRO_KEY = SITE.id === "eastside-commons" ? "street-smarts-intro-seen" : `street-smarts-intro-seen:${SITE.id}`; // each site's intro shows once
 function introSeen() { try { return localStorage.getItem(INTRO_KEY) === "1"; } catch { return false; } }
 function openIntro() {
   $("intro").hidden = false;

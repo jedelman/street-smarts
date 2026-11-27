@@ -210,88 +210,140 @@ export function growFront({ biz, L, at, doorWidth, rng, arcade = false, flip = 1
   const doorLeaf = Math.min(1.1, Math.max(0.9, doorWidth));
   const ctx = { biz, L, at, entryW, rng, flip, bulk, awning, planters: rng() < 0.6 };
   const word = derive([{ s: "Front", a: 0, b: L }], RULES, ctx);
-  const fill = (kind) => pick(rng, kind === "crate" ? ["#c23f2a", "#e0a030", "#6a9a3a", "#d9c04a"] : ["#c96a8a", "#f2c94a", "#e8e0f0", "#f08a4a"]);
   const parts = [];
   const P = (k, x, y, out, sx, sy, sz, color, extra = {}) => parts.push({ k, x, y, out, sx, sy, sz, color, ...extra });
-  for (const t of word) {
-    switch (t.s) {
-      case "Pier":
-        P("detail", t.x, ST / 2, 0.09, biz.family === "studio" ? 0.12 : 0.36, ST, 0.22, pier);
-        if (!awning && biz.family !== "studio") P("near", t.x, ST - 0.1, 0.18, 0.3, 0.26, 0.3, trim);
-        break;
-      case "Bulkhead": {
-        const sw = t.b - t.a, cx = (t.a + t.b) / 2, h = t.style === "low" ? 0.42 : 0.55;
-        P("detail", cx, h / 2, 0.06, sw, h, 0.14, t.style === "brick" ? brick : paint);
-        if (t.style === "panel") P("near", cx, 0.28, 0.14, sw - 0.2, 0.34, 0.02, trim);
-        break;
-      }
-      case "Kick": P("detail", (t.a + t.b) / 2, 0.09, 0.05, t.b - t.a, 0.18, 0.12, "#1d1f22"); break;
-      case "Sill": P("detail", (t.a + t.b) / 2, 0.58, 0.08, t.b - t.a + 0.1, 0.07, 0.24, trim); break;
-      case "Head": P("detail", (t.a + t.b) / 2, GLASS_TOP + 0.04, 0.06, t.b - t.a + 0.05, 0.08, 0.12, paint); break;
-      case "Transom": P("glass", (t.a + t.b) / 2, ST - 0.26, 0.035, t.b - t.a, 0.42, 1, "#4a3826"); break;
-      case "Frost": P("glass", (t.a + t.b) / 2, 0.62 + (1.35 - 0.62) / 2, 0.036, t.b - t.a, 1.35 - 0.62, 1, "#dfe3e2"); break;
-      case "Glass": {
-        const cx = (t.a + t.b) / 2, h = t.y1 - t.y0;
-        P("display", cx, t.y0 + h / 2, 0.035, t.b - t.a, h, 1, 1, { tex: { atlas: "insides", name: t.tile || biz.inside } });
-        if (t.frame) P("detail", cx, t.y0 + h / 2, 0.0, t.b - t.a + 0.14, h + 0.14, 0.04, paint); // behind the glass: a coloured border round it
-        if (biz.family === "office") for (let k = 0; k < 4; k++) P("near", cx, t.y1 - 0.12 - k * 0.12, 0.05, t.b - t.a - 0.04, 0.03, 0.01, "#e8e6df"); // blinds
-        break;
-      }
-      case "Mullion": P("near", t.x, (t.y0 + t.y1) / 2, 0.06, biz.family === "studio" ? 0.05 : 0.07, t.y1 - t.y0, 0.08, biz.family === "studio" ? "#1d1f22" : paint); break;
-      case "Awning": {
-        const sw = t.b - t.a + 0.15, cx = (t.a + t.b) / 2, d = 1.25;
-        P("awnings", cx, ST - 0.02 - Math.sin(awnTilt) * d / 2, 0.14 + Math.cos(awnTilt) * d / 2, sw, d, 1, 1, { tex: { atlas: "stripes" }, rx: awnTilt - Math.PI / 2 });
-        P("awnings", cx, ST - 0.02 - Math.sin(awnTilt) * d - 0.12, 0.14 + Math.cos(awnTilt) * d, sw, 0.24, 1, 0.92, { tex: { atlas: "stripes" } });
-        break;
-      }
-      case "Door": P("mid", t.x, 1.12, 0.03, doorLeaf, 2.24, 0.06, biz.family === "school" ? pick(rng, ["#d9772f", "#2f7a8a", "#c23f2a"]) : paint); break;
-      case "DoorLight": P("glass", t.x, 1.45, 0.065, doorLeaf * 0.66, 1.2, 1, biz.family === "office" ? "#dfe3e2" : "#d8b77a"); break;
-      case "Brass": P("near", t.x + 0.36 * flip, 1.05, 0.08, 0.06, 0.06, 0.08, "#b8913f"); break;
-      case "EntryHead": P("detail", t.x, 2.3, 0.06, entryW, 0.1, 0.12, trim); break;
-      case "EntryTransom": P("glass", t.x, (2.36 + ST) / 2, 0.035, entryW, ST - 2.36, 1, "#4a3826"); break;
-      case "SideLights": {
-        const side = (entryW - doorLeaf) / 2 - 0.08;
-        if (side > 0.2) for (const sd of [-1, 1]) P("display", t.x + sd * (doorLeaf / 2 + 0.04 + side / 2), 1.2, 0.035, side, 2.0, 1, 1, { tex: { atlas: "insides", name: biz.inside } });
-        break;
-      }
-      case "Plaque": P("near", t.x + (doorLeaf / 2 + 0.32) * flip, 1.55, 0.04, 0.34, 0.24, 0.02, "#b8913f"); break;
-      case "Blade":
-        P("near", t.x, 2.4, 0.72, 0.05, 0.05, 1.05, "#1d1b19");
-        P("near", t.x, 2.22, 0.25, 0.04, 0.4, 0.04, "#1d1b19");
-        P("detail", t.x, 2.08, 0.82, 0.03, 0.46, 0.62, paint);
-        for (const sd of [-1, 1]) P("icons", t.x + sd * 0.018 * flip, 2.08, 0.82, 0.5, 0.36, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
-        break;
-      case "SignBand": P("mid", (t.a + t.b) / 2, ST + 0.28, 0.16, t.b - t.a - 0.1, 0.56, 0.12, biz.band || paint); break;
-      case "Letters": P("letters", (t.a + t.b) / 2, ST + 0.28, 0.225, t.b - t.a, t.small ? 0.26 : 0.36, 1, "#ffffff", { tex: { atlas: "letters" } }); break;
-      case "Cornice": P("mid", (t.a + t.b) / 2, G - 0.04, 0.2, t.b - t.a + 0.3, 0.16, 0.42, trim); break;
-      // The pavement.
-      case "Crate":
-        P("near", t.x, 0.25, 0.7, 0.6, 0.5, 0.45, "#7a5a3a");
-        P("near", t.x, 0.55, 0.7, 0.52, 0.12, 0.38, t.bottles ? "#3a1a1e" : fill("crate"));
-        break;
-      case "Bucket":
-        P("near", t.x, 0.25, 0.7, 0.6, 0.5, 0.45, "#5b6670");
-        P("near", t.x, 0.6, 0.7, 0.56, 0.22, 0.42, fill("bucket"));
-        break;
-      case "Barrel": P("near", t.x, 0.45, 0.8, 0.62, 0.9, 0.62, "#6b4526"); P("near", t.x, 0.92, 0.8, 0.66, 0.04, 0.66, "#2a2622"); break;
-      case "Rack": P("near", t.x, 0.42, 1.1, 1.9, 0.06, 0.06, "#5b6670"); break;
-      // Parked along the wall, side on to the street (a blade sign's icons turn; these don't).
-      case "Bike": P("icons", t.x, 0.5, 1.1, 1.0, 0.62, 1, "#1d1b19", { tex: { atlas: "icons", name: "bike" } }); break;
-      case "Scooter": P("icons", t.x, 0.35, 0.9, 0.6, 0.6, 1, "#c23f2a", { tex: { atlas: "icons", name: "scooter" } }); break;
-      case "BookTable":
-        P("near", t.x, 0.55, 1.0, 1.4, 0.7, 0.6, "#5a3a1e");
-        for (let k = 0; k < 10; k++) P("near", t.x - (0.6 - k * 0.12) * flip, 1.03, 1.0, 0.09, 0.26, 0.2, pick(rng, ["#7a2430", "#2f4a3a", "#d9b46a", "#3d4f7a", "#a8643a", "#efe6d2"]));
-        break;
-      case "Table":
-        P("near", t.x, 0.74, t.out, 0.72, 0.04, 0.72, biz.spill === "tables3" ? "#f2ece0" : "#e8e0cc");
-        P("near", t.x, 0.37, t.out, 0.06, 0.72, 0.06, "#2a2622");
-        for (const sd of [-1, 1]) { P("near", t.x + sd * 0.62, 0.45, t.out, 0.4, 0.04, 0.4, "#2a2622"); P("near", t.x + sd * 0.8, 0.68, t.out, 0.04, 0.42, 0.4, "#2a2622"); }
-        break;
-      case "Bench": P("near", t.x, 0.45, 0.6, 1.5, 0.06, 0.42, "#7a5a3a"); P("near", t.x, 0.22, 0.6, 1.3, 0.44, 0.06, "#2a2622"); break;
-      case "AFrame": for (const sd of [-1, 1]) P("near", t.x, 0.42, 1.6 + sd * 0.13, 0.55, 0.85, 0.03, "#2b2b2b", { rx: sd * 0.2 }); break;
-      case "Planter": P("near", t.x, 0.25, 0.5, 0.5, 0.5, 0.5, "#6b5a46"); P("near", t.x, 0.72, 0.5, 0.56, 0.48, 0.56, "#55704a"); break;
-      default: break; // Blank and anything unknown draws nothing
+  const v = { biz, rng, flip, paint, trim, brick, pier, awning, awnTilt, entryW, doorLeaf };
+  for (const t of word) terminalParts(t, v, P);
+  return { parts, paint, trim, word };
+}
+
+/** One terminal of a front's word, as parts. `v` is the front's look: biz, rng, flip, paint, trim, brick, pier,
+ * awning, awnTilt, entryW, doorLeaf. */
+function terminalParts(t, v, P) {
+  const { biz, rng, flip, paint, trim, brick, pier, awning, awnTilt, entryW, doorLeaf } = v;
+  const fill = (kind) => pick(rng, kind === "crate" ? ["#c23f2a", "#e0a030", "#6a9a3a", "#d9c04a"] : ["#c96a8a", "#f2c94a", "#e8e0f0", "#f08a4a"]);
+  switch (t.s) {
+    case "Pier":
+      P("detail", t.x, ST / 2, 0.09, biz.family === "studio" ? 0.12 : 0.36, ST, 0.22, pier);
+      if (!awning && biz.family !== "studio") P("near", t.x, ST - 0.1, 0.18, 0.3, 0.26, 0.3, trim);
+      break;
+    case "Bulkhead": {
+      const sw = t.b - t.a, cx = (t.a + t.b) / 2, h = t.style === "low" ? 0.42 : 0.55;
+      P("detail", cx, h / 2, 0.06, sw, h, 0.14, t.style === "brick" ? brick : paint);
+      if (t.style === "panel") P("near", cx, 0.28, 0.14, sw - 0.2, 0.34, 0.02, trim);
+      break;
+    }
+    case "Kick": P("detail", (t.a + t.b) / 2, 0.09, 0.05, t.b - t.a, 0.18, 0.12, "#1d1f22"); break;
+    case "Sill": P("detail", (t.a + t.b) / 2, 0.58, 0.08, t.b - t.a + 0.1, 0.07, 0.24, trim); break;
+    case "Head": P("detail", (t.a + t.b) / 2, GLASS_TOP + 0.04, 0.06, t.b - t.a + 0.05, 0.08, 0.12, paint); break;
+    case "Transom": P("glass", (t.a + t.b) / 2, ST - 0.26, 0.035, t.b - t.a, 0.42, 1, "#4a3826"); break;
+    case "Frost": P("glass", (t.a + t.b) / 2, 0.62 + (1.35 - 0.62) / 2, 0.036, t.b - t.a, 1.35 - 0.62, 1, "#dfe3e2"); break;
+    case "Glass": {
+      const cx = (t.a + t.b) / 2, h = t.y1 - t.y0;
+      P("display", cx, t.y0 + h / 2, 0.035, t.b - t.a, h, 1, 1, { tex: { atlas: "insides", name: t.tile || biz.inside } });
+      if (t.frame) P("detail", cx, t.y0 + h / 2, 0.0, t.b - t.a + 0.14, h + 0.14, 0.04, paint); // behind the glass: a coloured border round it
+      if (biz.family === "office") for (let k = 0; k < 4; k++) P("near", cx, t.y1 - 0.12 - k * 0.12, 0.05, t.b - t.a - 0.04, 0.03, 0.01, "#e8e6df"); // blinds
+      break;
+    }
+    case "Mullion": P("near", t.x, (t.y0 + t.y1) / 2, 0.06, biz.family === "studio" ? 0.05 : 0.07, t.y1 - t.y0, 0.08, biz.family === "studio" ? "#1d1f22" : paint); break;
+    case "Awning": {
+      const sw = t.b - t.a + 0.15, cx = (t.a + t.b) / 2, d = 1.25;
+      P("awnings", cx, ST - 0.02 - Math.sin(awnTilt) * d / 2, 0.14 + Math.cos(awnTilt) * d / 2, sw, d, 1, 1, { tex: { atlas: "stripes" }, rx: awnTilt - Math.PI / 2 });
+      P("awnings", cx, ST - 0.02 - Math.sin(awnTilt) * d - 0.12, 0.14 + Math.cos(awnTilt) * d, sw, 0.24, 1, 0.92, { tex: { atlas: "stripes" } });
+      break;
+    }
+    case "Door": P("mid", t.x, 1.12, 0.03, doorLeaf, 2.24, 0.06, biz.family === "school" ? pick(rng, ["#d9772f", "#2f7a8a", "#c23f2a"]) : paint); break;
+    case "DoorLight": P("glass", t.x, 1.45, 0.065, doorLeaf * 0.66, 1.2, 1, biz.family === "office" ? "#dfe3e2" : "#d8b77a"); break;
+    case "Brass": P("near", t.x + 0.36 * flip, 1.05, 0.08, 0.06, 0.06, 0.08, "#b8913f"); break;
+    case "EntryHead": P("detail", t.x, 2.3, 0.06, entryW, 0.1, 0.12, trim); break;
+    case "EntryTransom": P("glass", t.x, (2.36 + ST) / 2, 0.035, entryW, ST - 2.36, 1, "#4a3826"); break;
+    case "SideLights": {
+      const side = (entryW - doorLeaf) / 2 - 0.08;
+      if (side > 0.2) for (const sd of [-1, 1]) P("display", t.x + sd * (doorLeaf / 2 + 0.04 + side / 2), 1.2, 0.035, side, 2.0, 1, 1, { tex: { atlas: "insides", name: biz.inside } });
+      break;
+    }
+    case "Plaque": P("near", t.x + (doorLeaf / 2 + 0.32) * flip, 1.55, 0.04, 0.34, 0.24, 0.02, "#b8913f"); break;
+    case "Blade":
+      P("near", t.x, 2.4, 0.72, 0.05, 0.05, 1.05, "#1d1b19");
+      P("near", t.x, 2.22, 0.25, 0.04, 0.4, 0.04, "#1d1b19");
+      P("detail", t.x, 2.08, 0.82, 0.03, 0.46, 0.62, paint);
+      for (const sd of [-1, 1]) P("icons", t.x + sd * 0.018 * flip, 2.08, 0.82, 0.5, 0.36, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
+      break;
+    case "SignBand": P("mid", (t.a + t.b) / 2, ST + 0.28, 0.16, t.b - t.a - 0.1, 0.56, 0.12, biz.band || paint); break;
+    case "Letters": P("letters", (t.a + t.b) / 2, ST + 0.28, 0.225, t.b - t.a, t.small ? 0.26 : 0.36, 1, "#ffffff", { tex: { atlas: "letters" } }); break;
+    case "Cornice": P("mid", (t.a + t.b) / 2, G - 0.04, 0.2, t.b - t.a + 0.3, 0.16, 0.42, trim); break;
+    // The pavement.
+    case "Crate":
+      P("near", t.x, 0.25, 0.7, 0.6, 0.5, 0.45, "#7a5a3a");
+      P("near", t.x, 0.55, 0.7, 0.52, 0.12, 0.38, t.bottles ? "#3a1a1e" : fill("crate"));
+      break;
+    case "Bucket":
+      P("near", t.x, 0.25, 0.7, 0.6, 0.5, 0.45, "#5b6670");
+      P("near", t.x, 0.6, 0.7, 0.56, 0.22, 0.42, fill("bucket"));
+      break;
+    case "Barrel": P("near", t.x, 0.45, 0.8, 0.62, 0.9, 0.62, "#6b4526"); P("near", t.x, 0.92, 0.8, 0.66, 0.04, 0.66, "#2a2622"); break;
+    case "Rack": P("near", t.x, 0.42, 1.1, 1.9, 0.06, 0.06, "#5b6670"); break;
+    // Parked along the wall, side on to the street (a blade sign's icons turn; these don't).
+    case "Bike": P("icons", t.x, 0.5, 1.1, 1.0, 0.62, 1, "#1d1b19", { tex: { atlas: "icons", name: "bike" } }); break;
+    case "Scooter": P("icons", t.x, 0.35, 0.9, 0.6, 0.6, 1, "#c23f2a", { tex: { atlas: "icons", name: "scooter" } }); break;
+    case "BookTable":
+      P("near", t.x, 0.55, 1.0, 1.4, 0.7, 0.6, "#5a3a1e");
+      for (let k = 0; k < 10; k++) P("near", t.x - (0.6 - k * 0.12) * flip, 1.03, 1.0, 0.09, 0.26, 0.2, pick(rng, ["#7a2430", "#2f4a3a", "#d9b46a", "#3d4f7a", "#a8643a", "#efe6d2"]));
+      break;
+    case "Table":
+      P("near", t.x, 0.74, t.out, 0.72, 0.04, 0.72, biz.spill === "tables3" ? "#f2ece0" : "#e8e0cc");
+      P("near", t.x, 0.37, t.out, 0.06, 0.72, 0.06, "#2a2622");
+      for (const sd of [-1, 1]) { P("near", t.x + sd * 0.62, 0.45, t.out, 0.4, 0.04, 0.4, "#2a2622"); P("near", t.x + sd * 0.8, 0.68, t.out, 0.04, 0.42, 0.4, "#2a2622"); }
+      break;
+    case "Bench": P("near", t.x, 0.45, 0.6, 1.5, 0.06, 0.42, "#7a5a3a"); P("near", t.x, 0.22, 0.6, 1.3, 0.44, 0.06, "#2a2622"); break;
+    case "AFrame": for (const sd of [-1, 1]) P("near", t.x, 0.42, 1.6 + sd * 0.13, 0.55, 0.85, 0.03, "#2b2b2b", { rx: sd * 0.2 }); break;
+    case "Planter": P("near", t.x, 0.25, 0.5, 0.5, 0.5, 0.5, "#6b5a46"); P("near", t.x, 0.72, 0.5, 0.56, 0.48, 0.56, "#55704a"); break;
+    default: break; // Blank and anything unknown draws nothing
+  }
+}
+
+/**
+ * A ground floor adapted, not remodelled (Ghent Streets, Jason, 2026-11-27: "keep doors and windows where they
+ * are. It's an adaptive-reuse project, we're adapting the existing building, not remodeling it."). The
+ * building's own door and windows stay where they are, and frontages.js lights them with what's inside now.
+ * The front gains only what a sign and a table add: a lettered board over the door, a blade sign (or a brass
+ * plaque for an office), awnings over the windows, and what the business puts out in the yard.
+ * `windows`: the ground floor's windows along the run, [{ x, y1 (its top), w }]; `door`: { x, top }.
+ */
+export function growKeep({ biz, L, door, windows, rng, flip = 1, yard = 1.4 }) {
+  const paint = pick(rng, biz.paints);
+  const trim = pick(rng, GHENT_TRIMS);
+  const parts = [];
+  const P = (k, x, y, out, sx, sy, sz, color, extra = {}) => parts.push({ k, x, y, out, sx, sy, sz, color, ...extra });
+  // The board over the door, framed and lettered.
+  const bw = Math.min(2.8, Math.max(1.5, L * 0.5)), by = door.top + 0.42;
+  P("mid", door.x, by, 0.03, bw + 0.12, 0.62, 0.05, trim);
+  P("mid", door.x, by, 0.06, bw, 0.5, 0.08, biz.band || paint);
+  P("letters", door.x, by, 0.105, bw - 0.2, 0.3, 1, "#ffffff", { tex: { atlas: "letters" }, cap: bw - 0.2 });
+  const office = biz.family === "office" || biz.family === "studio";
+  if (office) {
+    P("near", door.x + 0.78 * flip, door.top - 0.7, 0.04, 0.34, 0.24, 0.02, "#b8913f");
+  } else {
+    // A blade sign on a bracket beside the door.
+    const bx = Math.max(0.3, Math.min(L - 0.3, door.x + 1.0 * flip)), y = door.top + 0.05;
+    P("near", bx, y + 0.32, 0.55, 0.05, 0.05, 0.9, "#1d1b19");
+    P("near", bx, y + 0.14, 0.18, 0.04, 0.4, 0.04, "#1d1b19");
+    P("detail", bx, y, 0.66, 0.03, 0.46, 0.62, paint);
+    for (const sd of [-1, 1]) P("icons", bx + sd * 0.018 * flip, y, 0.66, 0.5, 0.36, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
+  }
+  // Canvas awnings over the windows, where the business has stripes.
+  if (biz.stripes) {
+    const d = 0.72, tilt = 0.55;
+    for (const w of windows) {
+      const sw = w.w + 0.24;
+      P("awnings", w.x, w.y1 + 0.16 - Math.sin(tilt) * d / 2, 0.06 + Math.cos(tilt) * d / 2, sw, d, 1, 1, { tex: { atlas: "stripes" }, rx: tilt - Math.PI / 2 });
+      P("awnings", w.x, w.y1 + 0.16 - Math.sin(tilt) * d - 0.07, 0.06 + Math.cos(tilt) * d, sw, 0.14, 1, 0.92, { tex: { atlas: "stripes" } });
     }
   }
+  // What it puts out: the storefront grammar's own pavement, a yard's depth further out.
+  const v = { biz, rng, flip, paint, trim, brick: pick(rng, GHENT_BRICKS), pier: paint, awning: false, awnTilt: 0, entryW: 1.6, doorLeaf: 1 };
+  const word = derive([{ s: "Spill", a: 0, b: L }], RULES, { biz, L, at: door.x, entryW: 1.6, rng, flip, planters: rng() < 0.7 });
+  const shifted = (k, x, y, out, ...rest) => P(k, x, y, out + yard, ...rest);
+  for (const t of word) terminalParts(t, v, shifted);
   return { parts, paint, trim, word };
 }

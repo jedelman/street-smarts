@@ -31,7 +31,16 @@ export async function loadSite(url, onProgress) {
   // Walls, openings and shop fronts, for the street-level detail (frontages.js).
   const detail = table ? await readDetail(gltf.parser, table).catch(() => null) : null;
   const parts = table ? packedParts(gltf, table) : looseParts(gltf);
-  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [] };
+  // Waypoints: glTF camera nodes a pipeline placed (a tour's stops), with where to look in their extras.
+  const waypoints = new Map();
+  gltf.scene.traverse((o) => {
+    const x = o.userData;
+    if (!x || !x.waypoint) return;
+    const eye = o.getWorldPosition(new THREE.Vector3());
+    const look = Array.isArray(x.look) ? new THREE.Vector3(...x.look) : eye.clone().add(o.getWorldDirection(new THREE.Vector3()).negate());
+    waypoints.set(x.waypoint, { id: x.waypoint, eye, stand: new THREE.Vector3(eye.x, 0.2, eye.z), look, title: x.title || null, source: x.source || null });
+  });
+  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [], facts: (table && table.facts) || null, waypoints };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }
