@@ -18,6 +18,8 @@ export const A = {
   aptPsfMo: 1.80, aptVac: 0.05, aptOpex: 0.28,                         // C&W | Thalhimer Q3 2026 (Norfolk, effective); BAE 2025; BAE 2025
   officeRent: 26.78, officeVac: 0.10, officeOpex: 0.32,                // C&W | Thalhimer Q3 2026 (Norfolk Class A, full service); ours (Norfolk 14.1%); BAE 2025
   shopNet: 27, shopVac: 0.05,                                          // a developer's return (above); ours
+  gpdPerson: 100, gpdDesk: 15,                                       // 9VAC25-790-460 Table 3: dwellings per person; factories' low end (offices aren't listed)
+  swiftWellGpd: 2e6,                                                 // HRSD, James River SWIFT: each well recharges up to 2 million gallons a day
   seniorRate: 0.0618, cityRate: 0.0411, stackYears: 30,                // Virginia Housing, St. Paul's TWG B2 (2025); Norfolk GO 2025A; ours
   stPauls: [                                                           // St. Paul's TWG B2, 4% application, 6/25/2025: $50,939,077
     ["Tax-credit equity", "U.S. Bancorp, $0.81 a credit", 15988355],
@@ -70,6 +72,7 @@ export function whole(n) {
     freeNeed: Math.max(0, 1 - noi.total / (borrowFactor(0.35) * cost.total)),
     homes, people: homes * A.perHome, desks,
     spend: homes * A.spendPerHome, deskSpend: desks * A.deskWeek * A.deskWeeks,
+    sewageGpd: homes * A.perHome * A.gpdPerson + desks * A.gpdDesk, // wastewater, gallons a day, at design flows
     tax: (playSf * A.buildPsf + liveSf * A.homesBuildPsf + workSf * A.officeBuildPsf) * A.taxRate,
   };
 }

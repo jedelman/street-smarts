@@ -104,6 +104,28 @@
     #log { font-size: 0.8rem; width: calc(100vw - 6.5rem); bottom: calc(max(0.9rem, env(safe-area-inset-bottom)) + 3.2rem); }
   }
 
+  /* The intro: a small card on a first visit, over the opening crane shot. */
+  #intro { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 1rem; background: rgba(20, 17, 14, 0.38); }
+  #intro[hidden] { display: none; }
+  #intro .box {
+    width: min(27rem, 100%); max-height: calc(100vh - 2rem); overflow: auto; color: var(--muted); font-size: 0.9rem; line-height: 1.5;
+    background: rgba(29, 25, 21, 0.94); border: 1px solid var(--line); border-radius: 16px; padding: 1.2rem 1.25rem 1.1rem;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+  }
+  #intro h2 { margin: 0 0 0.45rem; font-size: 1.25rem; color: var(--ink); letter-spacing: -0.01em; }
+  #intro p { margin: 0.45rem 0; }
+  #intro ul { margin: 0.55rem 0; padding-left: 1.1rem; }
+  #intro li { margin: 0.3rem 0; }
+  #intro b { color: var(--ink); }
+  #intro .controls { color: var(--ink); background: rgba(255,255,255,0.06); border-radius: 10px; padding: 0.45rem 0.65rem; font-size: 0.85rem; }
+  #intro .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.9rem; }
+  #intro button { font: inherit; font-size: 0.92rem; border-radius: 999px; padding: 0.55rem 1.05rem; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+  #intro button.go { background: var(--accent); border-color: var(--accent); color: #2a2116; font-weight: 600; }
+  #intro button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #intro .fine { font-size: 0.76rem; margin-top: 0.8rem; }
+  #intro a { color: var(--accent); }
+  @media (max-width: 640px) { #intro { place-items: end center; } }
+
   #hint {
     position: fixed; z-index: 9; left: 50%; top: 4.2rem; transform: translateX(-50%);
     background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
@@ -135,6 +157,7 @@
   .kpi b { display: block; font-size: 1.45rem; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
   .kpi span { font-size: 0.76rem; line-height: 1.35; display: block; margin-top: 0.15rem; }
   .flyout .more { display: inline-block; margin-top: 0.3rem; }
+  .flyout .linklike { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
   .its { list-style: none; margin: 0; padding: 0; }
   .its li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0.6rem; padding: 0.55rem 0; border-top: 1px solid var(--line); align-items: start; }
   .its li:first-child { border-top: 0; grid-template-columns: 1fr; }
@@ -171,7 +194,7 @@
   #stats[hidden] { display: none; }
 
   /* Hero mode (?hero, embedded in the landing page): no chrome until the page hands over input. */
-  body.hero .hud, body.hero #flyout, body.hero #stats { display: none !important; }
+  body.hero .hud, body.hero #flyout, body.hero #stats, body.hero #intro { display: none !important; }
   body.hero:not(.active) #pad, body.hero:not(.active) #prompt, body.hero:not(.active) #hint { display: none !important; }
   body.hero:not(.active) canvas { cursor: default; }
   body.hero #hint { top: max(0.9rem, env(safe-area-inset-top)); }
@@ -213,6 +236,23 @@
   <div id="flows-legend" hidden><span class="sw home"></span>homes &nbsp;<span class="sw desk"></span>desks &nbsp;<span class="sw tram"></span>tram riders (not sized)<small>Thicker carries more; rings are what a building's shop fronts take in.</small></div>
 </div>
 
+<div id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="intro-h">
+  <div class="box">
+    <h2 id="intro-h">You're a house sparrow</h2>
+    <p>This is the old Military Circle Mall site in Norfolk, Virginia, rebuilt by Christopher Alexander's <i>A Pattern Language</i>. Every street, square, building, shop door, tree and pond comes out of the patterns, run in order by a program. Fly anywhere.</p>
+    <ul>
+      <li><b>Touch what glints</b> and it names the pattern that put it there.</li>
+      <li><b>Get close to people and eavesdrop:</b> they say what a chorus of opinions thinks of the place, good and bad.</li>
+      <li><b>Map, Money, Flows</b> and the rest are up top; <a href="/read.html">Read</a> is the long version.</li>
+    </ul>
+    <p class="controls" id="intro-controls">WASD to hop, hold Space to fly, drag to look, <b>E</b> to touch.</p>
+    <div class="row">
+      <button type="button" class="go" id="intro-tour">Show me around</button>
+      <button type="button" id="intro-fly">Just fly</button>
+    </div>
+    <p class="fine">The people, benches, pigeons, herons, plants and bronze animals are ours; the rest is the pipeline's.</p>
+  </div>
+</div>
 <div id="hint"></div>
 <div id="log" aria-live="polite"></div>
 <div id="bubble" hidden><span id="bubble-text"></span></div>
@@ -241,6 +281,7 @@
   <p><b>Phone:</b> tap to go there, drag to look, pinch to zoom. Hold &#9650; to fly, &#9660; to come down.</p>
   <p>The buildings, streets, squares, trees and meadow are the pipeline's real output: tap a tree to perch in it. So is every window and door, and which walls face a street or a square. A shop front stands at each door onto one, most of them P87 Individually Owned Shops' own small doors. Which business it is (a greengrocer, a bike shop, an accountant, a little school&hellip;) is ours, in the mix of El Born's district from Barcelona's 2024 census of ground floors, and each front grows by a small L-system of its own: an architect's glass to the ceiling, a florist's buckets on the pavement. The light rail is P34 Interchange: its station stands where the pipeline put it, at the end of a sketch of the Tide from the direction of Newtown Road (HRT's own extension is paused). Wait on the platform, or hop up on the tram's roof and ride. Get close to someone and <kbd>E</kbd> eavesdrops: they say what one of the chorus's opinions found about this site, the way a person would say it, and people standing together argue it out. The <b>Iterations</b> panel walks earlier versions of the plan, rebuilt from the commits that shipped them, each with today's chorus to eavesdrop on. The <b>Map</b> is the site from above: tap it to fly anywhere. <b>Money</b> is what it would cost and who would pay; the long read (<b>Read</b>, top left) has it all, sourced. The bronze birds and cats on the markers are ours, in homage to Fernando Botero. The ponds, their marsh, the streams between them and the bald cypress in the shallows are P64 Pools and Streams: the rain kept above ground where the open ground has room. The cattails, rushes, lily pads, cypress knees and herons are ours. Every number they say is the opinion's own, and the log shows the opinion's own words beside them; only the openers ("Ugh." or "Now this I like.") are theirs. The tram and its timetable, the sparrow, the people, the benches, the pigeons, the breeze, the sky and the ground beyond the site are not data. The benches go where the patterns ask for sitting: around each P126 marker, along P61 squares, facing the sun in P161 sunny places.</p>
   <p><b>Flows</b> draws the neighbourhood's money over the roofs: amber from the homes, blue from the desks, green from the tram, each landing on the shop fronts that take it. A home spends $15,662 a year on what shops sell (BLS, 2023, as on the front page); a home is 900 sq ft of a living floor, 85% of it usable. A desk is 12 m&sup2; of a work floor's usable 85% (the Employment Density Guide's figure for professional offices), and spends $129 a workweek near the office (ICSC's 2011 survey, so in 2011 dollars), for 48 weeks; that's every desk filled five days a week, which hybrid work isn't. US offices hold about three times that space a worker: EIA counts 507 sq ft of building per worker in 2018. It draws the biggest flows between buildings, 42 of each kind; the rest, and what a building spends at its own shops, are in the rings. Where the money goes is ours: each spends at the shop fronts within a five-minute walk (400 m, straight-line), more at nearer ones, after Huff's gravity model; every shop front pulls the same. The tram's riders aren't sized: there's no ridership estimate for a station that doesn't exist yet.</p>
+  <p><button type="button" id="intro-again" class="linklike">See the intro again</button></p>
   <p>Add <code>?stats</code> to the address to see the frame rate.</p>
     </section>
   </div>
