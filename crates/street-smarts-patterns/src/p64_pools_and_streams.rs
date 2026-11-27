@@ -28,7 +28,15 @@
 //!    its hole), `marsh_width` of the pond's radius wide.
 //! 4. Bald cypress (`Tree` form "cypress") along the pond's edge, in the
 //!    shallows and on the bank, and a stand in the open water.
-//! 5. Streams (kind "stream") along the fewest links that join every pond
+//! 5. A boardwalk (kind "boardwalk") out to each pond a street is near
+//!    enough to: from the nearest street, straight across the marsh to the
+//!    shallows (when that line stays clear of buildings and squares), then an
+//!    overlook curving along inside the pond's edge to a small platform.
+//!    The pattern asks for paths and footbridges along the water; this is
+//!    the shape the Bald Cypress Trail at First Landing State Park takes
+//!    ("boardwalk scenic swamp overviews," in the park's trail guide).
+//!    Cypress keep clear of the decks.
+//! 6. Streams (kind "stream") along the fewest links that join every pond
 //!    (a minimum spanning tree, so the water runs as one chain), each link
 //!    within `stream_reach_m` and clear of buildings and squares. A stream
 //!    may cross a street: a culvert or a
@@ -68,6 +76,7 @@ pub const POND: &str = "pond";
 pub const MARSH: &str = "marsh";
 pub const STREAM: &str = "stream";
 pub const CYPRESS: &str = "cypress";
+pub const BOARDWALK: &str = "boardwalk";
 
 /// Grid step for the room-for-a-pond survey.
 const GRID_M: f64 = 4.0;
@@ -81,6 +90,12 @@ const POND_GAP_M: f64 = 8.0;
 const MIN_RADIUS_M: f64 = 6.0;
 /// Width of a stream channel.
 const STREAM_WIDTH_M: f64 = 3.0;
+/// Width of a boardwalk, and how far from a street its approach may start.
+const BOARDWALK_WIDTH_M: f64 = 2.4;
+const BOARDWALK_REACH_M: f64 = 90.0;
+/// The overlook runs this far into the pond (as a fraction of its radius) and this far round it (radians).
+const OVERLOOK_AT: f64 = 0.86;
+const OVERLOOK_SWEEP: f64 = 1.1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P64Params {
@@ -314,13 +329,60 @@ impl PatternOperator for P64PoolsAndStreams {
             return Err("p64_pools_and_streams: no open ground on the site has room for a pond.".into());
         }
 
+        // 5 (first, so the cypress can keep clear of it). A boardwalk out to each pond a
+        // street is near enough to: an approach across the marsh, then an overlook in the shallows.
+        let n_streets = nbhd.streets.len();
+        let mut walks: Vec<Option<(Vec<Pt2>, Vec<Pt2>)>> = Vec::new(); // (approach, overlook centreline)
+        for &(c, r) in &ponds {
+            // The nearest point on any street's edge.
+            let mut best: Option<(Pt2, f64)> = None;
+            for (line, half) in obstacles.lines.iter().take(n_streets) {
+                for w in line.windows(2) {
+                    let (a, b) = (w[0], w[1]);
+                    let (dx, dy) = (b.x - a.x, b.y - a.y);
+                    let len2 = dx * dx + dy * dy;
+                    let t = if len2 > 0.0 { (((c.x - a.x) * dx + (c.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+                    let q = Pt2::new(a.x + dx * t, a.y + dy * t);
+                    let d = q.dist(c).max(1e-6);
+                    // Step off the carriageway, toward the pond.
+                    let edge = Pt2::new(q.x + (c.x - q.x) / d * (half + 0.5), q.y + (c.y - q.y) / d * (half + 0.5));
+                    if best.map_or(true, |(_, bd)| d < bd) {
+                        best = Some((edge, d));
+                    }
+                }
+            }
+            let walk = best.and_then(|(start, _)| {
+                let d = start.dist(c).max(1e-6);
+                let (ux, uy) = ((start.x - c.x) / d, (start.y - c.y) / d);
+                let end = Pt2::new(c.x + ux * r * OVERLOOK_AT, c.y + uy * r * OVERLOOK_AT);
+                if start.dist(end) > BOARDWALK_REACH_M || d <= r * OVERLOOK_AT || !obstacles.clear_line(start, end) {
+                    return None;
+                }
+                let a0 = uy.atan2(ux);
+                let dir = if rng.next_f64() < 0.5 { 1.0 } else { -1.0 };
+                let arc: Vec<Pt2> = (0..=16)
+                    .map(|i| {
+                        let a = a0 + dir * OVERLOOK_SWEEP * i as f64 / 16.0;
+                        Pt2::new(c.x + a.cos() * r * OVERLOOK_AT, c.y + a.sin() * r * OVERLOOK_AT)
+                    })
+                    .collect();
+                Some((vec![start, end], arc))
+            });
+            walks.push(walk);
+        }
+        let near_walk = |p: Pt2| {
+            walks.iter().flatten().any(|(approach, arc)| {
+                approach.windows(2).chain(arc.windows(2)).any(|w| planar::point_segment_distance(p, w[0], w[1]) < BOARDWALK_WIDTH_M / 2.0 + 1.6)
+            })
+        };
+
         // 3-4. Each pond, its marsh, and its cypress.
         let mut cover: Vec<GroundCover> = Vec::new();
         let mut trees: Vec<Tree> = Vec::new();
         let mut steps = Vec::new();
         let mut planted: Vec<Pt2> = Vec::new();
         let plant = |p: Pt2, rng: &mut Prng, trees: &mut Vec<Tree>, planted: &mut Vec<Pt2>| {
-            if planted.iter().any(|q| q.dist(p) < 3.2) {
+            if planted.iter().any(|q| q.dist(p) < 3.2) || near_walk(p) {
                 return false;
             }
             planted.push(p);
@@ -377,7 +439,39 @@ impl PatternOperator for P64PoolsAndStreams {
             ));
         }
 
-        // 5. Streams along the fewest links that join every pond (a minimum spanning tree, so
+        // 5, drawn: each boardwalk's approach, its overlook (a strip between two arcs round the
+        // pond's centre) and a platform at the overlook's end.
+        let half = BOARDWALK_WIDTH_M / 2.0;
+        let mut n_walks = 0;
+        for (k, walk) in walks.iter().enumerate() {
+            let Some((approach, arc)) = walk else { continue };
+            let (c, r) = ponds[k];
+            let to_ring = |pts: &[Pt2]| planar::local_to_ring(pts, &origin);
+            let deck = |id: String, pts: Vec<Pt2>| GroundCover { id, polygon: Polygon::from_ring(to_ring(&pts)), kind: BOARDWALK.into() };
+            // The approach runs a little past the overlook's start so the two meet.
+            let (s0, e0) = (approach[0], approach[1]);
+            let l = s0.dist(e0).max(1e-6);
+            let e1 = Pt2::new(e0.x + (e0.x - s0.x) / l * half, e0.y + (e0.y - s0.y) / l * half);
+            cover.push(deck(format!("p64_boardwalk_{k}_approach"), planar::rect_corridor(s0, e1, half)));
+            let (ro, ri) = (r * OVERLOOK_AT + half, r * OVERLOOK_AT - half);
+            let ang = |p: &Pt2| (p.y - c.y).atan2(p.x - c.x);
+            let outer = arc.iter().map(|p| { let a = ang(p); Pt2::new(c.x + a.cos() * ro, c.y + a.sin() * ro) });
+            let inner: Vec<Pt2> = arc.iter().map(|p| { let a = ang(p); Pt2::new(c.x + a.cos() * ri, c.y + a.sin() * ri) }).collect();
+            cover.push(deck(format!("p64_boardwalk_{k}_overlook"), outer.chain(inner.into_iter().rev()).collect()));
+            let tip = *arc.last().unwrap();
+            cover.push(deck(
+                format!("p64_boardwalk_{k}_platform"),
+                (0..8).map(|i| { let a = i as f64 / 8.0 * std::f64::consts::TAU; Pt2::new(tip.x + a.cos() * 3.0, tip.y + a.sin() * 3.0) }).collect(),
+            ));
+            n_walks += 1;
+            steps.push(format!(
+                "p64_boardwalk_{k}: a boardwalk {:.0} m from the nearest street across the marsh, then an overlook {:.0} m along the shallows to a platform.",
+                l,
+                r * OVERLOOK_AT * OVERLOOK_SWEEP
+            ));
+        }
+
+        // 6. Streams along the fewest links that join every pond (a minimum spanning tree, so
         // the water runs as one chain, not a mesh), where the link is short and clear.
         let mut n_streams = 0;
         let centres: Vec<Pt2> = ponds.iter().map(|p| p.0).collect();
@@ -409,13 +503,14 @@ impl PatternOperator for P64PoolsAndStreams {
             operator_name: self.name().into(),
             operator_source: self.source(),
             headline: format!(
-                "{} pond{} ({:.0} m² of water) in {:.0} m² of marsh, {} bald cypress, {n_streams} stream{}.",
+                "{} pond{} ({:.0} m² of water) in {:.0} m² of marsh, {} bald cypress, {n_streams} stream{}, {n_walks} boardwalk{}.",
                 ponds.len(),
                 if ponds.len() == 1 { "" } else { "s" },
                 pond_area,
                 marsh_area,
                 trees.len(),
-                if n_streams == 1 { "" } else { "s" }
+                if n_streams == 1 { "" } else { "s" },
+                if n_walks == 1 { "" } else { "s" }
             ),
             steps,
             caveats: vec![
@@ -504,6 +599,25 @@ mod tests {
         // Every marsh has its pond as a hole.
         for m in &marshes {
             assert_eq!(m.polygon.holes.len(), 1);
+        }
+    }
+
+    #[test]
+    fn lays_a_boardwalk_from_a_street() {
+        let mut n = site();
+        n.streets = vec![street_smarts_core::nir::Street {
+            id: "S1".into(),
+            centerline: vec![LngLat::new(0.0, 150.0 * M), LngLat::new(300.0 * M, 150.0 * M)],
+            classification: Some("local".into()),
+            row_width_m: Some(6.0),
+            surface: None,
+        }];
+        let sub = P64PoolsAndStreams.apply(&n, "*", &P64Params::defaults(), 7).unwrap();
+        let decks: Vec<_> = sub.new_ground_cover.iter().filter(|g| g.kind == BOARDWALK).collect();
+        assert!(!decks.is_empty(), "no boardwalk in {:?}", sub.trace.steps);
+        let b = |x: f64, y: f64| (20.0..=80.0).contains(&x) && (20.0..=80.0).contains(&y);
+        for g in &decks {
+            assert!(g.polygon.outer.iter().all(|p| !b(p.lng / M, p.lat / M)), "{} reaches into the building", g.id);
         }
     }
 

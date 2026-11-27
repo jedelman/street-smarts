@@ -143,6 +143,7 @@ export function nounOf(el) {
     case "pond": return "pond";
     case "marsh": return "marsh";
     case "stream": return "stream";
+    case "boardwalk": return "boardwalk";
     case "track_bed": return "light rail track, grass between the rails";
     case "rail": return "rail";
     case "platform": return "light rail platform";
@@ -256,6 +257,7 @@ export function arrivalOf(el) {
   if (k === "meadow") return "Into the meadow.";
   if (k === "marsh") return "Into the marsh, among the rushes.";
   if (k === "pond" || k === "stream") return `Down on the ${k}'s water.`;
+  if (k === "boardwalk") return "Onto the boardwalk, out over the swamp.";
   if (k === "platform") return "Onto the platform.";
   if (k === "track_bed" || k === "rail") return "Onto the tracks. Mind the tram.";
   if (/^(plaza|common|pocket|undecided)$/.test(k)) return `Into ${article(n)} ${n}.`;

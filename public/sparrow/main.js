@@ -1197,6 +1197,14 @@ function populate() {
       groups.push({ x: e.center.x, y: e.box.min.y, z: e.center.z });
       spots.push({ x: e.center.x + 1.8, y: e.box.min.y, z: e.center.z + 1.8 });
     }
+    if (e.group === "ground" && e.kind === "boardwalk") {
+      // P64's boardwalks: people stroll out over the swamp.
+      for (let k = 0; k < 4; k++) {
+        const x = e.box.min.x + rng() * (e.box.max.x - e.box.min.x), z = e.box.min.z + rng() * (e.box.max.z - e.box.min.z);
+        const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+        if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
+      }
+    }
     if (e.group === "streets") {
       // A few points along each street, where it's open to the sky.
       for (let k = 0; k < 10; k++) {
