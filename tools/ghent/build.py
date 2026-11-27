@@ -524,7 +524,8 @@ def main(check=False):
         r = plan.get(gpin, {})
         name = addr_title(p["address"]) or "This lot"
         what = noun.get(p["use"], "a lot")
-        lines = [f"{name}: {what}{f', built {p['built']}' if p['built'] and p['built'] > 1700 else ''}."]
+        built = f", built {p['built']}" if p["built"] and p["built"] > 1700 else ""
+        lines = [f"{name}: {what}{built}."]
         why = "; ".join(rules[k]["label"] for k in r.get("reasons", []))
         st = r.get("status")
         if st == "converted":
