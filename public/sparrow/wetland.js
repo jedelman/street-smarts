@@ -1,8 +1,12 @@
-// What grows and stands in P64's wetland, in the walk: cattails gone brown
-// and fluffy in the marsh, as they are in late November, tufts of rush,
-// lily pads on the ponds, knees round every bald cypress, and a great blue
-// heron in the shallows of each pond. The ponds, marsh, streams and cypress
-// are the pipeline's (P64 Pools and Streams); everything here is ours, not
+// What grows and stands in P64's wetland, in the walk, after the cypress
+// swamps at First Landing State Park: cattails gone brown and fluffy in the
+// marsh, as they are in late November, tufts of rush, lily pads on the
+// blackwater, knees round every bald cypress and Spanish moss hanging from
+// it, turtles sunning on logs, great blue herons and egrets in the shallows.
+// The park's trail guide names the turtles on logs, the herons and egrets;
+// the moss is the subtropical half of what makes the park a National
+// Natural Landmark. The ponds, marsh, streams, boardwalks and cypress are
+// the pipeline's (P64 Pools and Streams); everything here is ours, not
 // data, placed by sampling where the plan put water and marsh.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -62,8 +66,11 @@ export function buildWetland(scene, site, trees, drop, { coarse = false } = {}) 
   const clumps = marshes.flatMap((e) => sample(e, Math.min(coarse ? 160 : 420, Math.round(area(e) / (coarse ? 22 : 9))), rng, drop));
   const stalks = [], tufts = [];
   for (const c of clumps) {
-    if (rng() < 0.65) for (let k = 0, n = 4 + Math.floor(rng() * 6); k < n; k++)
-      stalks.push({ x: c.x + (rng() - 0.5) * 1.4, y: c.y, z: c.z + (rng() - 0.5) * 1.4, h: 1.3 + rng() * 0.8, lean: (rng() - 0.5) * 0.25, yaw: rng() * 6.28 });
+    if (rng() < 0.65) for (let k = 0, n = 4 + Math.floor(rng() * 6); k < n; k++) {
+      const x = c.x + (rng() - 0.5) * 1.4, z = c.z + (rng() - 0.5) * 1.4;
+      const under = drop(x, z); // not up through a boardwalk
+      if (under && under.el && under.el.kind === "marsh") stalks.push({ x, y: under.y, z, h: 1.3 + rng() * 0.8, lean: (rng() - 0.5) * 0.25, yaw: rng() * 6.28 });
+    }
     else tufts.push({ x: c.x, y: c.y, z: c.z, s: 0.8 + rng() * 0.7, yaw: rng() * 6.28 });
   }
   const stalkGeo = new THREE.CylinderGeometry(0.012, 0.018, 1, 4).translate(0, 0.5, 0);
@@ -98,7 +105,7 @@ export function buildWetland(scene, site, trees, drop, { coarse = false } = {}) 
       const a = rng() * 6.28, d = 1.2 + rng() * 2.8;
       const x = t.x + Math.cos(a) * d, z = t.z + Math.sin(a) * d;
       const hit = drop(x, z);
-      if (hit) knees.push({ x, y: hit.y, z, h: 0.25 + rng() * 0.6, r: 0.07 + rng() * 0.12 });
+      if (hit && !(hit.el && hit.el.kind === "boardwalk")) knees.push({ x, y: hit.y, z, h: 0.25 + rng() * 0.6, r: 0.07 + rng() * 0.12 });
     }
   }
   const kneeGeo = new THREE.ConeGeometry(1, 1, 7).translate(0, 0.5, 0);
@@ -106,31 +113,80 @@ export function buildWetland(scene, site, trees, drop, { coarse = false } = {}) 
     M.compose(P.set(k.x, k.y - 0.05, k.z), Q.identity(), S.set(k.r, k.h, k.r));
   });
 
-  // A great blue heron in the shallows of each pond (up to four), still, now and then lowering its head.
+  // Spanish moss: grey strands hanging from every cypress, and from the trees nearest the water.
+  const nearWater = (t) => ponds.some((e) => Math.hypot(t.x - e.center.x, t.z - e.center.z) < (e.box.max.x - e.box.min.x) * 0.5 + 25);
+  const mossy = (trees ? trees.list : []).filter((t) => (t.el && t.el.kind === "cypress") || (nearWater(t) && rng() < 0.35));
+  const moss = [];
+  for (const t of mossy) {
+    const h = Math.max(0.5, t.top - t.cy);
+    for (let k = 0, n = 6 + Math.floor(rng() * 7); k < n; k++) {
+      const a = rng() * 6.28, d = t.r * (0.45 + rng() * 0.5);
+      moss.push({ x: t.x + Math.cos(a) * d, y: t.cy - h * (0.15 + rng() * 0.45), z: t.z + Math.sin(a) * d, len: 0.8 + rng() * 1.6, yaw: rng() * 6.28 });
+    }
+  }
+  const mossGeo = new THREE.ConeGeometry(0.16, 1, 4, 1, true).rotateX(Math.PI).translate(0, -0.5, 0); // hangs down from its top
+  instanced(mossGeo, new THREE.MeshLambertMaterial({ color: 0x9ea48f, side: THREE.DoubleSide }), moss, (m) => {
+    Q.setFromAxisAngle(UP, m.yaw); M.compose(P.set(m.x, m.y, m.z), Q, S.set(1, m.len, 1));
+  });
+
+  // Logs in the shallows, half sunk, with turtles sunning on them.
+  const shallowsOf = (e, n) => sample(e, n * 12, rng, drop).filter((p) => [0, 1, 2, 3, 4, 5].some((k) => {
+    const hit = drop(p.x + Math.cos(k) * 3, p.z + Math.sin(k) * 3);
+    return hit && hit.el && hit.el.kind === "marsh";
+  })).slice(0, n);
+  const logs = [], turtles = [];
+  for (const e of ponds) {
+    for (const p of shallowsOf(e, 2 + Math.floor(rng() * 2))) {
+      const len = 2.5 + rng() * 2.5, yaw = rng() * 6.28, tilt = (rng() - 0.5) * 0.12;
+      logs.push({ x: p.x, y: p.y + 0.02, z: p.z, len, yaw, tilt });
+      for (let k = 0, n = 1 + Math.floor(rng() * 4); k < n; k++) {
+        const along = (rng() - 0.5) * len * 0.8;
+        turtles.push({ x: p.x + Math.cos(yaw) * along, y: p.y + 0.2, z: p.z - Math.sin(yaw) * along, yaw: yaw + (rng() < 0.5 ? 0 : Math.PI) + (rng() - 0.5) * 0.6, s: 0.8 + rng() * 0.5 });
+      }
+    }
+  }
+  const logGeo = new THREE.CylinderGeometry(0.17, 0.2, 1, 7).rotateZ(Math.PI / 2);
+  instanced(logGeo, new THREE.MeshLambertMaterial({ color: 0x4a3b2c }), logs, (l) => {
+    Q.setFromEuler(new THREE.Euler(0, l.yaw, l.tilt)); M.compose(P.set(l.x, l.y, l.z), Q, S.set(l.len, 1, 1));
+  });
+  const turtleGeo = mergeGeometries([
+    new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(0.14, 0.07, 0.18), // the shell
+    new THREE.SphereGeometry(0.035, 6, 5).translate(0, 0.02, 0.2), // the head, out in the sun
+  ].map((g) => { g.deleteAttribute("uv"); return g; }), false);
+  instanced(turtleGeo, new THREE.MeshLambertMaterial({ color: 0x39432a }), turtles, (t) => {
+    Q.setFromAxisAngle(UP, t.yaw); M.compose(P.set(t.x, t.y, t.z), Q, S.set(t.s, t.s, t.s));
+  });
+
+  // A great blue heron in the shallows of each pond (up to four), and an egret or two, still, turning now and then.
   const herons = [];
   for (const e of ponds.slice(0, 4)) {
-    // Near the edge: a point in the pond with marsh a couple of metres off.
-    const near = sample(e, 40, rng, drop).find((p) => [0, 1, 2, 3, 4, 5].some((k) => {
-      const hit = drop(p.x + Math.cos(k) * 2.5, p.z + Math.sin(k) * 2.5);
-      return hit && hit.el && hit.el.kind === "marsh";
-    }));
-    if (near) herons.push({ x: near.x, y: near.y - 0.18, z: near.z, yaw: rng() * 6.28, phase: rng() * 10 });
+    const near = shallowsOf(e, 1)[0];
+    if (near) herons.push({ x: near.x, y: near.y - 0.18, z: near.z, yaw: rng() * 6.28, phase: rng() * 10, s: 1 });
   }
-  const heronMesh = instanced(heronGeometry(), new THREE.MeshLambertMaterial({ color: 0x7d8c99 }), herons, (h) => {
+  for (const e of ponds) {
+    for (const p of shallowsOf(e, rng() < 0.5 ? 1 : 2)) herons.push({ x: p.x, y: p.y - 0.15, z: p.z, yaw: rng() * 6.28, phase: rng() * 10, s: 0.82, egret: true });
+  }
+  const blues = herons.filter((h) => !h.egret), whites = herons.filter((h) => h.egret);
+  const heronMesh = instanced(heronGeometry(), new THREE.MeshLambertMaterial({ color: 0x7d8c99 }), blues, (h) => {
     Q.setFromAxisAngle(UP, h.yaw); M.compose(P.set(h.x, h.y, h.z), Q, S.set(1, 1, 1));
+  });
+  const egretMesh = instanced(heronGeometry(), new THREE.MeshLambertMaterial({ color: 0xf2efe6 }), whites, (h) => {
+    Q.setFromAxisAngle(UP, h.yaw); M.compose(P.set(h.x, h.y, h.z), Q, S.setScalar(h.s));
   });
 
   return {
-    meshes, herons, counts: { stalks: stalks.length, tufts: tufts.length, pads: pads.length, knees: knees.length, herons: herons.length },
-    /** The herons shift their weight and turn a little now and then. */
+    meshes, herons, counts: { stalks: stalks.length, tufts: tufts.length, pads: pads.length, knees: knees.length, herons: blues.length, egrets: whites.length, moss: moss.length, logs: logs.length, turtles: turtles.length },
+    /** The herons and egrets shift their weight and turn a little now and then. */
     update(t) {
-      if (!heronMesh) return;
-      herons.forEach((h, i) => {
-        const turn = Math.sin(t * 0.13 + h.phase) * 0.6 + (Math.sin(t * 0.7 + h.phase * 3) > 0.97 ? 0.25 : 0);
-        Q.setFromAxisAngle(UP, h.yaw + turn); M.compose(P.set(h.x, h.y, h.z), Q, S.set(1, 1, 1));
-        heronMesh.setMatrixAt(i, M);
-      });
-      heronMesh.instanceMatrix.needsUpdate = true;
+      for (const [mesh, list] of [[heronMesh, blues], [egretMesh, whites]]) {
+        if (!mesh) continue;
+        list.forEach((h, i) => {
+          const turn = Math.sin(t * 0.13 + h.phase) * 0.6 + (Math.sin(t * 0.7 + h.phase * 3) > 0.97 ? 0.25 : 0);
+          Q.setFromAxisAngle(UP, h.yaw + turn); M.compose(P.set(h.x, h.y, h.z), Q, S.setScalar(h.s));
+          mesh.setMatrixAt(i, M);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+      }
     },
   };
 }

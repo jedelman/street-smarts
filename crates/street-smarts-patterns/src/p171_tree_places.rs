@@ -236,7 +236,7 @@ struct Site {
     streets: Vec<(Vec<Pt2>, f64)>,
     markers: Vec<Pt2>,
     squares: Vec<(String, Shape)>,
-    /// P64's ponds, marshes and streams: no tree P171 plants stands in them.
+    /// P64's ponds, marshes, streams and boardwalks: no tree P171 plants stands in them.
     water: Vec<Shape>,
 }
 
@@ -368,7 +368,7 @@ impl PatternOperator for P171TreePlaces {
             water: nbhd
                 .ground_cover
                 .iter()
-                .filter(|g| matches!(g.kind.as_str(), "pond" | "marsh" | "stream"))
+                .filter(|g| matches!(g.kind.as_str(), "pond" | "marsh" | "stream" | "boardwalk"))
                 .map(|g| Shape::new(local(&g.polygon.outer), vec![]))
                 .collect(),
         };
