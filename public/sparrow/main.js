@@ -207,6 +207,13 @@ let present = [];
   toPage({ type: "ready" });
 })();
 
+// A link to another place on the same page: fly there.
+addEventListener("hashchange", () => {
+  if (!site) return;
+  const link = deepLinked();
+  if (link) goToElement(link.el);
+});
+
 // The landing page drives a hero: hand over input, take it back, pause while scrolled away.
 addEventListener("message", (e) => {
   if (!HERO || e.origin !== location.origin || !e.data || e.data.source !== "street-smarts-hero") return;
@@ -235,9 +242,33 @@ addEventListener("message", (e) => {
 function metKey() { return `street-smarts-met:${GLB_URL}`; }
 
 /** Start at the main gateway if there is one (where the paths enter), else on the open space nearest the middle. */
+/**
+ * A link to a place: #at=<source id> starts you there (the Ghent Streets explorer's #p=<gpin> works too, so its
+ * old links land on the same lot). At a converted ground floor you stand at its door, facing it.
+ */
+function deepLinked() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  const src = h.get("at") || (h.get("p") ? `parcel:${h.get("p")}` : null);
+  if (!src) return null;
+  const el = site.elements.filter((e) => e.source === src && e.group === "buildings" && e.center)
+    .sort((a, b) => (b.area || 0) - (a.area || 0))[0] || site.elements.find((e) => e.source === src && e.center);
+  if (!el) return null;
+  const shop = frontages && frontages.shops.find((sh) => sh.building === src);
+  return { el, door: shop ? shop.door : null };
+}
 function spawn() {
   const els = site.elements;
   const center = site.bounds.getCenter(new THREE.Vector3());
+  const link = deepLinked();
+  if (link) {
+    const { el, door } = link;
+    if (door) placeBird(door);
+    else { bird.pos.copy(center); placeBird(approachOf(el)); }
+    bird.heading = Math.atan2(el.center.x - bird.pos.x, el.center.z - bird.pos.z);
+    director.snapBehind();
+    setTimeout(() => touch(el), 1600);
+    return;
+  }
   const wp = SITE.spawn && SITE.spawn.waypoint && site.waypoints && site.waypoints.get(SITE.spawn.waypoint);
   if (wp) {
     // Where the site says to start: a waypoint, facing what it looks at.

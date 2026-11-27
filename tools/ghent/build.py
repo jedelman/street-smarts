@@ -332,12 +332,44 @@ def main(check=False):
 
     # --- the buildings
     detail = {"walls": [], "openings": [], "shops": []}
+    # Every footprint, to keep a front door from opening into a neighbour's wall.
+    all_polys = [Polygon(b["poly"]).buffer(0) if len(b["poly"]) >= 3 else Polygon() for b in S["buildings"]]
+    # The survey cuts a row's footprint at each lot line; a slice past every lot line (a bay or stoop drawn over the
+    # right-of-way) belongs to no parcel. Where it overlaps a parcel's building and shares its City height (so it was
+    # one footprint), it goes back into that building, so the facade is its outer face.
+    owned = [i for i, b in enumerate(S["buildings"]) if b["parcel"] and not all_polys[i].is_empty]
+    otree = shapely.STRtree([all_polys[i] for i in owned])
+    merged_into = {}
+    for i, b in enumerate(S["buildings"]):
+        pg = all_polys[i]
+        if b["parcel"] or not b["in_area"] or pg.is_empty:
+            continue
+        grown, best = pg.buffer(0.3), None
+        for k in otree.query(grown):
+            j = owned[k]
+            shared = grown.intersection(all_polys[j]).area
+            if shared > 0.5 and S["buildings"][j]["h"] == b["h"] and (best is None or shared > best[0]):
+                best = (shared, j)
+        if best:
+            j = best[1]
+            u = all_polys[j].union(pg.buffer(0.05)).buffer(-0.05)
+            if isinstance(u, MultiPolygon):
+                u = max(u.geoms, key=lambda q: q.area)
+            all_polys[j] = u.simplify(0.1)
+            all_polys[i] = Polygon()
+            merged_into[i] = j
+    btree = shapely.STRtree(all_polys)
+
+    def blocked(bi, a, c, n):
+        """True when the ground 2 m out from the middle of wall a-c lies inside another building."""
+        probe = Point((a[0] + c[0]) / 2 + n[0] * 2.0, (a[1] + c[1]) / 2 + n[1] * 2.0)
+        return any(j != bi and all_polys[j].contains(probe) for j in btree.query(probe))
+    step_m = 1.4  # the walk stands people and doorsteps 1.6 m out; a door is clear if 1.4 m and 2.2 m out are
     bstats = {"roofs_inferred": 0, "heights_inferred": 0, "buildings": 0}
     for bi, b in enumerate(S["buildings"]):
-        pts = b["poly"]
-        if len(pts) < 3:
+        if bi in merged_into:
             continue
-        poly = Polygon(pts).buffer(0)
+        poly = all_polys[bi]
         if poly.is_empty or poly.area < 3:
             continue
         p = parcels.get(b["parcel"]) if b["parcel"] else None
@@ -404,7 +436,8 @@ def main(check=False):
                 continue
             nx, ny = (dy / L, -dx / L) if ccw else (-dy / L, dx / L)
             mid = Point((a[0] + c[0]) / 2 + nx * 3, (a[1] + c[1]) / 2 + ny * 3)
-            public = covered.distance(mid) < 22
+            hidden = blocked(bi, a, c, (nx, ny))
+            public = covered.distance(mid) < 22 and not hidden
             detail["walls"].append({"ax": a[0], "ay": a[1], "dx": dx / L, "dy": dy / L, "nx": nx, "ny": ny, "length": L,
                                     "public": public, "on_hole": False, "building": src})
             wall_ids.append((len(detail["walls"]) - 1, L, public, a, c))
@@ -420,7 +453,7 @@ def main(check=False):
                 d = math.dist(wm, fm)
                 if best is None or d < best[0]:
                     best = (d, w)
-            front_w = best[1] if best and best[0] < 4 else None
+            front_w = best[1] if best and best[0] < 4 and best[1][2] else None
         if not front_w:
             pub = [w for w in wall_ids if w and w[2]]
             front_w = max(pub, key=lambda w: w[1]) if pub else None
@@ -435,8 +468,15 @@ def main(check=False):
             slots = [(k + 0.5) * L / n for k in range(n)]
             is_front = front_w is not None and wid == front_w[0]
             if is_front:
+                # The door: a seeded slot, or the nearest one to it whose doorstep isn't inside a building.
                 k = min(n - 1, max(0, int(h01(bi, "door") * n))) if n > 2 else n // 2
-                door_at = slots[k]
+                ux, uy = (c[0] - a[0]) / L, (c[1] - a[1]) / L
+                nx, ny = (uy, -ux) if ccw else (-uy, ux)
+                for j in sorted(range(n), key=lambda j: abs(j - k)):
+                    steps = [Point(a[0] + ux * slots[j] + nx * o, a[1] + uy * slots[j] + ny * o) for o in (step_m, 2.2)]
+                    if not any(all_polys[q].contains(st) for st in steps for q in btree.query(st)):
+                        door_at = slots[j]
+                        break
             for f in range(nf):
                 y0 = first + f * FLOOR_M
                 for s in slots:
