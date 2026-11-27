@@ -1,0 +1,550 @@
+{
+ "version": 1,
+ "id": "ghent-streets",
+ "title": "Ghent Streets",
+ "place": "the Ghent Neighborhood League's area, Norfolk, Virginia",
+ "pipeline": "adaptive reuse",
+ "model": "model.glb",
+ "numbers": "numbers.json",
+ "renderers": {
+  "money": "money.js",
+  "corners": "corners.js",
+  "place": "place.js"
+ },
+ "live": [
+  "place"
+ ],
+ "views": false,
+ "tours": [
+  {
+   "id": "six",
+   "title": "Show me around",
+   "note": "Six of the proposal's ground floors, chosen to differ from each other as much as they can (the building, its age and size, what it becomes, why it may) and placed so that no stop can see another's.",
+   "stops": [
+    {
+     "waypoint": "tour-1428706223"
+    },
+    {
+     "waypoint": "tour-1428609925"
+    },
+    {
+     "waypoint": "tour-1428613615"
+    },
+    {
+     "waypoint": "tour-1428603617"
+    },
+    {
+     "waypoint": "tour-1428605091"
+    },
+    {
+     "waypoint": "tour-1427883039"
+    }
+   ],
+   "max": 6
+  }
+ ],
+ "corners": [
+  {
+   "element": "parcel:1428705949",
+   "label": "916 Blow Street",
+   "street": "Blow Street",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428606428",
+   "label": "A lot on Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1427795938",
+   "label": "509 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428701173",
+   "label": "531 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428702248",
+   "label": "532 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428701442",
+   "label": "600 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428606441",
+   "label": "627 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "opens as a hairdresser's"
+  },
+  {
+   "element": "parcel:1428606598",
+   "label": "630 Boissevain Avenue",
+   "street": "Boissevain Avenue",
+   "note": "opens as a bookshop"
+  },
+  {
+   "element": "parcel:1428614596",
+   "label": "900 Colley Avenue",
+   "street": "Colley Avenue",
+   "note": "opens as a hardware store"
+  },
+  {
+   "element": "parcel:1428614757",
+   "label": "1003 Colley Avenue",
+   "street": "Colley Avenue",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428616806",
+   "label": "1014 Colley Avenue",
+   "street": "Colley Avenue",
+   "note": "opens as a bakery"
+  },
+  {
+   "element": "parcel:1428628007",
+   "label": "1112 Colley Avenue",
+   "street": "Colley Avenue",
+   "note": "opens as a bakery"
+  },
+  {
+   "element": "parcel:1428626146",
+   "label": "1115 Colley Avenue",
+   "street": "Colley Avenue",
+   "note": "opens as an architects' studio"
+  },
+  {
+   "element": "parcel:1428705160",
+   "label": "701 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "already commercial"
+  },
+  {
+   "element": "parcel:1428706248",
+   "label": "721 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428706367",
+   "label": "801 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428707687",
+   "label": "901 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a hardware store"
+  },
+  {
+   "element": "parcel:1428708864",
+   "label": "921 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428708998",
+   "label": "1005 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428718094",
+   "label": "1009 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a hardware store"
+  },
+  {
+   "element": "parcel:1428719163",
+   "label": "1017 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "opens as a barbershop"
+  },
+  {
+   "element": "parcel:1428810352",
+   "label": "1101 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "already commercial"
+  },
+  {
+   "element": "parcel:1428810472",
+   "label": "1115 Colonial Avenue",
+   "street": "Colonial Avenue",
+   "note": "already commercial"
+  },
+  {
+   "element": "parcel:1428718485",
+   "label": "520 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "a place of worship, left as it is"
+  },
+  {
+   "element": "parcel:1428717473",
+   "label": "524 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a bakery"
+  },
+  {
+   "element": "parcel:1428716265",
+   "label": "525 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428715370",
+   "label": "601 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428716469",
+   "label": "602 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428712770",
+   "label": "638 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as an accountant's office"
+  },
+  {
+   "element": "parcel:1428711591",
+   "label": "641 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428711793",
+   "label": "700 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a bike shop"
+  },
+  {
+   "element": "parcel:1428710578",
+   "label": "703 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428627035",
+   "label": "746 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "already commercial"
+  },
+  {
+   "element": "parcel:1428625073",
+   "label": "800 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428615900",
+   "label": "803 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428622243",
+   "label": "836 Graydon Avenue",
+   "street": "Graydon Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428622362",
+   "label": "A lot on Hampton Boulevard",
+   "street": "Hampton Boulevard",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428621049",
+   "label": "1020 Hampton Boulevard",
+   "street": "Hampton Boulevard",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428711460",
+   "label": "1006 Manteo Street",
+   "street": "Manteo Street",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428706407",
+   "label": "530 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "a place of worship, left as it is"
+  },
+  {
+   "element": "parcel:1428703387",
+   "label": "531 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "a place of worship, left as it is"
+  },
+  {
+   "element": "parcel:1428702791",
+   "label": "600 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428700650",
+   "label": "601 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428608814",
+   "label": "624 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "opens as a barbershop"
+  },
+  {
+   "element": "parcel:1428607713",
+   "label": "635 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428606946",
+   "label": "700 Raleigh Avenue",
+   "street": "Raleigh Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428707534",
+   "label": "505 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428705816",
+   "label": "528 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428705904",
+   "label": "536 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as an accountant's office"
+  },
+  {
+   "element": "parcel:1428703945",
+   "label": "602 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428701895",
+   "label": "603 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428703907",
+   "label": "608 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as an accountant's office"
+  },
+  {
+   "element": "parcel:1428619176",
+   "label": "636 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428609925",
+   "label": "641 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a dry cleaner's"
+  },
+  {
+   "element": "parcel:1428618129",
+   "label": "702 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a bookshop"
+  },
+  {
+   "element": "parcel:1428618007",
+   "label": "705 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428613502",
+   "label": "800 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428519750",
+   "label": "836 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428519731",
+   "label": "838 Redgate Avenue",
+   "street": "Redgate Avenue",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428609322",
+   "label": "617 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "opens as a bakery"
+  },
+  {
+   "element": "parcel:1428609450",
+   "label": "701 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "opens as an art gallery"
+  },
+  {
+   "element": "parcel:1428701712",
+   "label": "801 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "opens as a dry cleaner's"
+  },
+  {
+   "element": "parcel:1428704770",
+   "label": "820 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "no building to adapt"
+  },
+  {
+   "element": "parcel:1428719640",
+   "label": "1200 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "opens as a florist's"
+  },
+  {
+   "element": "parcel:1428717715",
+   "label": "1201 Stockley Gardens",
+   "street": "Stockley Gardens",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1427795821",
+   "label": "504 W Olney Road",
+   "street": "W Olney Road",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428608115",
+   "label": "600 W Olney Road",
+   "street": "W Olney Road",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428606219",
+   "label": "626 W Olney Road",
+   "street": "W Olney Road",
+   "note": "already commercial"
+  },
+  {
+   "element": "parcel:1428716640",
+   "label": "607 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428713737",
+   "label": "635 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a greengrocer's"
+  },
+  {
+   "element": "parcel:1428714903",
+   "label": "636 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a florist's"
+  },
+  {
+   "element": "parcel:1428713919",
+   "label": "700 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a tailor's"
+  },
+  {
+   "element": "parcel:1428712833",
+   "label": "703 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428627287",
+   "label": "750 W Princess Anne Road",
+   "street": "W Princess Anne Road",
+   "note": "opens as a record shop"
+  },
+  {
+   "element": "parcel:1428716145",
+   "label": "526 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a florist's"
+  },
+  {
+   "element": "parcel:1428715222",
+   "label": "600 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428714005",
+   "label": "603 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428710225",
+   "label": "631 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a tailor's"
+  },
+  {
+   "element": "parcel:1428710456",
+   "label": "700 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a coffee shop"
+  },
+  {
+   "element": "parcel:1428619249",
+   "label": "701 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a bakery"
+  },
+  {
+   "element": "parcel:1428613615",
+   "label": "805 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a florist's"
+  },
+  {
+   "element": "parcel:1428610800",
+   "label": "833 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a bistro"
+  },
+  {
+   "element": "parcel:1428610989",
+   "label": "834 Westover Avenue",
+   "street": "Westover Avenue",
+   "note": "opens as a hardware store"
+  }
+ ],
+ "spawn": {
+  "waypoint": "tour-1428706223"
+ },
+ "chorus": "chorus.json"
+}

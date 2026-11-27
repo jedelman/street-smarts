@@ -13,6 +13,8 @@ tools/vibe-render/__pycache__/
 public/vibe-render/*.png
 public/vibe-render/*.svg
 public/vibe-render/*.glb
+# Built from data/ghent/*.json on every deploy (tools/ghent/build.py)
+public/sites/ghent-streets/model.glb
 
 # ferrotorch for crates/street-smarts-encoder: cloned by hand, not a submodule (see that crate's Cargo.toml)
 vendor/ferrotorch/

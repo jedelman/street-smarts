@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "eastside-commons",
+  "title": "Eastside Commons",
+  "place": "the old Military Circle Mall site, Norfolk, Virginia",
+  "pipeline": "patterns",
+  "model": "/vibe-render/clean_baseline.glb",
+  "numbers": "/vibe-render/clean_baseline_numbers.json",
+  "chorus": "/vibe-render/clean_baseline_chorus.json",
+  "archive": "/archive/index.json",
+  "renderers": { "money": "/sites/eastside-commons/money.js" },
+  "tours": [
+    {
+      "id": "features",
+      "title": "Show me around",
+      "note": "The plan's significant features, one pattern at a time: the gateway, the station, the squares, the trees, the courtyards. Each stop is the nearest place, from the last, that the pattern made.",
+      "max": 9,
+      "views": 2,
+      "stops": [
+        { "pattern": 53 }, { "pattern": 34 }, { "pattern": 61 }, { "pattern": 126 }, { "pattern": 171 },
+        { "pattern": 37 }, { "pattern": 95 }, { "pattern": 107 }, { "pattern": 161 }, { "pattern": 119 },
+        { "pattern": 166 }, { "pattern": 160 }, { "pattern": 118 }, { "pattern": 108 }, { "pattern": 52 }
+      ]
+    }
+  ]
+}

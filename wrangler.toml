@@ -15,5 +15,13 @@ binding = "ASSETS"
 binding = "ARCHIVE"
 bucket_name = "street-smarts-archive"
 
+# Pull-request previews (Workers Builds runs `wrangler preview` on a branch)
+# read the same archive: the Worker only ever GETs from it ("never written
+# from here", worker/index.js), so a preview can't change it, and its
+# Iterations panel works.
+[[previews.r2_buckets]]
+binding = "ARCHIVE"
+bucket_name = "street-smarts-archive"
+
 # Cache: the WASM bundle and fixtures rarely change between releases;
 # default headers are fine for v0.1. Custom caching headers wait for v0.2.

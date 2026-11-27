@@ -1,8 +1,8 @@
-// The plan's economics, shared by the walk's Money panel (sparrow/panels.js) and the long read
+// The plan's economics, shared by the walk's Money panel (sites/eastside-commons/money.js) and the long read
 // (read.html, #adds-up): every sourced figure and stated assumption in one place, and the
 // whole-plan arithmetic on the plan's measurements (tools/vibe-render/plan_numbers.py). The
 // sources are listed in read.html's "How the numbers are built".
-import { FLOW } from "./flows.js";
+import { FLOW } from "../../sparrow/flows.js";
 
 export const SF = 10.7639; // square feet in a square metre
 

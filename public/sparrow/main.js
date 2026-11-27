@@ -14,10 +14,11 @@ import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
+import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
-import { setupPanels, renderMoney, renderIterations } from "./panels.js";
+import { setupPanels, renderIterations, renderTours } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
@@ -27,15 +28,25 @@ import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.j
 import { computeFlows, lineFor as flowLineFor, summaryLine as flowSummary } from "./flows.js";
 import { buildFlowLines } from "./flowlines.js";
 
+const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-// The front page: the whole site, unless the address asks for another model.
-const GLB_URL = params.get("glb") || "/vibe-render/clean_baseline.glb";
-// The plan's measurements (plan_numbers.py), for the Money panel: published beside the model.
-const NUMBERS_URL = /\/vibe-render\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/\.glb$/, "_numbers.json")
+// The site: its page names its bundle (public/sites/<id>/site.json), which says
+// what the walk loads (the model and what's published beside it), its tours,
+// and the modules that render its own panels. The walk is the same for every
+// site; the page carries the site's words.
+const SITE_URL = (document.querySelector('meta[name="street-smarts-site"]') || {}).content || "/sites/eastside-commons/site.json";
+const SITE = await fetch(SITE_URL).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} for ${SITE_URL}`))))
+  .catch((e) => { fail(`Couldn’t load this site (${e.message}). Try reloading.`); throw e; });
+const fromSite = (url) => (url ? new URL(url, new URL(SITE_URL, location.href)).pathname : null);
+// The site's model, unless the address asks for another (an archived iteration, one cluster).
+const GLB_URL = params.get("glb") || fromSite(SITE.model);
+// The plan's measurements, for panels like Money: published beside the model, or in the iteration's archive folder.
+const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
   : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
-const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
+const VIEWS_URL = SITE.views === false ? null : GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
-const CHORUS_URL = params.get("chorus") || "/vibe-render/clean_baseline_chorus.json";
+const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
+const TOURS = Array.isArray(SITE.tours) ? SITE.tours : [];
 const STATS = params.has("stats");
 // Hero mode: embedded in the landing page. It runs the tour as attract mode and
 // takes no input until the page hands it over ("Hop in"); see index.html's #hero.
@@ -45,7 +56,6 @@ document.body.classList.toggle("hero", HERO);
 const toPage = (msg) => { if (HERO && parent !== window) parent.postMessage({ source: "street-smarts-walk", ...msg }, location.origin); };
 const COARSE = matchMedia("(pointer: coarse)").matches;
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const $ = (id) => document.getElementById(id);
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 
@@ -101,12 +111,15 @@ let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
-let panels = null, plan = null, moneyDone = false; // the flyout panels, the site map's image
+let panels = null, plan = null; // the flyout panels, the site map's image
+let lastPlace = null; // the last place touched that has a card
+const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
 const voices = makeVoices(), heard = new Set();
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
-let tour = null; // { stops: [...], i, waitUntil }
+let tour = null; // { def, stops: [...], i, waitUntil }
+let TOUR_LABEL = "Show me around"; // the tour button's own words, from the page
 let focus = null, focusScore = Infinity;
 let t = 0, lastInputT = 0, lastLookT = -10, hintGone = false;
 let views = [], viewIndex = -1;
@@ -115,13 +128,20 @@ let present = [];
 
 // ---------------------------------------------------------------- boot
 (async function boot() {
+  const facesReady = loadSignFaces(); // the signs' faces load alongside the model
   try {
     const [s, v] = await Promise.all([
       loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
-      fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      VIEWS_URL ? fetch(VIEWS_URL).then((r) => (r.ok ? r.json() : [])).catch(() => []) : [],
     ]);
     site = s;
     views = Array.isArray(v) ? v : [];
+    // A waypoint's place: the biggest building whose source it names.
+    for (const w of site.waypoints ? site.waypoints.values() : []) {
+      if (!w.source) continue;
+      w.el = site.elements.filter((e) => e.source === w.source && e.group === "buildings" && e.center)
+        .sort((a, b) => (b.area || 0) - (a.area || 0))[0] || null;
+    }
   } catch (e) {
     fail(`Couldn’t load the model (${e && e.message ? e.message : "network error"}). Try reloading.`);
     return;
@@ -166,6 +186,7 @@ let present = [];
     return hit ? { y: hit.point.y, el: site.elementOfHit(hit) } : null;
   }, { coarse: COARSE });
   // Every window, and storefronts at the doors that open onto a street or square.
+  if (site.detail) await facesReady;
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
@@ -173,7 +194,7 @@ let present = [];
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
   people = populate();
-  fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
+  if (CHORUS_URL) fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
   indexTouchables();
   present = [...new Set([...site.elements, ...shopTouchables].flatMap((e) => patternsOf(e)))].sort((a, b) => a - b);
   try { for (const n of JSON.parse(localStorage.getItem(metKey()) || "[]")) if (present.includes(n)) met.add(n); } catch { /* fresh */ }
@@ -188,6 +209,13 @@ let present = [];
   renderer.setAnimationLoop(frame);
   toPage({ type: "ready" });
 })();
+
+// A link to another place on the same page: fly there.
+addEventListener("hashchange", () => {
+  if (!site) return;
+  const link = deepLinked();
+  if (link) goToElement(link.el);
+});
 
 // The landing page drives a hero: hand over input, take it back, pause while scrolled away.
 addEventListener("message", (e) => {
@@ -217,9 +245,55 @@ addEventListener("message", (e) => {
 function metKey() { return `street-smarts-met:${GLB_URL}`; }
 
 /** Start at the main gateway if there is one (where the paths enter), else on the open space nearest the middle. */
+/**
+ * A link to a place: #at=<source id> starts you there (the Ghent Streets explorer's #p=<gpin> works too, so its
+ * old links land on the same lot). At a converted ground floor you stand at its door, facing it.
+ */
+function deepLinked() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  const src = h.get("at") || (h.get("p") ? `parcel:${h.get("p")}` : null);
+  if (!src) return null;
+  const el = site.elements.filter((e) => e.source === src && e.group === "buildings" && e.center)
+    .sort((a, b) => (b.area || 0) - (a.area || 0))[0] || site.elements.find((e) => e.source === src && e.center);
+  if (!el) return null;
+  const shop = frontages && frontages.shops.find((sh) => sh.building === src);
+  if (!shop) return { el, door: null, out: null };
+  // The front wall's own outward normal (the detail table's nx, nz).
+  const W = site.detail && site.detail.walls, o = shop.wall * 9;
+  const out = W ? new THREE.Vector3(W[o + 4], 0, W[o + 5]) : new THREE.Vector3(shop.door.x - el.center.x, 0, shop.door.z - el.center.z).normalize();
+  return { el, door: shop.door, out };
+}
 function spawn() {
   const els = site.elements;
   const center = site.bounds.getCenter(new THREE.Vector3());
+  const link = deepLinked();
+  if (link) {
+    const { el, door, out } = link;
+    if (door) {
+      // Back across the sidewalk from the door, square to the front, so it fills the view; at the door if that's
+      // under a roof.
+      const back = door.clone().addScaledVector(out, 4.5);
+      const hit = castDownModel(back.x, site.bounds.max.y + 20, back.z, site.bounds.max.y + 60);
+      const under = hit && site.elementOfHit(hit);
+      placeBird(under && under.group === "buildings" ? door : back);
+      bird.heading = Math.atan2(-out.x, -out.z);
+    } else {
+      bird.pos.copy(center);
+      placeBird(approachOf(el));
+      bird.heading = Math.atan2(el.center.x - bird.pos.x, el.center.z - bird.pos.z);
+    }
+    director.snapBehind();
+    setTimeout(() => touch(el, { look: false }), 1600);
+    return;
+  }
+  const wp = SITE.spawn && SITE.spawn.waypoint && site.waypoints && site.waypoints.get(SITE.spawn.waypoint);
+  if (wp) {
+    // Where the site says to start: a waypoint, facing what it looks at.
+    placeBird(wp.stand);
+    bird.heading = Math.atan2(wp.look.x - wp.stand.x, wp.look.z - wp.stand.z);
+    director.snapBehind();
+    return;
+  }
   const gate = els.find((e) => e.kind === "activity_gateway" && e.group === "activity" && e.center);
   let at, face;
   if (gate) {
@@ -610,6 +684,7 @@ function meet(el) {
   }
 }
 function updateMet() {
+  if (!$("met-count")) return;
   $("met-count").textContent = `${met.size} / ${present.length}`;
   const list = $("met-list");
   list.innerHTML = "";
@@ -631,7 +706,7 @@ function indexTouchables() {
   }));
   // Shop fronts: look in (a P87 shop names its pattern).
   const shopEls = (frontages ? frontages.shops : []).map((s) => ({
-    group: "shops", kind: s.kit, p87: s.p87, source: s.building,
+    group: "shops", kind: s.kit, name: s.name, p87: s.p87, source: s.building, facts: site.facts && s.building ? site.facts[s.building] || null : null,
     center: new THREE.Vector3(s.door.x, 1.2, s.door.z),
     box: new THREE.Box3(new THREE.Vector3(s.door.x - 1.2, 0, s.door.z - 1.2), new THREE.Vector3(s.door.x + 1.2, 2.6, s.door.z + 1.2)),
   }));
@@ -740,7 +815,9 @@ function showPrompt() {
 
 // ---------------------------------------------------------------- touching things
 let flare = 0, flareEl = null;
-function touch(el) {
+/** Touch an element: its words in the log, a chirp, and the camera turned to it unless `look` is false (a
+ * waypoint or a link has already framed the view it wants). */
+function touch(el, { look = true } = {}) {
   if (!el) { sparrow.chirp(); sound.chirp(); return; } // nothing in reach: a chirp anyway
   if (el.kind === "bench") { hopOnto(el.bench); return; }
   if (el.kind === "person") { eavesdrop(el.person); return; }
@@ -748,6 +825,13 @@ function touch(el) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (el.group === "shops" && el.name) logLine(`On the sign: “${el.name}”. The name is ours.`, "note");
+  if (el.facts && (el.facts.photo || el.facts.streetview || el.facts.case) && $("place-btn")) {
+    // A place with a card (the assessor's photo, Street View, a case study): the Place panel shows it.
+    lastPlace = el;
+    $("place-btn").hidden = false;
+    if (panels && panels.current === "place") renderLive("place");
+  }
   if (sculptures && sculptures.byElement.has(el)) {
     logLine(sculptures.byElement.get(el) === "cat"
       ? "On it, a bronze cat, sitting, round as a loaf, its tail wrapped round its paws: after Fernando Botero. Ours, not data."
@@ -778,7 +862,7 @@ function touch(el) {
   } else {
     sparrow.chirp(); sound.chirp();
   }
-  if (el.center) director.lookAt(el);
+  if (el.center && look) director.lookAt(el);
 }
 function interact() { touch(focus); }
 
@@ -795,13 +879,14 @@ function eavesdrop(i) {
   const near = new Set();
   for (const e of site.elements) if (e.source && e.center && Math.abs(e.center.x - p.pos.x) < 45 && Math.abs(e.center.z - p.pos.z) < 45) near.add(e.source);
   const speakers = [i, ...people.groupOf(i).slice(0, 2)];
-  const say = (who, against) => {
-    const op = pickOpinion(chorus, { near, heard, against });
+  // An opinion that names its answer (a chorus of objections and replies) is answered by it.
+  const say = (who, against, want = null) => {
+    const op = (want && chorus.opinions.find((o) => o.name === want)) || pickOpinion(chorus, { near, heard, against });
     heard.add(op.name);
-    return { who, ...lineFor(op, { after: against }) };
+    return { who, op, ...lineFor(op, { after: against, voice: chorus.voice }) };
   };
   const lines = [say(i, null)];
-  if (speakers[1] != null) lines.push(say(speakers[1], lines[0].mood));
+  if (speakers[1] != null) lines.push(say(speakers[1], lines[0].mood, lines[0].op.answer));
   if (speakers[2] != null) {
     const q = Math.random() < 0.4 ? questionLine(chorus) : null;
     lines.push(q ? { who: speakers[2], ...q } : say(speakers[2], lines[1].mood));
@@ -941,27 +1026,45 @@ function pingAt(p) {
 }
 
 // ---------------------------------------------------------------- the tour
-function startTour() {
-  const order = [53, 34, 61, 126, 171, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
+/**
+ * A tour from the site's bundle (site.json `tours`). Its stops are of three kinds:
+ *   { pattern: n }      the nearest place, from the last stop, that pattern n made
+ *                       (a generated plan's elements change with every render; its patterns don't);
+ *   { element: "id" }   the element whose source record is that id (a real parcel, say);
+ *   { waypoint: "id" }  a waypoint the model carries: where to stand and what to look at.
+ * `max` caps the stops; `views` adds that many of the model's interior views at the end.
+ */
+function startTour(def = TOURS[0]) {
+  if (!def) return;
   const stops = [];
   let from = bird.pos.clone();
   const used = new Set();
-  for (const n of order) {
-    if (!present.includes(n)) continue;
-    const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
-      && (touchable(e) || e.group === "streets" || e.kind === "building_shaped" || e.kind === "umbrella")
-      && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
-    if (!cands.length) continue;
-    cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
-    const el = cands.find((c) => !used.has(c)) || cands[0];
-    used.add(el);
-    stops.push(el);
-    from = el.center;
-    if (stops.length >= 9) break;
+  const max = def.max || Infinity;
+  for (const s of def.stops || []) {
+    if (stops.length >= max) break;
+    if (s.pattern != null) {
+      const n = s.pattern;
+      if (!present.includes(n)) continue;
+      const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
+        && (touchable(e) || e.group === "streets" || e.kind === "building_shaped" || e.kind === "umbrella")
+        && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
+      if (!cands.length) continue;
+      cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
+      const el = cands.find((c) => !used.has(c)) || cands[0];
+      used.add(el);
+      stops.push(el);
+      from = el.center;
+    } else if (s.element != null) {
+      const el = site.elements.find((e) => e.source === s.element && e.center);
+      if (el) { stops.push(el); from = el.center; }
+    } else if (s.waypoint != null) {
+      const w = site.waypoints && site.waypoints.get(s.waypoint);
+      if (w) { stops.push({ waypoint: w, note: s.note }); from = w.stand; }
+    }
   }
-  if (views.length) stops.push(...views.slice(0, 2).map((v, i) => ({ view: i })));
+  if (views.length && def.views) stops.push(...views.slice(0, def.views).map((v, i) => ({ view: i })));
   if (!stops.length) return;
-  tour = { stops, i: -1, waitUntil: 0 };
+  tour = { def, stops, i: -1, waitUntil: 0 };
   $("tour").setAttribute("aria-pressed", "true");
   $("tour").textContent = "Stop the tour";
   if (active) logLine("Follow me.", "note");
@@ -972,17 +1075,53 @@ function nextStop() {
   if (tour.i >= tour.stops.length) { endTour("That’s the tour. Fly on."); return; }
   const s = tour.stops[tour.i];
   if (s.view != null) { peekInside(s.view); tour.waitUntil = t + 5; goal = null; return; }
+  if (s.waypoint) {
+    // Stand where the waypoint says, face what it looks at, and touch its element if it has one.
+    const w = s.waypoint;
+    goal = { point: w.stand.clone(), el: w.el || null, stopDist: 0.8, land: true, arrived: () => {
+      bird.heading = Math.atan2(w.look.x - bird.pos.x, w.look.z - bird.pos.z);
+      if (w.el) touch(w.el, { look: false }); else if (w.title) logLine(w.title, "note");
+      if (s.note) logLine(s.note, "note");
+      tour.waitUntil = t + (w.wait || 4.5);
+    } };
+    tour.waitUntil = Infinity;
+    return;
+  }
   const el = s;
+  goal = { point: approachOf(el), el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
+  tour.waitUntil = Infinity;
+}
+/** Where to go to meet an element: a building's foot on the side nearest you, else its anchor or middle. */
+function approachOf(el) {
   const p = el.box.max.y > 1.5 && el.kind !== "building_shaped" ? anchorOf(el, new THREE.Vector3()) : el.center.clone();
   if (el.kind === "building_shaped") {
-    // A building: go to its foot on the side nearest you.
     const b = el.box;
     p.set(clamp(bird.pos.x, b.min.x - 1.2, b.max.x + 1.2), b.min.y, clamp(bird.pos.z, b.min.z - 1.2, b.max.z + 1.2));
   }
-  goal = { point: p, el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
-  tour.waitUntil = Infinity;
+  return p;
+}
+/** A live panel (site.json `live`): its module renders afresh each time it opens, and when what it shows changes. */
+function renderLive(name) {
+  const mod = SITE.renderers && SITE.renderers[name];
+  const body = $(`${name}-body`);
+  if (!mod || !body) return;
+  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, flyTo, goToElement }))
+    .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
+}
+/** Fly to an element and touch it on arrival (a panel's list of places, say). */
+function goToElement(el) {
+  if (!el || !el.center) return;
+  if (panels) panels.close();
+  if (tour) endTour("");
+  goal = { point: approachOf(el), el, stopDist: 1.0, land: true, autoTouch: true, arrived: () => touch(el) };
 }
 let attractAt = 4.8; // after the crane
+/** The tour button, T and the pad: stop a running tour; else start the site's one tour, or offer its several. */
+function tourButton() {
+  if (tour) { endTour("You take it from here."); return; }
+  if (TOURS.length > 1 && panels) panels.open("tours");
+  else startTour();
+}
 function tourTick() {
   if (HERO && !active && !tour && !REDUCED && t > attractAt) startTour();
   if (!tour) return;
@@ -992,7 +1131,7 @@ function endTour(msg) {
   tour = null;
   goal = null;
   $("tour").setAttribute("aria-pressed", "false");
-  $("tour").textContent = "Show me around";
+  $("tour").textContent = TOUR_LABEL;
   if (msg && active) logLine(msg, "note");
   if (!active) attractAt = t + 4; // go round again
 }
@@ -1248,6 +1387,14 @@ function populate() {
         if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
       }
     }
+    if (e.group === "sidewalks") {
+      // Sidewalks: plenty of places to be going.
+      for (let k = 0; k < 600; k++) {
+        const x = e.box.min.x + rng() * (e.box.max.x - e.box.min.x), z = e.box.min.z + rng() * (e.box.max.z - e.box.min.z);
+        const hit = castDownModel(x, site.bounds.max.y + 20, z, site.bounds.max.y + 60);
+        if (hit && site.elementOfHit(hit) === e) spots.push({ x, y: hit.point.y, z });
+      }
+    }
     if (e.group === "streets") {
       // A few points along each street, where it's open to the sky.
       for (let k = 0; k < 10; k++) {
@@ -1413,7 +1560,7 @@ function pollPad() {
   padDown = b(1);
   if (b(2) && !pollPad.x) interact();
   pollPad.x = b(2);
-  if (b(3) && !pollPad.y) (tour ? endTour("You take it from here.") : startTour());
+  if (b(3) && !pollPad.y) tourButton();
   pollPad.y = b(3);
 }
 
@@ -1432,7 +1579,7 @@ function setupUI() {
       if (e.code === "KeyE" || e.code === "Enter") interact();
       if (e.code === "KeyM") toggleMute();
       if (e.code === "KeyO") toggleFlows();
-      if (e.code === "KeyT") (tour ? endTour("You take it from here.") : startTour());
+      if (e.code === "KeyT") tourButton();
       if (e.code === "KeyF") { if (bird.air) holdDownFor = 3; else takeOff(); }
       if (e.code === "KeyV") director.zoomBy(director.eyes > 0.5 ? 3 : 0.2);
       if (e.code === "Escape") { if (panels && panels.current) { panels.close(); return; } if (tour) endTour(""); goal = null; }
@@ -1486,20 +1633,29 @@ function setupUI() {
   hold($("btn-up"), (v) => { holdUp = v; });
   hold($("btn-down"), (v) => { holdDown = v; });
   $("prompt").addEventListener("click", interact);
-  $("tour").addEventListener("click", () => (tour ? endTour("You take it from here.") : startTour()));
+  TOUR_LABEL = $("tour").textContent;
+  if (!TOURS.length) $("tour").hidden = true;
+  $("tour").addEventListener("click", tourButton);
   $("mute").addEventListener("click", toggleMute);
   if (flowsReady()) { $("flows").hidden = false; $("flows").addEventListener("click", toggleFlows); }
   $("mute").setAttribute("aria-pressed", String(sound.muted));
   panels = setupPanels({
     open(name) {
       if (name === "map") openMap();
-      if (name === "money" && !moneyDone) {
-        moneyDone = true;
-        const body = $("money-body");
+      const mod = SITE.renderers && SITE.renderers[name];
+      if (mod && (SITE.live || []).includes(name)) renderLive(name);
+      else if (mod && !rendered.has(name)) {
+        // The site's own panel (Money, say): its module renders into #<name>-body the first time it opens.
+        rendered.add(name);
+        const body = $(`${name}-body`);
         body.textContent = "Working it out…";
-        (NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null))
-          .then((n) => renderMoney(body, n && n.version === 1 ? n : null));
+        Promise.all([
+          import(fromSite(mod)),
+          NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
+        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement }))
+          .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
       }
+      if (name === "tours") renderTours($("tours-body"), TOURS, (def) => { panels.close(); startTour(def); });
     },
   });
   $("map-canvas").addEventListener("click", (e) => {
@@ -1534,7 +1690,8 @@ function setupUI() {
  */
 function setupIterations() {
   const ITERATION = params.get("iteration");
-  fetch("/archive/index.json").then((r) => (r.ok ? r.json() : null)).then((idx) => {
+  if (!SITE.archive) return;
+  fetch(fromSite(SITE.archive)).then((r) => (r.ok ? r.json() : null)).then((idx) => {
     const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
     if (!its.length || HERO) return;
     renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null);
@@ -1564,6 +1721,7 @@ function openMap() {
     if (box.isEmpty()) box.copy(site.bounds);
     box.expandByVector(new THREE.Vector3(15, 0, 15));
     plan = renderPlan(renderer, scene, box, COARSE ? 640 : 900);
+    drawOverlays(plan, site.overlays || []);
     const cv = $("map-canvas");
     cv.width = plan.image.width; cv.height = plan.image.height;
   }
@@ -1580,6 +1738,56 @@ function drawMap() {
   ctx.fillStyle = "#ffd27a"; ctx.strokeStyle = "#2a2116"; ctx.lineWidth = 2 * s;
   ctx.beginPath(); ctx.arc(x, y, 5 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 }
+/**
+ * What a pipeline asks the map to draw over the plan (the model's `extras.streetSmarts.overlays`, glTF x/z):
+ * lines round areas, dots and numbered labels, baked into the plan's image once, at map scale, with a legend
+ * from their labels in #map-legend.
+ */
+function drawOverlays(plan, overlays) {
+  if (!overlays.length) return;
+  // Sizes are in the pixels you see: the image is drawn about 380 px wide in the panel.
+  const g = plan.image.getContext("2d"), W = plan.image.width, H = plan.image.height, s = W / 380;
+  const at = ([x, z]) => { const [u, v] = plan.toMap(x, z); return [u * W, v * H]; };
+  for (const o of overlays) {
+    g.save();
+    if (o.rings) {
+      g.strokeStyle = o.color; g.lineWidth = (o.width || 2) * s; g.lineJoin = "round";
+      g.setLineDash((o.dash || []).map((d) => d * s));
+      g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = 2 * s;
+      for (const ring of o.rings) {
+        g.beginPath();
+        ring.forEach((p, i) => { const [x, y] = at(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+        g.closePath(); g.stroke();
+      }
+    }
+    if (o.points) {
+      g.fillStyle = o.color;
+      for (const p of o.points) { const [x, y] = at(p); g.beginPath(); g.arc(x, y, (o.radius || 2) * s, 0, Math.PI * 2); g.fill(); }
+    }
+    if (o.labels) {
+      g.font = `700 ${Math.round(11 * s)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      for (const l of o.labels) {
+        const [x, y] = at(l.at);
+        g.fillStyle = o.fill || "#fff"; g.strokeStyle = o.color; g.lineWidth = 1.5 * s;
+        g.beginPath(); g.arc(x, y, 8 * s, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.fillStyle = o.color; g.fillText(l.text, x, y + 0.5 * s);
+      }
+    }
+    g.restore();
+  }
+  const legend = $("map-legend");
+  if (legend) {
+    legend.innerHTML = "";
+    for (const o of overlays) {
+      const li = document.createElement("li"), sw = document.createElement("span");
+      sw.className = `sw ${o.rings ? "line" : o.labels ? "label" : "dot"}`;
+      sw.style.setProperty("--c", o.color);
+      if (o.dash) sw.classList.add("dash");
+      li.append(sw, document.createTextNode(o.label));
+      legend.append(li);
+    }
+  }
+}
 /** From the map: a blink, and you're there, on the ground or the roof below. */
 function flyTo(p) {
   const hit = castDown(p.x, site.bounds.max.y + 40, p.z, site.bounds.max.y + 120);
@@ -1595,7 +1803,7 @@ function flyTo(p) {
   }, 360);
 }
 /** The intro: once per browser (remembered if storage allows), and again from How to play. */
-const INTRO_KEY = "street-smarts-intro-seen";
+const INTRO_KEY = SITE.id === "eastside-commons" ? "street-smarts-intro-seen" : `street-smarts-intro-seen:${SITE.id}`; // each site's intro shows once
 function introSeen() { try { return localStorage.getItem(INTRO_KEY) === "1"; } catch { return false; } }
 function openIntro() {
   $("intro").hidden = false;
@@ -1606,7 +1814,7 @@ function closeIntro(tourToo) {
   $("intro").hidden = true;
   try { localStorage.setItem(INTRO_KEY, "1"); } catch { /* private window: it'll show again next time */ }
   lastInputT = t;
-  if (tourToo && !tour) startTour();
+  if (tourToo && !tour) tourButton();
   else { hintGone = false; $("hint").classList.remove("gone"); setTimeout(hideHint, 9000); }
 }
 function hideHint() {

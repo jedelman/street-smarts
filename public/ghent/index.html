@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>street-smarts — Ghent Streets, as a sparrow</title>
+<meta name="description" content="Ghent, in Norfolk, Virginia, with every ground floor the Ghent Streets proposal would open to a small shop, café or office, in the buildings that stand there now. Fly through it as a house sparrow.">
+<link rel="stylesheet" href="/sparrow/walk.css">
+<meta name="street-smarts-site" content="/sites/ghent-streets/site.json">
+</head>
+<body>
+
+<canvas id="c" aria-label="A 3D model of Ghent, in Norfolk, Virginia, that you can walk and fly through as a sparrow"></canvas>
+
+<div class="hud top-left">
+  <a href="https://jason-edelman.org/ghent-streets/" title="The campaign: the amendment, the briefs, the case studies">Ghent Streets &#8599;</a>
+  <span class="models" role="group" aria-label="Site">
+    <a href="/">Eastside Commons</a>
+    <a href="/ghent/" aria-current="page">Ghent</a>
+  </span>
+</div>
+<div id="iteration-note" hidden></div>
+
+<div class="hud top-right">
+  <button type="button" data-open="map" aria-pressed="false" title="The map: tap it to fly there">Map</button>
+  <button type="button" data-open="money" aria-pressed="false" title="What it would bring the city, and what it costs">Money</button>
+  <button type="button" data-open="corners" aria-pressed="false" title="The corner lots the campaign identified">Corners</button>
+  <button type="button" id="place-btn" data-open="place" hidden aria-pressed="false" title="The lot you last touched">Lot</button>
+  <button type="button" data-open="iterations" id="its-btn" hidden aria-pressed="false">Iterations</button>
+  <button type="button" id="met" data-open="patterns" hidden aria-pressed="false">Patterns <span id="met-count">0 / 0</span></button>
+  <button type="button" id="inside" hidden>Inside</button>
+  <button type="button" id="flows" hidden aria-pressed="false">Flows</button>
+  <button type="button" id="tour" aria-pressed="false">Show me around</button>
+  <button type="button" id="mute" aria-pressed="false" title="Sound (M)" aria-label="Sound">&#9834;</button>
+  <button type="button" id="help-btn" data-open="help" aria-pressed="false" aria-label="How to play">?</button>
+  <div id="flows-legend" hidden></div>
+</div>
+
+<div id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="intro-h">
+  <div class="box">
+    <h2 id="intro-h">You're a house sparrow</h2>
+    <p>This is Ghent, in Norfolk, Virginia: the Ghent Neighborhood League's area, built from the City's own maps. Every ground floor the Ghent Streets proposal would open to a small shop, café or office is open here, in the building that stands there today, behind the doors and windows it has now.</p>
+    <ul>
+      <li><b>Touch a building</b> and it tells you what it is, what its ground floor could hold, and why it may.</li>
+      <li><b>Corners</b> lists the corner lots the campaign identified; <b>Money</b> is what opening them could bring the city.</li>
+      <li><b>Show me around</b> visits six of the proposal's ground floors, as different from each other as they come.</li>
+      <li><b>Get close to people and eavesdrop:</b> they argue the proposal, in the words of the campaign's briefs and zines and the City's plan.</li>
+    </ul>
+    <p class="controls" id="intro-controls">WASD to hop, hold Space to fly, drag to look, <b>E</b> to touch.</p>
+    <div class="row">
+      <button type="button" class="go" id="intro-tour">Show me around</button>
+      <button type="button" id="intro-fly">Just fly</button>
+    </div>
+    <p class="fine">The lots, buildings, streets and trees are the City's. Data inferred where not provided: roof shapes, windows and doors, sidewalks, a few heights. The people and the businesses are ours; what the people say is quoted, with its source.</p>
+  </div>
+</div>
+<div id="hint"></div>
+<div id="log" aria-live="polite"></div>
+<div id="bubble" hidden><span id="bubble-text"></span></div>
+
+<button type="button" id="prompt" hidden><kbd>E</kbd><span id="prompt-text"></span></button>
+<div id="pad" aria-hidden="true">
+  <button type="button" id="btn-up" aria-label="Fly up">&#9650;</button>
+  <button type="button" id="btn-down" aria-label="Fly down">&#9660;</button>
+</div>
+
+<aside id="flyout" class="flyout" hidden aria-labelledby="flyout-title">
+  <header><h2 id="flyout-title"></h2><button type="button" id="flyout-close" aria-label="Close">&times;</button></header>
+  <div class="flyout-body">
+    <section data-panel="map" data-title="Ghent" hidden>
+      <div class="map-wrap"><canvas id="map-canvas" aria-label="Ghent from above; tap to fly there"></canvas></div>
+      <ul class="map-legend" id="map-legend"></ul>
+      <p class="small">Ghent from straight above, as the walk draws it. You're the gold dot; tap anywhere to fly there.</p>
+    </section>
+    <section data-panel="money" data-title="What it would bring the city" hidden><div id="money-body"></div></section>
+    <section data-panel="corners" data-title="Corners" hidden><div id="corners-body"></div></section>
+    <section data-panel="place" data-title="This lot" hidden><div id="place-body"></div></section>
+    <section data-panel="tours" data-title="Tours" hidden><div id="tours-body"></div></section>
+    <section data-panel="iterations" data-title="How it got here" hidden><div id="its-body"></div></section>
+    <section data-panel="patterns" data-title="Patterns" hidden><ul id="met-list"></ul></section>
+    <section data-panel="help" data-title="You're a house sparrow" hidden>
+      <p><b>Desktop:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to hop, <kbd>Shift</kbd> to hurry. <kbd>Space</kbd> hops; hold it to fly, and keep holding to climb. <kbd>C</kbd> to come down. <kbd>E</kbd> touches what's in reach; <kbd>T</kbd> starts the tour.</p>
+      <p><b>Phone:</b> tap to go there, drag to look, pinch to zoom. Hold &#9650; to fly, &#9660; to come down.</p>
+      <p><b>What's here.</b> The proposal is Jason Edelman's maximal reading of Ghent Streets' amendment: every parcel in the League's area that NFK2050, Norfolk's comprehensive plan, would let hold retail (along arterial and collector streets in its Sustain place type, p.&nbsp;69; on the medical campus, pp.&nbsp;80&ndash;81; in the Regional Activity Center, p.&nbsp;82), plus HC-G2's corner lots, plus every lot on Graydon Avenue and Blow Street. Where there's a building to adapt, its ground floor holds one of the uses the amendment would permit by right, at most 3,500 sq ft, in Policy Brief No.&nbsp;2's mix: half cafés and restaurants, three tenths shops, a fifth services.</p>
+      <p><b>Doors and windows stay where they are.</b> This is adaptive reuse: the buildings are adapted, not remodelled. A house keeps its door and windows, and the new use shows through them, with a sign over the door, awnings, and tables in the yard. Only a building that's already commercial gets a storefront.</p>
+      <p><b>What's whose.</b> The City of Norfolk's open data: the League's boundary, zoning, parcels, building footprints and heights, street centerlines and their class, addresses, assessments, the tree inventory, and the assessor's photos. NFK2050's place types are the City's own map (its ArcGIS layer is titled DRAFT). Data inferred where not provided: roof shapes (a hip or gable on houses that nearly fill a rectangle, flat otherwise), windows and doors (laid out in bays), sidewalks, tree heights and crowns (from trunk diameters), and the few heights the City's data lacks. Ours: which business is where within the brief's mix, their signs and what they put out, and the people. What the people say is quoted word for word from Policy Brief No.&nbsp;1 (its objections and responses, &sect;IX), the zines, and NFK2050 as the brief quotes it; the log shows each line's source. Places of worship, the public-safety building and the sanitation district's facility are left as they are.</p>
+      <p><button type="button" id="intro-again" class="linklike">See the intro again</button></p>
+      <p>Add <code>?stats</code> to the address to see the frame rate.</p>
+    </section>
+  </div>
+</aside>
+
+<div id="loading"><div class="bird" aria-hidden="true">&#x1F426;</div><p id="loading-msg">Laying the streets&hellip;</p></div>
+<div id="fade"></div>
+<div id="stats" hidden></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.185.1/build/three.module.min.js",
+    "three/addons/": "https://unpkg.com/three@0.185.1/examples/jsm/",
+    "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.9.18/build/index.module.js"
+  }
+}
+</script>
+<script type="module" src="/sparrow/main.js"></script>
+</body>
+</html>
