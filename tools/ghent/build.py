@@ -566,6 +566,25 @@ def main(check=False):
     table["site"] = {"id": "ghent-streets", "pipeline": "adaptive reuse (tools/ghent)", "inferred": [
         "building heights where the City's field is missing", "roof shapes", "windows and doors", "sidewalks", "tree sizes"]}
 
+    # What the map draws over the plan, at map scale (a line 0.8 m wide on the ground is lost at 1.7 m a pixel):
+    # glTF x/z, so the walk needs no conversion.
+    ring_xz = lambda q: [[round(x, 1), round(-y, 1)] for x, y in list(q.exterior.simplify(1.0).coords)]
+    main_of = {g: r["building"] for g, r in plan.items() if r.get("status") == "converted" and r.get("building") is not None}
+    dots = []
+    for g, bi in main_of.items():
+        q = all_polys[bi] if not all_polys[bi].is_empty else Polygon(S["buildings"][bi]["poly"])
+        c = q.representative_point()
+        dots.append([round(c.x, 1), round(-c.y, 1)])
+    table["overlays"] = [
+        {"id": "converted", "label": f"Ground floors that open ({len(dots)})", "color": "#ff8a4c", "radius": 2.4, "points": dots},
+        {"id": "hcg2", "label": "HC-G2, the district the amendment covers", "color": "#f2c14e", "width": 2.2,
+         "rings": [ring_xz(q) for q in polys(hcg2)]},
+        {"id": "league", "label": "The Ghent Neighborhood League's area", "color": "#ffffff", "width": 1.6, "dash": [5, 4],
+         "rings": [ring_xz(q) for q in polys(league)]},
+        {"id": "tour", "label": "The tour's stops", "color": "#2a2116", "fill": "#fbf6ec",
+         "labels": [{"at": [round(w["look"][0], 1), round(-w["look"][1], 1)], "text": str(k + 1)} for k, w in enumerate(PR["waypoints"])]},
+    ]
+
     # The tour's waypoints, as glTF camera nodes: where to stand (a sparrow's eye, 2.2 m up) and what to look at.
     gltf["cameras"] = [{"type": "perspective", "perspective": {"yfov": CAMERA_YFOV, "znear": 0.1, "zfar": 3000}}]
     for w in PR["waypoints"]:

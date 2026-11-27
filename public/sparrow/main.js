@@ -254,19 +254,33 @@ function deepLinked() {
     .sort((a, b) => (b.area || 0) - (a.area || 0))[0] || site.elements.find((e) => e.source === src && e.center);
   if (!el) return null;
   const shop = frontages && frontages.shops.find((sh) => sh.building === src);
-  return { el, door: shop ? shop.door : null };
+  if (!shop) return { el, door: null, out: null };
+  // The front wall's own outward normal (the detail table's nx, nz).
+  const W = site.detail && site.detail.walls, o = shop.wall * 9;
+  const out = W ? new THREE.Vector3(W[o + 4], 0, W[o + 5]) : new THREE.Vector3(shop.door.x - el.center.x, 0, shop.door.z - el.center.z).normalize();
+  return { el, door: shop.door, out };
 }
 function spawn() {
   const els = site.elements;
   const center = site.bounds.getCenter(new THREE.Vector3());
   const link = deepLinked();
   if (link) {
-    const { el, door } = link;
-    if (door) placeBird(door);
-    else { bird.pos.copy(center); placeBird(approachOf(el)); }
-    bird.heading = Math.atan2(el.center.x - bird.pos.x, el.center.z - bird.pos.z);
+    const { el, door, out } = link;
+    if (door) {
+      // Back across the sidewalk from the door, square to the front, so it fills the view; at the door if that's
+      // under a roof.
+      const back = door.clone().addScaledVector(out, 4.5);
+      const hit = castDownModel(back.x, site.bounds.max.y + 20, back.z, site.bounds.max.y + 60);
+      const under = hit && site.elementOfHit(hit);
+      placeBird(under && under.group === "buildings" ? door : back);
+      bird.heading = Math.atan2(-out.x, -out.z);
+    } else {
+      bird.pos.copy(center);
+      placeBird(approachOf(el));
+      bird.heading = Math.atan2(el.center.x - bird.pos.x, el.center.z - bird.pos.z);
+    }
     director.snapBehind();
-    setTimeout(() => touch(el), 1600);
+    setTimeout(() => touch(el, { look: false }), 1600);
     return;
   }
   const wp = SITE.spawn && SITE.spawn.waypoint && site.waypoints && site.waypoints.get(SITE.spawn.waypoint);
@@ -798,7 +812,9 @@ function showPrompt() {
 
 // ---------------------------------------------------------------- touching things
 let flare = 0, flareEl = null;
-function touch(el) {
+/** Touch an element: its words in the log, a chirp, and the camera turned to it unless `look` is false (a
+ * waypoint or a link has already framed the view it wants). */
+function touch(el, { look = true } = {}) {
   if (!el) { sparrow.chirp(); sound.chirp(); return; } // nothing in reach: a chirp anyway
   if (el.kind === "bench") { hopOnto(el.bench); return; }
   if (el.kind === "person") { eavesdrop(el.person); return; }
@@ -842,7 +858,7 @@ function touch(el) {
   } else {
     sparrow.chirp(); sound.chirp();
   }
-  if (el.center) director.lookAt(el);
+  if (el.center && look) director.lookAt(el);
 }
 function interact() { touch(focus); }
 
@@ -1059,7 +1075,7 @@ function nextStop() {
     const w = s.waypoint;
     goal = { point: w.stand.clone(), el: w.el || null, stopDist: 0.8, land: true, arrived: () => {
       bird.heading = Math.atan2(w.look.x - bird.pos.x, w.look.z - bird.pos.z);
-      if (w.el) touch(w.el); else if (w.title) logLine(w.title, "note");
+      if (w.el) touch(w.el, { look: false }); else if (w.title) logLine(w.title, "note");
       if (s.note) logLine(s.note, "note");
       tour.waitUntil = t + (w.wait || 4.5);
     } };
@@ -1700,6 +1716,7 @@ function openMap() {
     if (box.isEmpty()) box.copy(site.bounds);
     box.expandByVector(new THREE.Vector3(15, 0, 15));
     plan = renderPlan(renderer, scene, box, COARSE ? 640 : 900);
+    drawOverlays(plan, site.overlays || []);
     const cv = $("map-canvas");
     cv.width = plan.image.width; cv.height = plan.image.height;
   }
@@ -1715,6 +1732,56 @@ function drawMap() {
   ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, 26 * s, Math.PI / 2 - look - 0.5, Math.PI / 2 - look + 0.5); ctx.closePath(); ctx.fill();
   ctx.fillStyle = "#ffd27a"; ctx.strokeStyle = "#2a2116"; ctx.lineWidth = 2 * s;
   ctx.beginPath(); ctx.arc(x, y, 5 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+/**
+ * What a pipeline asks the map to draw over the plan (the model's `extras.streetSmarts.overlays`, glTF x/z):
+ * lines round areas, dots and numbered labels, baked into the plan's image once, at map scale, with a legend
+ * from their labels in #map-legend.
+ */
+function drawOverlays(plan, overlays) {
+  if (!overlays.length) return;
+  // Sizes are in the pixels you see: the image is drawn about 380 px wide in the panel.
+  const g = plan.image.getContext("2d"), W = plan.image.width, H = plan.image.height, s = W / 380;
+  const at = ([x, z]) => { const [u, v] = plan.toMap(x, z); return [u * W, v * H]; };
+  for (const o of overlays) {
+    g.save();
+    if (o.rings) {
+      g.strokeStyle = o.color; g.lineWidth = (o.width || 2) * s; g.lineJoin = "round";
+      g.setLineDash((o.dash || []).map((d) => d * s));
+      g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = 2 * s;
+      for (const ring of o.rings) {
+        g.beginPath();
+        ring.forEach((p, i) => { const [x, y] = at(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+        g.closePath(); g.stroke();
+      }
+    }
+    if (o.points) {
+      g.fillStyle = o.color;
+      for (const p of o.points) { const [x, y] = at(p); g.beginPath(); g.arc(x, y, (o.radius || 2) * s, 0, Math.PI * 2); g.fill(); }
+    }
+    if (o.labels) {
+      g.font = `700 ${Math.round(11 * s)}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      for (const l of o.labels) {
+        const [x, y] = at(l.at);
+        g.fillStyle = o.fill || "#fff"; g.strokeStyle = o.color; g.lineWidth = 1.5 * s;
+        g.beginPath(); g.arc(x, y, 8 * s, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.fillStyle = o.color; g.fillText(l.text, x, y + 0.5 * s);
+      }
+    }
+    g.restore();
+  }
+  const legend = $("map-legend");
+  if (legend) {
+    legend.innerHTML = "";
+    for (const o of overlays) {
+      const li = document.createElement("li"), sw = document.createElement("span");
+      sw.className = `sw ${o.rings ? "line" : o.labels ? "label" : "dot"}`;
+      sw.style.setProperty("--c", o.color);
+      if (o.dash) sw.classList.add("dash");
+      li.append(sw, document.createTextNode(o.label));
+      legend.append(li);
+    }
+  }
 }
 /** From the map: a blink, and you're there, on the ground or the roof below. */
 function flyTo(p) {

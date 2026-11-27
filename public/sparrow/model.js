@@ -40,7 +40,7 @@ export async function loadSite(url, onProgress) {
     const look = Array.isArray(x.look) ? new THREE.Vector3(...x.look) : eye.clone().add(o.getWorldDirection(new THREE.Vector3()).negate());
     waypoints.set(x.waypoint, { id: x.waypoint, eye, stand: new THREE.Vector3(eye.x, 0.2, eye.z), look, title: x.title || null, source: x.source || null });
   });
-  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [], facts: (table && table.facts) || null, waypoints };
+  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [], facts: (table && table.facts) || null, waypoints, overlays: (table && table.overlays) || [] };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }
