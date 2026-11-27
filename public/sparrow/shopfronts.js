@@ -417,7 +417,7 @@ function keepParts(t, v, P) {
     }
     case "Lettering": {
       // The name in gold leaf (or the business's own ink) low on the glass.
-      P("letters", W.x, W.y0 + (W.y1 - W.y0) * 0.3, 0.046, W.w - 0.1, 0.17, 1, "#ffffff", { tex: { atlas: "letters" }, cap: W.w - 0.1 });
+      P("letters", W.x, W.y0 + (W.y1 - W.y0) * 0.3, 0.046, W.w - 0.1, 0.17, 1, "#ffffff", { tex: { atlas: "letters" }, cap: W.w - 0.1, gold: true });
       break;
     }
     case "Spot": {

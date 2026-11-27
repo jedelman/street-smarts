@@ -14,6 +14,7 @@ import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
+import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
@@ -127,6 +128,7 @@ let present = [];
 
 // ---------------------------------------------------------------- boot
 (async function boot() {
+  const facesReady = loadSignFaces(); // the signs' faces load alongside the model
   try {
     const [s, v] = await Promise.all([
       loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
@@ -184,6 +186,7 @@ let present = [];
     return hit ? { y: hit.point.y, el: site.elementOfHit(hit) } : null;
   }, { coarse: COARSE });
   // Every window, and storefronts at the doors that open onto a street or square.
+  if (site.detail) await facesReady;
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
@@ -703,7 +706,7 @@ function indexTouchables() {
   }));
   // Shop fronts: look in (a P87 shop names its pattern).
   const shopEls = (frontages ? frontages.shops : []).map((s) => ({
-    group: "shops", kind: s.kit, p87: s.p87, source: s.building, facts: site.facts && s.building ? site.facts[s.building] || null : null,
+    group: "shops", kind: s.kit, name: s.name, p87: s.p87, source: s.building, facts: site.facts && s.building ? site.facts[s.building] || null : null,
     center: new THREE.Vector3(s.door.x, 1.2, s.door.z),
     box: new THREE.Box3(new THREE.Vector3(s.door.x - 1.2, 0, s.door.z - 1.2), new THREE.Vector3(s.door.x + 1.2, 2.6, s.door.z + 1.2)),
   }));
@@ -822,6 +825,7 @@ function touch(el, { look = true } = {}) {
   const lines = answerOf(el);
   logLine(lines[0], "what");
   for (const l of lines.slice(1)) logLine(l, "pattern");
+  if (el.group === "shops" && el.name) logLine(`On the sign: “${el.name}”. The name is ours.`, "note");
   if (el.facts && (el.facts.photo || el.facts.streetview || el.facts.case) && $("place-btn")) {
     // A place with a card (the assessor's photo, Street View, a case study): the Place panel shows it.
     lastPlace = el;

@@ -18,6 +18,7 @@
 // from anywhere, a sill or a café chair only up close).
 import * as THREE from "three";
 import { ALL_BUSINESSES, chooseBusiness, growFront, growKeep } from "./shopfronts.js";
+import { nameFor, faceFor, lettered, cssFont, packSigns } from "./signs.js";
 
 // ---------------------------------------------------------------- the businesses
 // Which business stands at each shop front, and how its front grows: the
@@ -83,20 +84,50 @@ function texture(c) {
   return t;
 }
 
-/** Sign lettering, one kit per row, ink on transparent; and each word's width over its height. */
-function lettersAtlas() {
-  const rowH = 128, [c, g] = canvas(1024, rowH * KITS.length);
-  const rects = [];
-  KITS.forEach((k, i) => {
-    g.font = k.font;
-    g.fillStyle = k.ink;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    const w = Math.min(1000, g.measureText(k.sign).width + 24);
-    g.fillText(k.sign, 512, i * rowH + rowH / 2 + 4, 1000);
-    rects.push({ uv: [(512 - w / 2) / 1024, 1 - ((i + 1) * rowH) / c.height, w / 1024, rowH / c.height], aspect: w / rowH });
+/**
+ * Every front's sign, lettered once: white glyphs on clear in a single-channel texture (signs.js packs them), so a
+ * sign's ink is its instance colour and some seven hundred names cost a quarter of what RGBA would.
+ * `signs`: [{ key, text, face }]. Returns { texture, rects: Map(key -> [u, v, w, h]) }.
+ */
+function signsAtlas(signs) {
+  const [m, mg] = canvas(8, 8);
+  const measure = (text, font) => { mg.font = font; return mg.measureText(text).width; };
+  const packed = packSigns(signs, measure);
+  const [c, g] = canvas(packed.width, packed.height);
+  g.fillStyle = "#ffffff";
+  g.textBaseline = "middle";
+  g.textAlign = "left";
+  const rects = new Map();
+  packed.rows.forEach((r, i) => {
+    const sgn = signs[i];
+    g.font = cssFont(sgn.face, packed.px);
+    g.fillText(lettered(sgn.text, sgn.face), r.x + packed.px * 0.2, r.y + r.h / 2 + 1);
+    // Rows are written top-down and a DataTexture isn't flipped: the quad's top (v = 1) reads the row's top.
+    rects.set(r.key, [r.x / packed.width, (r.y + r.h) / packed.height, r.w / packed.width, -r.h / packed.height]);
   });
-  return { map: texture(c), rects };
+  const rgba = g.getImageData(0, 0, packed.width, packed.height).data;
+  const alpha = new Uint8Array(packed.width * packed.height);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3];
+  const texture = new THREE.DataTexture(alpha, packed.width, packed.height, THREE.RedFormat, THREE.UnsignedByteType);
+  texture.unpackAlignment = 1;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
+  return { texture, rects };
+}
+
+/** Sign letters: the atlas's red channel is their coverage; their colour is each instance's ink. */
+function lettersMaterial(texture) {
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff, map: texture, transparent: true, alphaTest: 0.35, depthWrite: false });
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec4 aUvRect;")
+      .replace("#include <uv_vertex>", "#include <uv_vertex>\nvMapUv = vMapUv * aUvRect.zw + aUvRect.xy;");
+    shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", "diffuseColor.a *= texture2D( map, vMapUv ).r;");
+  };
+  return m;
 }
 
 /** Awning canvas: a kit's two stripes, or its paint for kits without. */
@@ -400,7 +431,7 @@ class Parts {
  */
 export function buildFrontages(scene, detail, { coarse = false, uses = null } = {}) {
   const paintOf = (k) => k.paints[0];
-  const letters = lettersAtlas(), stripes = stripesAtlas(paintOf), insides = insidesAtlas(), icons = iconsAtlas();
+  const stripes = stripesAtlas(paintOf), insides = insidesAtlas(), icons = iconsAtlas();
   const lambert = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const parts = new Parts({
     windows: { geometry: QUAD, material: framedMaterial(), reach: REACH.windows },
@@ -410,7 +441,7 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     mid: { geometry: BOX, material: lambert, reach: REACH.mid },
     detail: { geometry: BOX, material: lambert, reach: REACH.detail },
     near: { geometry: BOX, material: lambert, reach: REACH.near },
-    letters: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: letters.map, transparent: true, alphaTest: 0.35, depthWrite: false }), uv: true, reach: REACH.letters, order: 1 },
+    letters: { geometry: QUAD, material: null, uv: true, reach: REACH.letters, order: 1 }, // set once the signs are lettered
     icons: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: icons.map, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide }), uv: true, reach: REACH.icons },
   });
 
@@ -501,6 +532,13 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
 
   // ---- the shop fronts (after the explorer's buildRun)
   const shops = [];
+  // Each front's sign: its own name and face, from a stream of its own (so the front's shape is what it was), measured
+  // now and lettered once every sign is known.
+  const signs = new Map(), pendingLetters = [], usedNames = new Set();
+  const [mc, mg] = canvas(8, 8);
+  const REF_PX = 44;
+  const aspectOf = (sgn) => { mg.font = cssFont(sgn.face, REF_PX); return (mg.measureText(lettered(sgn.text, sgn.face)).width + REF_PX * 0.4) / Math.round(REF_PX * 1.32); };
+  const GOLD = "#d9b45f";
   const lastBiz = new Map();
   for (const sh of [...shopsByWall.values()].flat()) {
     const { row } = sh;
@@ -515,6 +553,14 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     const bi = KITS.indexOf(biz);
     const L = hi - lo, at = doorAt - lo;
     const X = (x) => lo + x; // positions along the run (0..L) map to the wall's own `along`
+    const srng = rngFor(`${id}:sign`);
+    // A name nobody else on the site has: individually owned shops, not a chain (redrawn, in a fixed order, so it holds).
+    let text = nameFor(biz, srng);
+    for (let k = 0; k < 12 && usedNames.has(text); k++) text = nameFor(biz, srng);
+    usedNames.add(text);
+    const sign = { key: id, text, face: faceFor(biz, srng) };
+    signs.set(id, sign);
+    const aspect = aspectOf(sign);
     const grown = sh.keep
       ? growKeep({ biz, L, door: sh.door || { x: at, top: 2.6 }, windows: sh.windows, rng, flip: w.flip })
       : growFront({ biz, L, at, doorWidth, rng, arcade: !!underArcade, flip: w.flip });
@@ -522,8 +568,8 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
       const color = typeof q.color === "number" ? col.setScalar(q.color) : q.color;
       const tex = q.tex;
       if (tex && tex.atlas === "letters") {
-        const lr = letters.rects[bi], lw = Math.min(q.cap || L - 0.6, q.sy * lr.aspect);
-        add("letters", w, X(q.x), q.y, q.out, lw, lw / lr.aspect, 1, "#ffffff", lr.uv);
+        const lw = Math.min(q.cap || L - 0.6, q.sy * aspect);
+        pendingLetters.push({ w, along: X(q.x), y: q.y, out: q.out, lw, lh: lw / aspect, color: q.gold ? GOLD : biz.ink, key: id });
         continue;
       }
       const rect = !tex ? undefined : tex.atlas === "insides" ? insides.rects[tex.name] : tex.atlas === "icons" ? icons.rects[tex.name] : stripes.rect(bi);
@@ -531,7 +577,16 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     }
     const kit = biz;
     const front = new THREE.Vector3().copy(w.A).addScaledVector(w.u, X(at)).addScaledVector(w.n, 1.6);
-    shops.push({ kit: kit.id, door: front, wall: wi, p87: p87 === 1, building: row[10] || detail.strings[w.building] || null, typology: sh.typology });
+    shops.push({ kit: kit.id, name: sign.text, door: front, wall: wi, p87: p87 === 1, building: row[10] || detail.strings[w.building] || null, typology: sh.typology });
+  }
+  // Letter every sign, then hang each one.
+  if (signs.size) {
+    const atlas = signsAtlas([...signs.values()]);
+    parts.kinds.letters.material = lettersMaterial(atlas.texture);
+    for (const l of pendingLetters) add("letters", l.w, l.along, l.y, l.out, l.lw, l.lh, 1, l.color, atlas.rects.get(l.key));
+  } else {
+    delete parts.kinds.letters;
+    delete parts.items.letters;
   }
 
   const meshes = parts.build(scene);
