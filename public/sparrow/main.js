@@ -182,7 +182,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -419,6 +419,7 @@ function surveyRoute(g) {
 
 function steerToGoal() {
   const g = goal;
+  if (g.follow != null && people) g.point.copy(people.people[g.follow].pos); // a person walks on
   _tmp.subVectors(g.point, bird.pos);
   const horiz = Math.hypot(_tmp.x, _tmp.z);
   const reached = horiz < g.stopDist && (bird.air ? Math.abs(_tmp.y) < 1.2 : Math.abs(_tmp.y) < 0.6);
@@ -713,6 +714,14 @@ function reachScan() {
   let next = found[0] ? found[0].el : null;
   if (cur && found[0] && cur.score < found[0].score + 0.35) next = focus;
   if (next !== focus) { focus = next; showPrompt(); }
+  // Tapped something? Touch it the moment it's in reach, without waiting to get all the way there.
+  if (goal && goal.autoTouch && found.some((f) => f.el === goal.el)) {
+    const el = goal.el;
+    goal = null;
+    if (bird.air) holdDownFor = 1.2;
+    if (focus !== el) { focus = el; showPrompt(); }
+    touch(el);
+  }
   const spots = [];
   for (const f of found.slice(0, 8)) {
     const a = anchorOf(f.el, new THREE.Vector3());
@@ -855,6 +864,20 @@ function tapAt(x, y) {
   raycaster.setFromCamera(ndc, camera);
   _ray.copy(raycaster.ray);
   const hit = firstHit(2500);
+  // A person under the tap (people aren't in the model's collider): go to them and eavesdrop.
+  // A tap squarely on something to touch (a sculpture, a shop) wants that, unless it's right on someone.
+  const OPEN = /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|marsh|pond|stream|boardwalk)(_grass)?$/;
+  const onThing = !!(hit && hit.el && !OPEN.test(hit.el.kind || ""));
+  const who = pickPerson(x, y, hit ? hit.distance : Infinity, onThing ? 14 : null);
+  if (who >= 0) {
+    if (tour) endTour("You take it from here.");
+    lastInputT = t;
+    const el = personEl(who);
+    if (focus === el) { touch(el); return; }
+    goal = { point: people.people[who].pos.clone(), el, follow: who, stopDist: 1.4, land: true, autoTouch: true, arrived: () => touch(personEl(who)) };
+    pingAt(goal.point);
+    return;
+  }
   let point, el = null;
   if (hit) { point = hit.point.clone(); el = hit.el; }
   else {
@@ -881,9 +904,29 @@ function tapAt(x, y) {
     point, el: target,
     stopDist: isOpen ? 0.25 : 1.0,
     land: true,
+    autoTouch: !isOpen && !!target,
     arrived: () => { if (!isOpen) touch(target); },
   };
   pingAt(point);
+}
+/** The person whose head is nearest a tap on screen (within a fingertip), nearer than `wall`; -1 if none. */
+const _headScreen = new THREE.Vector3();
+function pickPerson(x, y, wall, tight = null) {
+  if (!people) return -1;
+  const slop = tight || (COARSE ? 46 : 30);
+  let best = -1, bestD = slop;
+  for (let i = 0; i < people.people.length; i++) {
+    people.headOf(i, _headScreen);
+    const dist = camera.position.distanceTo(_headScreen);
+    if (dist > 140 || dist > wall + 1) continue;
+    _headScreen.y -= 0.5; // aim at the chest: a tap anywhere on someone counts
+    _headScreen.project(camera);
+    if (_headScreen.z > 1) continue;
+    const sx = (_headScreen.x + 1) / 2 * innerWidth, sy = (1 - _headScreen.y) / 2 * innerHeight;
+    const d = Math.hypot(sx - x, sy - y);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
 }
 const ping = { mesh: null, t: -10 };
 function pingAt(p) {
