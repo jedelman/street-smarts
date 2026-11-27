@@ -120,7 +120,7 @@
    "element": "parcel:1428626146",
    "label": "1115 Colley Avenue",
    "street": "Colley Avenue",
-   "note": "opens as a design studio"
+   "note": "opens as an architects' studio"
   },
   {
    "element": "parcel:1428705160",
@@ -168,7 +168,7 @@
    "element": "parcel:1428719163",
    "label": "1017 Colonial Avenue",
    "street": "Colonial Avenue",
-   "note": "opens as a hairdresser's"
+   "note": "opens as a barbershop"
   },
   {
    "element": "parcel:1428810352",
@@ -186,7 +186,7 @@
    "element": "parcel:1428718485",
    "label": "520 Graydon Avenue",
    "street": "Graydon Avenue",
-   "note": "opens as a hairdresser's"
+   "note": "a place of worship, left as it is"
   },
   {
    "element": "parcel:1428717473",
@@ -216,7 +216,7 @@
    "element": "parcel:1428712770",
    "label": "638 Graydon Avenue",
    "street": "Graydon Avenue",
-   "note": "opens as an architects' studio"
+   "note": "opens as an accountant's office"
   },
   {
    "element": "parcel:1428711591",
@@ -282,13 +282,13 @@
    "element": "parcel:1428706407",
    "label": "530 Raleigh Avenue",
    "street": "Raleigh Avenue",
-   "note": "opens as a bistro"
+   "note": "a place of worship, left as it is"
   },
   {
    "element": "parcel:1428703387",
    "label": "531 Raleigh Avenue",
    "street": "Raleigh Avenue",
-   "note": "opens as a coffee shop"
+   "note": "a place of worship, left as it is"
   },
   {
    "element": "parcel:1428702791",
@@ -306,7 +306,7 @@
    "element": "parcel:1428608814",
    "label": "624 Raleigh Avenue",
    "street": "Raleigh Avenue",
-   "note": "opens as a hairdresser's"
+   "note": "opens as a barbershop"
   },
   {
    "element": "parcel:1428607713",
@@ -366,7 +366,7 @@
    "element": "parcel:1428609925",
    "label": "641 Redgate Avenue",
    "street": "Redgate Avenue",
-   "note": "opens as an accountant's office"
+   "note": "opens as a dry cleaner's"
   },
   {
    "element": "parcel:1428618129",
@@ -408,13 +408,13 @@
    "element": "parcel:1428609450",
    "label": "701 Stockley Gardens",
    "street": "Stockley Gardens",
-   "note": "opens as a tailor's"
+   "note": "opens as an art gallery"
   },
   {
    "element": "parcel:1428701712",
    "label": "801 Stockley Gardens",
    "street": "Stockley Gardens",
-   "note": "opens as an accountant's office"
+   "note": "opens as a dry cleaner's"
   },
   {
    "element": "parcel:1428704770",
@@ -474,7 +474,7 @@
    "element": "parcel:1428713919",
    "label": "700 W Princess Anne Road",
    "street": "W Princess Anne Road",
-   "note": "opens as an accountant's office"
+   "note": "opens as a tailor's"
   },
   {
    "element": "parcel:1428712833",
@@ -510,7 +510,7 @@
    "element": "parcel:1428710225",
    "label": "631 Westover Avenue",
    "street": "Westover Avenue",
-   "note": "opens as an accountant's office"
+   "note": "opens as a tailor's"
   },
   {
    "element": "parcel:1428710456",
@@ -545,5 +545,6 @@
  ],
  "spawn": {
   "waypoint": "tour-1428706223"
- }
+ },
+ "chorus": "chorus.json"
 }

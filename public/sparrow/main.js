@@ -875,13 +875,14 @@ function eavesdrop(i) {
   const near = new Set();
   for (const e of site.elements) if (e.source && e.center && Math.abs(e.center.x - p.pos.x) < 45 && Math.abs(e.center.z - p.pos.z) < 45) near.add(e.source);
   const speakers = [i, ...people.groupOf(i).slice(0, 2)];
-  const say = (who, against) => {
-    const op = pickOpinion(chorus, { near, heard, against });
+  // An opinion that names its answer (a chorus of objections and replies) is answered by it.
+  const say = (who, against, want = null) => {
+    const op = (want && chorus.opinions.find((o) => o.name === want)) || pickOpinion(chorus, { near, heard, against });
     heard.add(op.name);
-    return { who, ...lineFor(op, { after: against }) };
+    return { who, op, ...lineFor(op, { after: against, voice: chorus.voice }) };
   };
   const lines = [say(i, null)];
-  if (speakers[1] != null) lines.push(say(speakers[1], lines[0].mood));
+  if (speakers[1] != null) lines.push(say(speakers[1], lines[0].mood, lines[0].op.answer));
   if (speakers[2] != null) {
     const q = Math.random() < 0.4 ? questionLine(chorus) : null;
     lines.push(q ? { who: speakers[2], ...q } : say(speakers[2], lines[1].mood));

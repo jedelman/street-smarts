@@ -113,21 +113,25 @@ export function pickOpinion(chorus, { near = new Set(), heard = new Set(), again
  * speech, cite }: `said` is what the person says (the plain line, or the
  * opinion's own words when it has none), `finding` the opinion's own words.
  */
-export function lineFor(op, { rng = Math.random, after = null } = {}) {
+export function lineFor(op, { rng = Math.random, after = null, voice = null } = {}) {
   const mood = moodOf(op.value);
+  // A chorus can bring its own openers and replies (`voice`); a line that is itself a question takes none.
+  const openers = (voice && voice.openers) || OPENERS, replies = (voice && voice.replies) || REPLIES;
   let opener;
-  if (after) {
-    if (mood === "shrug") opener = pick(rng, REPLIES.shrug);
-    else opener = pick(rng, mood === after ? REPLIES.agree : REPLIES.differ);
-  } else opener = pick(rng, OPENERS[mood]);
-  const finding = tidy(op.says);
+  if (op.opener === "") opener = "";
+  else if (after) {
+    if (mood === "shrug") opener = pick(rng, replies.shrug || REPLIES.shrug);
+    else opener = pick(rng, (mood === after ? replies.agree : replies.differ) || REPLIES.agree);
+  } else opener = pick(rng, openers[mood] || OPENERS[mood]);
+  const finding = tidy(op.says, op.max || 170);
   const plainLine = plainFor(op);
-  const said = plainLine || finding;
+  // A quotation said as one: "The city's own plan says to "Preserve local businesses…"".
+  const said = plainLine || (op.lead ? `${op.lead} “${finding.replace(/[.]$/, "")}.”` : finding);
   // "Sure, but" runs straight on into the line: "Sure, but the rooms are...".
-  const runOn = opener && !/[.?!]$/.test(opener) && !/^(I\b|I'|Alexander|Salingaros)/.test(said);
-  const text = `${opener} ${runOn ? said[0].toLowerCase() + said.slice(1) : said}`;
+  const runOn = opener && !/[.?!:]$/.test(opener) && !/^(I\b|I'|Alexander|Salingaros|HC-|NFK|Colley|Granby)/.test(said);
+  const text = opener ? `${opener} ${runOn ? said[0].toLowerCase() + said.slice(1) : said}` : said;
   const score = op.value == null ? "no view" : op.value.toFixed(2);
-  return { mood, opener, said, finding, plain: !!plainLine, text, speech: forSpeech(text), cite: `${shortName(op)} · ${score}` };
+  return { mood, opener, said, finding, plain: !!plainLine, text, speech: forSpeech(text), cite: op.cite || `${shortName(op)} · ${score}` };
 }
 
 /** The chorus's own question for the humans in it, said by a bystander. */
@@ -137,7 +141,7 @@ export function questionLine(chorus, rng = Math.random) {
   const q = pick(rng, qs);
   const plain = plainQuestion(q.question);
   const said = plain || q.question;
-  return { mood: "question", opener: "", said, finding: q.question, plain: !!plain, text: said, speech: forSpeech(said), cite: "The chorus's question for humans" };
+  return { mood: "question", opener: "", said, finding: q.question, plain: !!plain, text: said, speech: forSpeech(said), cite: q.source || "The chorus's question for humans" };
 }
 
 /**

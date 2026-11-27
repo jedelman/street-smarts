@@ -17,12 +17,12 @@
 // each kind of part is drawn only within its own distance (a window's glass
 // from anywhere, a sill or a café chair only up close).
 import * as THREE from "three";
-import { BUSINESSES, chooseBusiness, growFront, growKeep } from "./shopfronts.js";
+import { ALL_BUSINESSES, chooseBusiness, growFront, growKeep } from "./shopfronts.js";
 
 // ---------------------------------------------------------------- the businesses
 // Which business stands at each shop front, and how its front grows: the
 // L-system in shopfronts.js. KITS is kept as a name for the list.
-export const KITS = BUSINESSES;
+export const KITS = ALL_BUSINESSES;
 
 const G = 3.5; // the ground floor's height (render.py FLOOR_TO_FLOOR_M)
 const ST = G - 0.62; // top of the storefront, under the sign band
@@ -111,7 +111,7 @@ function stripesAtlas(paintOf) {
 
 /** What you see through a shop's glass, one tile per kind of interior (after the explorer's windowTexture). */
 const INSIDES = ["counter", "shelves", "lamps", "desks", "bread", "produce", "flowers", "tools", "records", "racks", "rooms",
-  "bottles", "bikes", "office", "models", "school", "salon"];
+  "bottles", "bikes", "office", "models", "school", "salon", "dental", "gallery", "yoga", "barber", "cleaners"];
 function insidesAtlas() {
   const tw = 256, th = 128, cols = 4, rows = Math.ceil(INSIDES.length / cols);
   const [c, g] = canvas(tw * cols, th * rows);
@@ -129,7 +129,8 @@ function insidesAtlas() {
     g.translate(x0, y0);
     const bg = { counter: "#f3d6a6", shelves: "#f1d29a", lamps: "#e8b67c", desks: "#e9eef3", bread: "#f4dcae", produce: "#efe2b8",
       flowers: "#f3e3d3", tools: "#e6dcc6", records: "#e4c89a", racks: "#ece3d3", rooms: "#e9cf9e",
-      bottles: "#d9b483", bikes: "#e6e2d8", office: "#eef1f2", models: "#f6f5f1", school: "#fbf3d9", salon: "#f1e6e0" }[kind];
+      bottles: "#d9b483", bikes: "#e6e2d8", office: "#eef1f2", models: "#f6f5f1", school: "#fbf3d9", salon: "#f1e6e0",
+      dental: "#e3f1f0", gallery: "#f7f5ef", yoga: "#efe2c8", barber: "#ece4d8", cleaners: "#eef0f2" }[kind];
     g.fillStyle = bg; g.fillRect(0, 0, tw, th);
     if (kind === "shelves" || kind === "records" || kind === "tools") {
       const colors = kind === "records" ? ["#1a1714", "#7a2430", "#d9b46a", "#2f4a3a", "#3d4f7a"]
@@ -206,6 +207,44 @@ function insidesAtlas() {
         g.fillStyle = "#1a1714"; g.fillRect(20 + k * 61, 80, 28, 22); g.fillRect(32 + k * 61, 102, 4, 18);
         lamp(34 + k * 61, 8);
       }
+    } else if (kind === "dental") { // a dentist's: the chair under its lamp, a cabinet, a framed certificate
+      g.fillStyle = "#2f5d62"; g.beginPath(); g.moveTo(60, 104); g.lineTo(150, 104); g.lineTo(190, 74); g.lineTo(176, 68); g.lineTo(144, 92); g.lineTo(70, 92); g.closePath(); g.fill();
+      g.fillStyle = "#9aa4ad"; g.fillRect(100, 104, 8, 18);
+      g.strokeStyle = "#5b6670"; g.lineWidth = 3; g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 26); g.lineTo(150, 40); g.stroke();
+      lamp(150, 44);
+      g.fillStyle = "#ffffff"; g.fillRect(200, 36, 46, 70); g.fillStyle = "#c9d6dc"; g.fillRect(204, 40, 38, 30);
+      g.fillStyle = "#b8913f"; g.fillRect(16, 18, 30, 22); g.fillStyle = "#fbf6ec"; g.fillRect(19, 21, 24, 16);
+    } else if (kind === "gallery") { // a gallery: white walls, three pictures under picture lights, a bench
+      const art = [["#c23f2a", "#2b4a7a"], ["#e0a030", "#1a1714"], ["#5a8a3a", "#f2c94a"]];
+      art.forEach(([a, b2], k) => {
+        const x = 18 + k * 80, w = 56 + (k % 2) * 8;
+        lamp(x + w / 2, 10);
+        g.fillStyle = "#1a1714"; g.fillRect(x - 3, 22, w + 6, 56);
+        g.fillStyle = a; g.fillRect(x, 25, w, 50);
+        g.fillStyle = b2; g.fillRect(x + 8 + k * 6, 34, w * 0.45, 26);
+      });
+      g.fillStyle = "#6b5a46"; g.fillRect(70, 104, 116, 8); g.fillRect(80, 112, 6, 14); g.fillRect(170, 112, 6, 14);
+    } else if (kind === "yoga") { // a yoga studio: a wooden floor, mats laid out, plants, soft light
+      g.fillStyle = "#c9a878"; g.fillRect(0, 64, tw, 64);
+      const mats = ["#6b8a5a", "#c96a5a", "#4a6b7a", "#d9b46a"];
+      mats.forEach((c, k) => { g.fillStyle = c; g.beginPath(); g.moveTo(20 + k * 58, 120); g.lineTo(58 + k * 58, 120); g.lineTo(52 + k * 56, 74); g.lineTo(28 + k * 56, 74); g.closePath(); g.fill(); });
+      g.fillStyle = "#3f6b35"; for (const x of [10, 238]) { g.beginPath(); g.arc(x, 44, 14, 0, Math.PI * 2); g.fill(); g.fillStyle = "#8a6b4a"; g.fillRect(x - 6, 54, 12, 12); g.fillStyle = "#3f6b35"; }
+      lamp(128, 16);
+    } else if (kind === "barber") { // a barbershop: chairs facing mirrors, a striped pole, a checked floor
+      for (let x = 0; x < tw; x += 16) for (let y = 96; y < th; y += 16) { g.fillStyle = ((x + y) / 16) % 2 ? "#1a1714" : "#f4efe4"; g.fillRect(x, y, 16, 16); }
+      for (let k = 0; k < 3; k++) {
+        g.fillStyle = "#c9d6dc"; g.fillRect(30 + k * 80, 14, 50, 50);
+        g.fillStyle = "#7a2430"; g.fillRect(40 + k * 80, 70, 30, 22); g.fillStyle = "#b8913f"; g.fillRect(52 + k * 80, 92, 6, 8);
+        lamp(55 + k * 80, 8);
+      }
+      g.fillStyle = "#f4efe4"; g.fillRect(4, 20, 14, 70); g.fillStyle = "#b23a2e"; for (let y = 22; y < 88; y += 14) g.fillRect(4, y, 14, 5);
+    } else if (kind === "cleaners") { // a dry cleaner's: a rail of pressed clothes in plastic, a counter, a bell
+      g.fillStyle = "#5b6670"; g.fillRect(0, 16, tw, 4);
+      for (let x = 6; x < tw - 6; x += 13) {
+        g.fillStyle = pickOf(rng, ["#2b2d31", "#6b2430", "#3d4f7a", "#c9b78a", "#efe6d2"]); g.fillRect(x, 22, 10, 46 + rng() * 14);
+        g.fillStyle = "rgba(255,255,255,0.45)"; g.fillRect(x - 1, 20, 12, 52 + rng() * 10);
+      }
+      g.fillStyle = "#8a7a62"; g.fillRect(0, 92, tw, 36); g.fillStyle = "#b8913f"; g.beginPath(); g.arc(200, 88, 6, Math.PI, 0); g.fill();
     } else { // rooms: a lived-in back room behind a ground-floor window that isn't a shop
       g.fillStyle = "#c9a878"; g.fillRect(0, 80, tw, 48);
       g.fillStyle = "#7a5a3a"; g.fillRect(40, 60, 70, 30); g.fillRect(160, 40, 36, 50);
@@ -247,6 +286,11 @@ function iconsAtlas() {
       g.beginPath(); g.moveTo(-30, 16); g.lineTo(-8, -14); g.lineTo(22, -14); g.lineTo(30, 16); g.moveTo(-8, -14); g.lineTo(2, 16); g.lineTo(22, -14); g.moveTo(-14, -24); g.lineTo(-2, -24); g.moveTo(22, -14); g.lineTo(18, -28); g.stroke();
     }
     else if (name === "scooter") { g.beginPath(); g.arc(-26, 26, 10, 0, Math.PI * 2); g.arc(26, 26, 10, 0, Math.PI * 2); g.fill(); g.fillRect(-28, 14, 56, 6); g.fillRect(20, -34, 6, 50); g.fillRect(10, -36, 26, 6); }
+    else if (name === "tooth") { g.beginPath(); g.moveTo(-30, -26); g.quadraticCurveTo(0, -42, 30, -26); g.quadraticCurveTo(34, 4, 20, 36); g.lineTo(8, 36); g.lineTo(0, 8); g.lineTo(-8, 36); g.lineTo(-20, 36); g.quadraticCurveTo(-34, 4, -30, -26); g.fill(); }
+    else if (name === "frame") { g.strokeRect(-34, -30, 68, 60); g.strokeRect(-22, -18, 44, 36); }
+    else if (name === "lotus") { g.beginPath(); g.arc(0, -26, 9, 0, Math.PI * 2); g.fill(); g.beginPath(); g.moveTo(-34, 0); g.lineTo(0, -10); g.lineTo(34, 0); g.moveTo(0, -10); g.lineTo(0, 14); g.moveTo(-26, 30); g.lineTo(0, 14); g.lineTo(26, 30); g.stroke(); }
+    else if (name === "pole") { g.save(); g.beginPath(); g.rect(-12, -38, 24, 76); g.clip(); for (let y = -60; y < 60; y += 18) { g.beginPath(); g.moveTo(-12, y); g.lineTo(12, y - 14); g.lineTo(12, y - 6); g.lineTo(-12, y + 8); g.closePath(); g.fill(); } g.restore(); g.strokeRect(-12, -38, 24, 76); }
+    else if (name === "hanger") { g.beginPath(); g.moveTo(0, -30); g.quadraticCurveTo(12, -34, 10, -22); g.quadraticCurveTo(8, -14, 0, -12); g.lineTo(-36, 20); g.lineTo(36, 20); g.lineTo(0, -12); g.stroke(); }
     else if (name === "scissors") { g.beginPath(); g.arc(-14, 20, 11, 0, Math.PI * 2); g.arc(14, 20, 11, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(-8, 10); g.lineTo(18, -34); g.moveTo(8, 10); g.lineTo(-18, -34); g.stroke(); }
     g.restore();
     rects[name] = [i / names.length, 0, 1 / names.length, 1];
@@ -400,7 +444,7 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
   const shopsByWall = new Map();
   for (const row of detail.shops) {
     const [wall, lo, hi] = row;
-    const typology = row[8] || null, biz = row[9] ? BUSINESSES.find((b) => b.id === row[9]) || null : null;
+    const typology = row[8] || null, biz = row[9] ? ALL_BUSINESSES.find((b) => b.id === row[9]) || null : null;
     const keep = !!typology && typology !== "storefront";
     if (!shopsByWall.has(wall)) shopsByWall.set(wall, []);
     shopsByWall.get(wall).push({ lo, hi, row, typology, biz, keep, windows: [], door: null });
@@ -430,7 +474,7 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
         add("windows", w, along, cy0, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, sh.biz.paints[0]);
         add("glass", w, along, bottom + height * 0.72, 0.04, width * 0.55, height * 0.32, 1, "#f2c27a");
       } else {
-        sh.windows.push({ x: along - sh.lo, y1: bottom + height, w: width });
+        sh.windows.push({ x: along - sh.lo, y0: bottom, y1: bottom + height, w: width });
         add("windows", w, along, cy0, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, "#f2c27a");
         add("display", w, along, cy0, 0.036, width, height, 1, col.setScalar(1), insides.rects[sh.biz.inside] || insides.rects.rooms);
       }

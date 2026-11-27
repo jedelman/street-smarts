@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { factsFor, readElements, touchable, promptOf, answerOf, arrivalOf } from "../../public/sparrow/answers.js";
-import { BUSINESSES, growKeep, growFront } from "../../public/sparrow/shopfronts.js";
+import { BUSINESSES, ALL_BUSINESSES, growKeep, growFront } from "../../public/sparrow/shopfronts.js";
 
 const pub = (p) => new URL(`../../public/${p}`, import.meta.url);
 const json = (p) => JSON.parse(readFileSync(pub(p), "utf8"));
@@ -40,19 +40,39 @@ test("facts drive the touch: touchable, prompt, answer, arrival", () => {
   assert.ok(!touchable(street), "a street speaks on arrival; it doesn't glint");
 });
 
-test("a keep front adds signs, awnings and a yard, and no glass of its own", () => {
+test("a keep front adds signs, awnings and a yard, never a new window", () => {
   let s = 7;
   const rng = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  for (const biz of BUSINESSES) {
-    const windows = [{ x: 1.2, y1: 3.0, w: 0.85 }, { x: 5.6, y1: 3.0, w: 0.85 }];
-    const { parts } = growKeep({ biz, L: 8, door: { x: 3.2, top: 2.65 }, windows, rng });
-    const kinds = new Set(parts.map((p) => p.k));
-    assert.ok(!kinds.has("display") && !kinds.has("glass"), `${biz.id}: the building's own windows show the inside, not new glass`);
+  const windows = [{ x: 1.2, y0: 1.45, y1: 3.0, w: 0.85 }, { x: 5.6, y0: 1.45, y1: 3.0, w: 0.85 }];
+  for (const biz of ALL_BUSINESSES) {
+    const { parts, word } = growKeep({ biz, L: 8, door: { x: 3.2, top: 2.65 }, windows, rng, boxes: false });
+    assert.ok(!parts.some((p) => p.k === "display"), `${biz.id}: the building's own windows show the inside, no new panes`);
+    for (const p of parts.filter((q) => q.k === "glass")) {
+      const w = windows.find((x) => Math.abs(x.x - p.x) < 0.01);
+      assert.ok(w && p.y - p.sy / 2 >= w.y0 - 0.01 && p.y + p.sy / 2 <= w.y1 + 0.01, `${biz.id}: a shade or glow stays inside its window`);
+    }
     assert.ok(parts.some((p) => p.k === "letters"), `${biz.id}: a lettered board over the door`);
-    if (biz.stripes) assert.equal(parts.filter((p) => p.k === "awnings").length, windows.length * 2, `${biz.id}: an awning (and its valance) over each window`);
+    const has = (sym) => word.some((t) => t.s === sym);
+    if (biz.family === "office") assert.ok(has("Plaque") && word.filter((t) => t.s === "Shade").length === windows.length && !has("Awning"), `${biz.id}: an office draws its shades, with a plaque`);
+    else if (biz.family === "gallery") assert.ok(word.filter((t) => t.s === "Spot").length === windows.length, `${biz.id}: a gallery lights each window`);
+    else if (biz.stripes && ["shop", "food", "salon"].includes(biz.family)) assert.equal(word.filter((t) => t.s === "Awning").length, windows.length, `${biz.id}: an awning over each window`);
+    if (biz.id === "barber") assert.ok(has("Pole"), "a barber's pole by the door");
+    if (biz.id === "yoga") assert.ok(has("Mats"), "mats out front of the yoga studio");
     for (const p of parts.filter((q) => q.k === "near" && q.out > 1.2)) assert.ok(p.out >= 1.4, "what's put out stands in the yard, past the door");
     for (const p of parts) assert.ok(p.x >= 0 && p.x <= 8, `${biz.id}: ${p.k} at ${p.x} stays on its run`);
   }
+});
+
+test("services differ: no two of them grow the same front", () => {
+  const services = ALL_BUSINESSES.filter((b) => ["office", "studio", "gallery", "fitness", "salon"].includes(b.family) || ["tailor", "cleaners"].includes(b.id));
+  const shapes = new Set();
+  for (const biz of services) {
+    let s = 11;
+    const rng = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    const { word } = growKeep({ biz, L: 8, door: { x: 3.2, top: 2.65 }, windows: [{ x: 1.2, y0: 1.45, y1: 3.0, w: 0.85 }, { x: 5.6, y0: 1.45, y1: 3.0, w: 0.85 }], rng, boxes: false });
+    shapes.add(`${biz.inside}|${biz.icon}|${word.map((t) => t.s).join(",")}`);
+  }
+  assert.equal(shapes.size, services.length);
 });
 
 test("a storefront still grows glass (the generated plan's fronts are unchanged)", () => {

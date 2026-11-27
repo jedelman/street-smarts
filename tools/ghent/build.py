@@ -41,6 +41,9 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, os.path.join(ROOT, "tools/vibe-render"))
 import pack_glb  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(__file__))
+import chorus as ghent_chorus  # noqa: E402
+
 SURVEY = os.path.join(ROOT, "data/ghent/survey.json")
 PROPOSAL = os.path.join(ROOT, "data/ghent/proposal.json")
 SITE_DIR = os.path.join(ROOT, "public/sites/ghent-streets")
@@ -519,7 +522,9 @@ def main(check=False):
     biz_noun = {"coffee": "a coffee shop", "bistro": "a bistro", "bakery": "a bakery", "books": "a bookshop",
                 "greengrocer": "a greengrocer's", "florist": "a florist's", "hardware": "a hardware store", "bikes": "a bike shop",
                 "records": "a record shop", "hairdresser": "a hairdresser's", "accountant": "an accountant's office",
-                "architect": "an architects' studio", "design": "a design studio", "tailor": "a tailor's"}
+                "architect": "an architects' studio", "design": "a design studio", "tailor": "a tailor's",
+                "dentist": "a dentist's office", "gallery": "an art gallery", "yoga": "a yoga studio", "barber": "a barbershop",
+                "cleaners": "a dry cleaner's"}
     for gpin, p in parcels.items():
         r = plan.get(gpin, {})
         name = addr_title(p["address"]) or "This lot"
@@ -534,6 +539,8 @@ def main(check=False):
             lines.append(f"Why it may: {why}.")
             lines.append("Today HC-G2's use table (Norfolk Zoning Ordinance, Table 3.6.11) leaves this use blank: prohibited."
                          if r["amendment"] else f"It's zoned {p['zone']}, not HC-G2, so the HC-G2 amendment alone wouldn't reach it.")
+        elif st == "kept":
+            lines.append(f"It's {r['why']}: the proposal leaves it as it is.")
         elif st == "existing":
             lines.append(f"Already commercial (the assessor's class: {p['cls']}).")
         elif st == "nothing-to-adapt":
@@ -614,14 +621,15 @@ def main(check=False):
         label = addr_title(p["address"]) or (f"A lot on {on}" if on else "A lot")
         street = label.split(" ", 1)[1] if p["address"] and " " in label else on
         note = {"converted": f"opens as {biz_noun[r['business']]}" if r.get("business") else "opens",
-                "existing": "already commercial", "nothing-to-adapt": "no building to adapt"}.get(r.get("status"), "not in the proposal")
+                "existing": "already commercial", "nothing-to-adapt": "no building to adapt",
+                "kept": f"{r.get('why', 'kept')}, left as it is"}.get(r.get("status"), "not in the proposal")
         return {"element": f"parcel:{g}", "label": label, "street": street, "note": note}
 
     conv = [r for r in plan.values() if r["status"] == "converted"]
     numbers = {
         "version": 1,
         "parcels": len(parcels),
-        "status": {k: sum(r["status"] == k for r in plan.values()) for k in ("converted", "existing", "nothing-to-adapt", "not-eligible")},
+        "status": {k: sum(r["status"] == k for r in plan.values()) for k in ("converted", "existing", "kept", "nothing-to-adapt", "not-eligible")},
         "converted_in_hcg2": sum(r["amendment"] for r in conv),
         "converted_by_rule": {k: sum(k in r["reasons"] for r in conv) for k in rules},
         "converted_by_kind": {k: sum(r["kind"] == k for r in conv) for k in ("food", "retail", "services")},
@@ -647,22 +655,38 @@ def main(check=False):
         "corners": [corner_entry(g) for g in PR["corners"]],
         "spawn": {"waypoint": PR["waypoints"][0]["id"]},
     }
+    # Who says what, where: the chorus's places, from the proposal.
+    src = lambda gs: {f"parcel:{g}" for g in gs}
+    conv = {g: r for g, r in plan.items() if r.get("status") == "converted"}
+    sets = {
+        "converted": src(conv),
+        "converted_houses": src(g for g, r in conv.items() if r["typology"] == "house"),
+        "converted_flats": src(g for g, r in conv.items() if r["typology"] == "flats"),
+        "food": src(g for g, r in conv.items() if r["kind"] == "food"),
+        "hcg2": src(g for g, r in conv.items() if r["amendment"]),
+        "colley": src(g for g, p in parcels.items() if any(n == "COLLEY AVENUE" for n, _ in p["streets"])),
+        "corners": src(PR["corners"]),
+        "beyond_plan": src(g for g, r in conv.items() if not any(k.startswith("nfk2050") for k in r["reasons"])),
+    }
+    chorus_text = json.dumps(ghent_chorus.build(sets), indent=1, ensure_ascii=False) + "\n"
+    site["chorus"] = "chorus.json"
     site_text = json.dumps(site, indent=1, ensure_ascii=False) + "\n"
     numbers_text = json.dumps(numbers, indent=1) + "\n"
     if check:
         bad = []
-        for fn, text in (("site.json", site_text), ("numbers.json", numbers_text)):
+        for fn, text in (("site.json", site_text), ("numbers.json", numbers_text), ("chorus.json", chorus_text)):
             path = os.path.join(SITE_DIR, fn)
             if not os.path.exists(path) or open(path).read() != text:
                 bad.append(fn)
         if bad:
             sys.exit(f"stale: {', '.join(bad)} (run tools/ghent/build.py and commit)")
-        print("site.json and numbers.json are current")
+        print("site.json, numbers.json and chorus.json are current")
     os.makedirs(SITE_DIR, exist_ok=True)
     pack_glb.write_glb(os.path.join(SITE_DIR, "model.glb"), gltf, binc)
     if not check:
         open(os.path.join(SITE_DIR, "site.json"), "w").write(site_text)
         open(os.path.join(SITE_DIR, "numbers.json"), "w").write(numbers_text)
+        open(os.path.join(SITE_DIR, "chorus.json"), "w").write(chorus_text)
     size = os.path.getsize(os.path.join(SITE_DIR, "model.glb"))
     print(f"model.glb {size / 1e6:.2f} MB: {len(table['elements'])} elements, {len(gltf['meshes'])} meshes, "
           f"{len(detail['walls'])} walls, {len(detail['openings'])} openings, {len(detail['shops'])} shops, {len(trees)} trees, "

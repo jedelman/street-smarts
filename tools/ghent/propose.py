@@ -86,9 +86,17 @@ MIX = {"food": 0.50, "retail": 0.30, "services": 0.20}
 WITHIN = {
     "food": {"coffee": 0.6, "bistro": 0.4},
     "retail": {"books": 0.2, "greengrocer": 0.2, "bakery": 0.15, "florist": 0.15, "hardware": 0.1, "bikes": 0.1, "records": 0.1},
-    "services": {"hairdresser": 0.35, "accountant": 0.2, "architect": 0.15, "design": 0.15, "tailor": 0.15},
+    "services": {"hairdresser": 0.16, "barber": 0.14, "cleaners": 0.1, "tailor": 0.08, "accountant": 0.1, "dentist": 0.1,
+                 "architect": 0.07, "design": 0.07, "gallery": 0.09, "yoga": 0.09},
 }
 USE_OF = {"food": "a small restaurant or café", "retail": "neighborhood retail", "services": "a personal or professional service"}
+# Brief 1's by-right uses, where a business is one of its own named kinds.
+USE_BY_BUSINESS = {"dentist": "a ground-floor professional office, medical and dental included", "accountant": "a ground-floor professional office",
+                   "gallery": "an art gallery or studio", "yoga": "a small fitness studio"}
+# Left as they are (Jason, 2026-11-27: "we should not turn the synagogues into businesses"): every place of worship,
+# by the assessor's religious classes (67x); and, ours, the public-safety building and the sanitation district's.
+KEPT_CLASSES = {"67": "a place of worship", "656": "a public utility"}
+KEPT_TYPES = {"public safety": "a public-safety building"}
 BY_RIGHT_MAX_SQFT = 3500
 # The case studies keep the first use their own pages show (ghent-streets/case-studies/*.html).
 CASE_USES = {"715-colonial": "bistro", "740-w-princess-anne": "coffee", "1012-colley": "books"}
@@ -191,15 +199,22 @@ def main():
             reasons.append("graydon-blow")
         mine = [S["buildings"][i] for i in blds.get(p["gpin"], []) if S["buildings"][i]["type"] not in ("garage",)]
         main_b = max(mine, key=lambda b: abs(poly_area(b["poly"])), default=None)
+        cls = p["cls"] or ""
+        kept = next((why for code, why in KEPT_CLASSES.items() if cls.startswith(code)), None) \
+            or (KEPT_TYPES.get(main_b["type"]) if main_b else None)
         if not reasons:
             status = "not-eligible"
-        elif p["use"] == "Commercial" or (main_b and main_b["type"] == "commercial" and p["use"] in (None, "Non-Taxable")):
+        elif p["use"] == "Commercial" or (main_b and main_b["type"] == "commercial" and p["use"] in (None, "Non-Taxable") and not kept):
             status = "existing"
         elif not main_b:
             status = "nothing-to-adapt"   # vacant land, a parking lot, a park: no building to reuse
+        elif kept:
+            status = "kept"
         else:
             status = "converted"
         rec = {"status": status, "reasons": reasons, "amendment": p["zone"] == "HC-G2"}
+        if status == "kept":
+            rec["why"] = kept
         if main_b:
             rec["building"] = S["buildings"].index(main_b)
         out[p["gpin"]] = rec
@@ -245,7 +260,7 @@ def main():
                     break
         placed.append((cx, cy, bz))
         foot_sqft = abs(poly_area(b["poly"])) * SQFT
-        r.update({"typology": typ, "business": bz, "kind": k, "use": USE_OF[k],
+        r.update({"typology": typ, "business": bz, "kind": k, "use": USE_BY_BUSINESS.get(bz, USE_OF[k]),
                   "unit_sqft": int(min(foot_sqft, BY_RIGHT_MAX_SQFT)), "footprint_sqft": int(foot_sqft),
                   "front": {"edge": f["i"], "a": f["a"], "c": f["c"], "n": [round(f["n"][0], 4), round(f["n"][1], 4)],
                             "street": round(f["street"], 1), "toward": [round(f["q"][0], 2), round(f["q"][1], 2)]}})

@@ -70,6 +70,27 @@ export const BUSINESSES = [
 ];
 
 /**
+ * More services, for Ghent Streets: Policy Brief No. 1's by-right uses that the list above lacks (a dental
+ * office among the "ground-floor professional offices (medical and dental included)", an art gallery, a small
+ * fitness studio) and two more personal services (a barber, a dry cleaner, the brief's own example). Not in
+ * Eastside Commons' mix (WEIGHTS), so its plan grows exactly as before; a pipeline that names one gets it.
+ */
+export const MORE_BUSINESSES = [
+  { id: "dentist", noun: "dentist's office", family: "office", sign: "DENTIST", font: sans(700, 74), ink: "#24474a",
+    paints: ["#3d6f73", "#2f5d62", "#4a6b6e"], band: "#eef3f2", stripes: null, inside: "dental", icon: "tooth", spill: "planters" },
+  { id: "gallery", noun: "art gallery", family: "gallery", sign: "GALLERY", font: serif(500, 86, "italic "), ink: "#1a1714",
+    paints: ["#1a1714", "#3a3d42", "#5a2a2a"], band: "#f6f4ee", stripes: null, inside: "gallery", icon: "frame", spill: "easel" },
+  { id: "yoga", noun: "yoga studio", family: "fitness", sign: "YOGA", font: sans(600, 86), ink: "#f3ede0",
+    paints: ["#6b8a5a", "#8a6b4a", "#4a6b7a"], stripes: ["#6b8a5a", "#efe6d2"], inside: "yoga", icon: "lotus", spill: "mats" },
+  { id: "barber", noun: "barbershop", family: "salon", sign: "BARBER", font: serif(700, 92), ink: "#f6efe0",
+    paints: ["#1f2a44", "#7a2430", "#1a1714"], stripes: ["#b23a2e", "#f4efe4"], inside: "barber", icon: "pole", spill: "bench" },
+  { id: "cleaners", noun: "dry cleaner's", family: "shop", sign: "CLEANERS", font: sans(800, 74), ink: "#f2f2ee",
+    paints: ["#2b4a7a", "#3a3d42", "#2f5d62"], stripes: ["#2b4a7a", "#f2f2ee"], inside: "cleaners", icon: "hanger", spill: null },
+];
+/** Every business the walk can draw: Eastside's mix first (its atlas rows don't move), then the rest. */
+export const ALL_BUSINESSES = [...BUSINESSES, ...MORE_BUSINESSES];
+
+/**
  * How often each business comes up. The split between kinds of ground floor
  * is El Born's district, Ciutat Vella, in Barcelona's 2024 census of
  * ground-floor businesses ("Estudi de les activitats econòmiques en planta
@@ -306,44 +327,140 @@ function terminalParts(t, v, P) {
  * A ground floor adapted, not remodelled (Ghent Streets, Jason, 2026-11-27: "keep doors and windows where they
  * are. It's an adaptive-reuse project, we're adapting the existing building, not remodeling it."). The
  * building's own door and windows stay where they are, and frontages.js lights them with what's inside now.
- * The front gains only what a sign and a table add: a lettered board over the door, a blade sign (or a brass
- * plaque for an office), awnings over the windows, and what the business puts out in the yard.
- * `windows`: the ground floor's windows along the run, [{ x, y1 (its top), w }]; `door`: { x, top }.
+ * What the front gains grows by its own L-system, from one symbol, Keep: a sign, something at the door, a
+ * treatment for each window, and the yard. The rules go by family (an office keeps its dignity: shades and
+ * gold-leaf lettering; a salon has its pole; a gallery lights its windows), with each business's touches on top.
  */
-export function growKeep({ biz, L, door, windows, rng, flip = 1, yard = 1.4 }) {
+export const KEEP_RULES = {
+  Keep: (sym, c) => [{ s: "Sign" }, { s: "AtDoor" }, ...c.windows.map((w, i) => ({ s: "Window", i })), { s: "Yard" }],
+  // A lettered board over the door; then a brass plaque (offices), a shingle hung from a bracket, or a blade.
+  Sign: (sym, c) => {
+    const quiet = c.biz.family === "office" || c.biz.family === "studio" || c.biz.family === "gallery";
+    if (quiet) return [{ s: "Board", small: true }, { s: "Plaque" }];
+    return [{ s: "Board" }, { s: c.rng() < 0.4 ? "Shingle" : "Blade" }];
+  },
+  AtDoor: (sym, c) => {
+    if (c.biz.id === "barber") return [{ s: "Pole" }];
+    if (c.biz.family === "gallery" || c.biz.family === "fitness") return [{ s: "Lantern" }];
+    return null;
+  },
+  // Each window, by family: a terminal list, rewritten once.
+  Window: ({ i }, c) => {
+    const out = [];
+    const first = i === 0;
+    switch (c.biz.family) {
+      case "office": out.push({ s: "Shade", i, drop: 0.38 }); if (first) out.push({ s: "Lettering", i }); break;
+      case "studio": if (first) out.push({ s: "Lettering", i }); out.push({ s: "Shade", i, drop: 0.18 }); break;
+      case "gallery": out.push({ s: "Spot", i }); if (first) out.push({ s: "Lettering", i }); break;
+      case "fitness": if (first) out.push({ s: "Lettering", i }); else out.push({ s: "Awning", i }); break;
+      case "salon": out.push({ s: c.biz.stripes ? "Awning" : "Shade", i, drop: 0.25 }); if (first) out.push({ s: "Lettering", i }); break;
+      default: out.push({ s: c.biz.stripes ? "Awning" : "Shade", i, drop: 0.2 }); break;
+    }
+    // A window box under some windows of a house: flowers or herbs, never on an office.
+    if (c.boxes && c.biz.family !== "office" && c.rng() < 0.55) out.push({ s: "WindowBox", i });
+    return out;
+  },
+  // The yard: the storefront grammar's pavement where the business has one, or the family's own.
+  Yard: (sym, c) => {
+    const at = c.door.x, f = c.flip;
+    if (c.biz.spill === "mats") return [{ s: "Mats", x: at - 1.6 * f }, { s: "Rack", x: at + 2.2 * f }, { s: "Planter", x: at + 0.9 * f }];
+    if (c.biz.spill === "easel") return [{ s: "Plinth", x: at - 2.0 * f }, { s: "AFrame", x: at + 1.4 * f }];
+    return [{ s: "Spill", a: 0, b: c.L }];
+  },
+  Spill: RULES.Spill,
+};
+
+/** One terminal of a keep front, as parts; anything the storefront grammar knows goes to terminalParts. */
+function keepParts(t, v, P) {
+  const { biz, rng, flip, paint, trim, door, windows, L } = v;
+  const W = t.i != null ? windows[t.i] : null;
+  switch (t.s) {
+    case "Board": {
+      const bw = Math.min(2.8, Math.max(1.5, L * 0.5)), by = door.top + 0.42;
+      P("mid", door.x, by, 0.03, bw + 0.12, 0.62, 0.05, trim);
+      P("mid", door.x, by, 0.06, bw, 0.5, 0.08, biz.band || paint);
+      P("letters", door.x, by, 0.105, bw - 0.2, t.small ? 0.24 : 0.3, 1, "#ffffff", { tex: { atlas: "letters" }, cap: bw - 0.2 });
+      break;
+    }
+    case "Plaque": P("near", door.x + 0.78 * flip, door.top - 0.7, 0.04, 0.34, 0.24, 0.02, "#b8913f"); break;
+    case "Blade": {
+      const bx = Math.max(0.3, Math.min(L - 0.3, door.x + 1.0 * flip)), y = door.top + 0.05;
+      P("near", bx, y + 0.32, 0.55, 0.05, 0.05, 0.9, "#1d1b19");
+      P("near", bx, y + 0.14, 0.18, 0.04, 0.4, 0.04, "#1d1b19");
+      P("detail", bx, y, 0.66, 0.03, 0.46, 0.62, paint);
+      for (const sd of [-1, 1]) P("icons", bx + sd * 0.018 * flip, y, 0.66, 0.5, 0.36, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
+      break;
+    }
+    case "Shingle": {
+      // A painted board hung square to the wall from an iron arm, swinging just above head height.
+      const bx = Math.max(0.4, Math.min(L - 0.4, door.x + 1.1 * flip)), y = door.top - 0.05;
+      P("near", bx, y + 0.45, 0.5, 0.04, 0.04, 0.95, "#1d1b19");
+      for (const dz of [0.25, 0.75]) P("near", bx, y + 0.3, dz, 0.015, 0.3, 0.015, "#1d1b19");
+      P("detail", bx, y, 0.5, 0.04, 0.42, 0.7, paint);
+      for (const sd of [-1, 1]) P("icons", bx + sd * 0.024 * flip, y, 0.5, 0.56, 0.34, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
+      break;
+    }
+    case "Pole": {
+      // A barber's pole beside the door: red, white and blue bands, a brass cap and foot.
+      const x = Math.max(0.2, Math.min(L - 0.2, door.x - 0.85 * flip)), y0 = door.top - 1.3;
+      P("near", x, y0 + 0.5, 0.14, 0.15, 1.0, 0.15, "#f4efe4");
+      for (let k = 0; k < 5; k++) P("near", x, y0 + 0.12 + k * 0.19, 0.145, 0.16, 0.06, 0.16, k % 2 ? "#2b4a7a" : "#b23a2e");
+      for (const y of [y0 - 0.03, y0 + 1.03]) P("near", x, y, 0.14, 0.2, 0.07, 0.2, "#b8913f");
+      break;
+    }
+    case "Lantern": for (const sd of [-1, 1]) P("near", door.x + sd * 0.75, door.top - 0.35, 0.12, 0.14, 0.24, 0.14, "#f2c27a"); break;
+    case "Shade": {
+      // A roller blind drawn partway down inside the glass.
+      const h = (W.y1 - W.y0) * t.drop;
+      P("glass", W.x, W.y1 - h / 2, 0.042, W.w - 0.04, h, 1, biz.family === "office" ? "#ece6d6" : "#d9cbb0");
+      break;
+    }
+    case "Lettering": {
+      // The name in gold leaf (or the business's own ink) low on the glass.
+      P("letters", W.x, W.y0 + (W.y1 - W.y0) * 0.3, 0.046, W.w - 0.1, 0.17, 1, "#ffffff", { tex: { atlas: "letters" }, cap: W.w - 0.1 });
+      break;
+    }
+    case "Spot": {
+      // A gallery's picture light over the window, and its glow.
+      P("near", W.x, W.y1 + 0.18, 0.18, W.w * 0.6, 0.05, 0.3, "#1d1b19");
+      P("glass", W.x, W.y1 - 0.12, 0.044, W.w * 0.7, 0.16, 1, "#fff3cf");
+      break;
+    }
+    case "Awning": {
+      if (!biz.stripes) break;
+      const d = 0.72, tilt = 0.55, sw = W.w + 0.24;
+      P("awnings", W.x, W.y1 + 0.16 - Math.sin(tilt) * d / 2, 0.06 + Math.cos(tilt) * d / 2, sw, d, 1, 1, { tex: { atlas: "stripes" }, rx: tilt - Math.PI / 2 });
+      P("awnings", W.x, W.y1 + 0.16 - Math.sin(tilt) * d - 0.07, 0.06 + Math.cos(tilt) * d, sw, 0.14, 1, 0.92, { tex: { atlas: "stripes" } });
+      break;
+    }
+    case "WindowBox": {
+      const herbs = rng() < 0.35;
+      P("near", W.x, W.y0 - 0.12, 0.16, W.w + 0.1, 0.2, 0.22, trim);
+      P("near", W.x, W.y0 + 0.02, 0.16, W.w, 0.14, 0.18, herbs ? "#4f6b3e" : "#5d7a45");
+      if (!herbs) for (let k = 0; k < 4; k++) P("near", W.x - W.w / 2 + (k + 0.5) * W.w / 4, W.y0 + 0.1, 0.18, 0.12, 0.08, 0.1, pick(rng, ["#c96a8a", "#f2c94a", "#e8e0f0", "#d9772f"]));
+      break;
+    }
+    case "Mats": for (let k = 0; k < 3; k++) P("near", t.x + k * 0.22 * flip, 0.32, 1.6, 0.14, 0.64, 0.14, pick(rng, ["#6b8a5a", "#c96a5a", "#4a6b7a", "#d9b46a"])); break;
+    case "Plinth":
+      P("near", t.x, 0.4, 1.4, 0.55, 0.8, 0.55, "#e9e4d8");
+      P("near", t.x, 1.05, 1.4, 0.3, 0.5, 0.18, pick(rng, ["#8a3a2a", "#2b4a7a", "#b8913f"]));
+      break;
+    default: terminalParts(t, v, P);
+  }
+}
+
+export function growKeep({ biz, L, door, windows, rng, flip = 1, yard = 1.4, boxes = true }) {
   const paint = pick(rng, biz.paints);
   const trim = pick(rng, GHENT_TRIMS);
   const parts = [];
   const P = (k, x, y, out, sx, sy, sz, color, extra = {}) => parts.push({ k, x, y, out, sx, sy, sz, color, ...extra });
-  // The board over the door, framed and lettered.
-  const bw = Math.min(2.8, Math.max(1.5, L * 0.5)), by = door.top + 0.42;
-  P("mid", door.x, by, 0.03, bw + 0.12, 0.62, 0.05, trim);
-  P("mid", door.x, by, 0.06, bw, 0.5, 0.08, biz.band || paint);
-  P("letters", door.x, by, 0.105, bw - 0.2, 0.3, 1, "#ffffff", { tex: { atlas: "letters" }, cap: bw - 0.2 });
-  const office = biz.family === "office" || biz.family === "studio";
-  if (office) {
-    P("near", door.x + 0.78 * flip, door.top - 0.7, 0.04, 0.34, 0.24, 0.02, "#b8913f");
-  } else {
-    // A blade sign on a bracket beside the door.
-    const bx = Math.max(0.3, Math.min(L - 0.3, door.x + 1.0 * flip)), y = door.top + 0.05;
-    P("near", bx, y + 0.32, 0.55, 0.05, 0.05, 0.9, "#1d1b19");
-    P("near", bx, y + 0.14, 0.18, 0.04, 0.4, 0.04, "#1d1b19");
-    P("detail", bx, y, 0.66, 0.03, 0.46, 0.62, paint);
-    for (const sd of [-1, 1]) P("icons", bx + sd * 0.018 * flip, y, 0.66, 0.5, 0.36, 1, "#ffffff", { tex: { atlas: "icons", name: biz.icon }, ry: sd * Math.PI / 2 });
-  }
-  // Canvas awnings over the windows, where the business has stripes.
-  if (biz.stripes) {
-    const d = 0.72, tilt = 0.55;
-    for (const w of windows) {
-      const sw = w.w + 0.24;
-      P("awnings", w.x, w.y1 + 0.16 - Math.sin(tilt) * d / 2, 0.06 + Math.cos(tilt) * d / 2, sw, d, 1, 1, { tex: { atlas: "stripes" }, rx: tilt - Math.PI / 2 });
-      P("awnings", w.x, w.y1 + 0.16 - Math.sin(tilt) * d - 0.07, 0.06 + Math.cos(tilt) * d, sw, 0.14, 1, 0.92, { tex: { atlas: "stripes" } });
-    }
-  }
-  // What it puts out: the storefront grammar's own pavement, a yard's depth further out.
-  const v = { biz, rng, flip, paint, trim, brick: pick(rng, GHENT_BRICKS), pier: paint, awning: false, awnTilt: 0, entryW: 1.6, doorLeaf: 1 };
-  const word = derive([{ s: "Spill", a: 0, b: L }], RULES, { biz, L, at: door.x, entryW: 1.6, rng, flip, planters: rng() < 0.7 });
-  const shifted = (k, x, y, out, ...rest) => P(k, x, y, out + yard, ...rest);
-  for (const t of word) terminalParts(t, v, shifted);
+  const wins = windows.map((w) => ({ y0: w.y0 != null ? w.y0 : w.y1 - 1.5, ...w }));
+  const ctx = { biz, L, door, windows: wins, rng, flip, boxes, at: door.x, entryW: 1.6, planters: rng() < 0.7 };
+  const word = derive([{ s: "Keep" }], KEEP_RULES, ctx);
+  const v = { biz, rng, flip, paint, trim, door, windows: wins, L, brick: pick(rng, GHENT_BRICKS), pier: paint, awning: false, awnTilt: 0, entryW: 1.6, doorLeaf: 1 };
+  // What stands in the yard stands a yard's depth out: everything at the wall's foot or on the pavement.
+  const yardP = (k, x, y, out, ...rest) => P(k, x, y, out + yard, ...rest);
+  const YARD = new Set(["Crate", "Bucket", "Barrel", "Rack", "Bike", "Scooter", "BookTable", "Table", "Bench", "AFrame", "Planter", "Mats", "Plinth"]);
+  for (const t of word) keepParts(t, v, YARD.has(t.s) ? yardP : P);
   return { parts, paint, trim, word };
 }
