@@ -17,7 +17,7 @@ import { buildFrontages } from "./frontages.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
-import { setupPanels, renderMoney, renderIterations } from "./panels.js";
+import { setupPanels, renderIterations, renderTours } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
@@ -27,15 +27,25 @@ import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.j
 import { computeFlows, lineFor as flowLineFor, summaryLine as flowSummary } from "./flows.js";
 import { buildFlowLines } from "./flowlines.js";
 
+const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-// The front page: the whole site, unless the address asks for another model.
-const GLB_URL = params.get("glb") || "/vibe-render/clean_baseline.glb";
-// The plan's measurements (plan_numbers.py), for the Money panel: published beside the model.
-const NUMBERS_URL = /\/vibe-render\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/\.glb$/, "_numbers.json")
+// The site: its page names its bundle (public/sites/<id>/site.json), which says
+// what the walk loads (the model and what's published beside it), its tours,
+// and the modules that render its own panels. The walk is the same for every
+// site; the page carries the site's words.
+const SITE_URL = (document.querySelector('meta[name="street-smarts-site"]') || {}).content || "/sites/eastside-commons/site.json";
+const SITE = await fetch(SITE_URL).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} for ${SITE_URL}`))))
+  .catch((e) => { fail(`Couldn’t load this site (${e.message}). Try reloading.`); throw e; });
+const fromSite = (url) => (url ? new URL(url, new URL(SITE_URL, location.href)).pathname : null);
+// The site's model, unless the address asks for another (an archived iteration, one cluster).
+const GLB_URL = params.get("glb") || fromSite(SITE.model);
+// The plan's measurements, for panels like Money: published beside the model, or in the iteration's archive folder.
+const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
   : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
 const VIEWS_URL = GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
-const CHORUS_URL = params.get("chorus") || "/vibe-render/clean_baseline_chorus.json";
+const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
+const TOURS = Array.isArray(SITE.tours) ? SITE.tours : [];
 const STATS = params.has("stats");
 // Hero mode: embedded in the landing page. It runs the tour as attract mode and
 // takes no input until the page hands it over ("Hop in"); see index.html's #hero.
@@ -45,7 +55,6 @@ document.body.classList.toggle("hero", HERO);
 const toPage = (msg) => { if (HERO && parent !== window) parent.postMessage({ source: "street-smarts-walk", ...msg }, location.origin); };
 const COARSE = matchMedia("(pointer: coarse)").matches;
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const $ = (id) => document.getElementById(id);
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 
@@ -101,12 +110,14 @@ let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
-let panels = null, plan = null, moneyDone = false; // the flyout panels, the site map's image
+let panels = null, plan = null; // the flyout panels, the site map's image
+const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
 const voices = makeVoices(), heard = new Set();
 let goal = null; // { point, el, stopDist, arrived(), stuckT, lastPos }
-let tour = null; // { stops: [...], i, waitUntil }
+let tour = null; // { def, stops: [...], i, waitUntil }
+let TOUR_LABEL = "Show me around"; // the tour button's own words, from the page
 let focus = null, focusScore = Infinity;
 let t = 0, lastInputT = 0, lastLookT = -10, hintGone = false;
 let views = [], viewIndex = -1;
@@ -941,27 +952,45 @@ function pingAt(p) {
 }
 
 // ---------------------------------------------------------------- the tour
-function startTour() {
-  const order = [53, 34, 61, 126, 171, 37, 95, 107, 161, 119, 166, 160, 118, 108, 52];
+/**
+ * A tour from the site's bundle (site.json `tours`). Its stops are of three kinds:
+ *   { pattern: n }      the nearest place, from the last stop, that pattern n made
+ *                       (a generated plan's elements change with every render; its patterns don't);
+ *   { element: "id" }   the element whose source record is that id (a real parcel, say);
+ *   { waypoint: "id" }  a waypoint the model carries: where to stand and what to look at.
+ * `max` caps the stops; `views` adds that many of the model's interior views at the end.
+ */
+function startTour(def = TOURS[0]) {
+  if (!def) return;
   const stops = [];
   let from = bird.pos.clone();
   const used = new Set();
-  for (const n of order) {
-    if (!present.includes(n)) continue;
-    const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
-      && (touchable(e) || e.group === "streets" || e.kind === "building_shaped" || e.kind === "umbrella")
-      && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
-    if (!cands.length) continue;
-    cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
-    const el = cands.find((c) => !used.has(c)) || cands[0];
-    used.add(el);
-    stops.push(el);
-    from = el.center;
-    if (stops.length >= 9) break;
+  const max = def.max || Infinity;
+  for (const s of def.stops || []) {
+    if (stops.length >= max) break;
+    if (s.pattern != null) {
+      const n = s.pattern;
+      if (!present.includes(n)) continue;
+      const cands = site.elements.filter((e) => e.center && patternsOf(e).includes(n)
+        && (touchable(e) || e.group === "streets" || e.kind === "building_shaped" || e.kind === "umbrella")
+        && (!/^(activity|plazas)$/.test(e.group) || openSky(e)));
+      if (!cands.length) continue;
+      cands.sort((a, b) => a.center.distanceToSquared(from) - b.center.distanceToSquared(from));
+      const el = cands.find((c) => !used.has(c)) || cands[0];
+      used.add(el);
+      stops.push(el);
+      from = el.center;
+    } else if (s.element != null) {
+      const el = site.elements.find((e) => e.source === s.element && e.center);
+      if (el) { stops.push(el); from = el.center; }
+    } else if (s.waypoint != null) {
+      const w = site.waypoints && site.waypoints.get(s.waypoint);
+      if (w) { stops.push({ waypoint: w, note: s.note }); from = w.stand; }
+    }
   }
-  if (views.length) stops.push(...views.slice(0, 2).map((v, i) => ({ view: i })));
+  if (views.length && def.views) stops.push(...views.slice(0, def.views).map((v, i) => ({ view: i })));
   if (!stops.length) return;
-  tour = { stops, i: -1, waitUntil: 0 };
+  tour = { def, stops, i: -1, waitUntil: 0 };
   $("tour").setAttribute("aria-pressed", "true");
   $("tour").textContent = "Stop the tour";
   if (active) logLine("Follow me.", "note");
@@ -972,17 +1001,45 @@ function nextStop() {
   if (tour.i >= tour.stops.length) { endTour("That’s the tour. Fly on."); return; }
   const s = tour.stops[tour.i];
   if (s.view != null) { peekInside(s.view); tour.waitUntil = t + 5; goal = null; return; }
+  if (s.waypoint) {
+    // Stand where the waypoint says, face what it looks at, and touch its element if it has one.
+    const w = s.waypoint;
+    goal = { point: w.stand.clone(), el: w.el || null, stopDist: 0.8, land: true, arrived: () => {
+      bird.heading = Math.atan2(w.look.x - bird.pos.x, w.look.z - bird.pos.z);
+      if (w.el) touch(w.el); else if (w.title) logLine(w.title, "note");
+      if (s.note) logLine(s.note, "note");
+      tour.waitUntil = t + (w.wait || 4.5);
+    } };
+    tour.waitUntil = Infinity;
+    return;
+  }
   const el = s;
+  goal = { point: approachOf(el), el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
+  tour.waitUntil = Infinity;
+}
+/** Where to go to meet an element: a building's foot on the side nearest you, else its anchor or middle. */
+function approachOf(el) {
   const p = el.box.max.y > 1.5 && el.kind !== "building_shaped" ? anchorOf(el, new THREE.Vector3()) : el.center.clone();
   if (el.kind === "building_shaped") {
-    // A building: go to its foot on the side nearest you.
     const b = el.box;
     p.set(clamp(bird.pos.x, b.min.x - 1.2, b.max.x + 1.2), b.min.y, clamp(bird.pos.z, b.min.z - 1.2, b.max.z + 1.2));
   }
-  goal = { point: p, el, stopDist: 1.0, land: true, arrived: () => { touch(el); tour.waitUntil = t + 3.2; } };
-  tour.waitUntil = Infinity;
+  return p;
+}
+/** Fly to an element and touch it on arrival (a panel's list of places, say). */
+function goToElement(el) {
+  if (!el || !el.center) return;
+  if (panels) panels.close();
+  if (tour) endTour("");
+  goal = { point: approachOf(el), el, stopDist: 1.0, land: true, autoTouch: true, arrived: () => touch(el) };
 }
 let attractAt = 4.8; // after the crane
+/** The tour button, T and the pad: stop a running tour; else start the site's one tour, or offer its several. */
+function tourButton() {
+  if (tour) { endTour("You take it from here."); return; }
+  if (TOURS.length > 1 && panels) panels.open("tours");
+  else startTour();
+}
 function tourTick() {
   if (HERO && !active && !tour && !REDUCED && t > attractAt) startTour();
   if (!tour) return;
@@ -992,7 +1049,7 @@ function endTour(msg) {
   tour = null;
   goal = null;
   $("tour").setAttribute("aria-pressed", "false");
-  $("tour").textContent = "Show me around";
+  $("tour").textContent = TOUR_LABEL;
   if (msg && active) logLine(msg, "note");
   if (!active) attractAt = t + 4; // go round again
 }
@@ -1413,7 +1470,7 @@ function pollPad() {
   padDown = b(1);
   if (b(2) && !pollPad.x) interact();
   pollPad.x = b(2);
-  if (b(3) && !pollPad.y) (tour ? endTour("You take it from here.") : startTour());
+  if (b(3) && !pollPad.y) tourButton();
   pollPad.y = b(3);
 }
 
@@ -1432,7 +1489,7 @@ function setupUI() {
       if (e.code === "KeyE" || e.code === "Enter") interact();
       if (e.code === "KeyM") toggleMute();
       if (e.code === "KeyO") toggleFlows();
-      if (e.code === "KeyT") (tour ? endTour("You take it from here.") : startTour());
+      if (e.code === "KeyT") tourButton();
       if (e.code === "KeyF") { if (bird.air) holdDownFor = 3; else takeOff(); }
       if (e.code === "KeyV") director.zoomBy(director.eyes > 0.5 ? 3 : 0.2);
       if (e.code === "Escape") { if (panels && panels.current) { panels.close(); return; } if (tour) endTour(""); goal = null; }
@@ -1486,20 +1543,28 @@ function setupUI() {
   hold($("btn-up"), (v) => { holdUp = v; });
   hold($("btn-down"), (v) => { holdDown = v; });
   $("prompt").addEventListener("click", interact);
-  $("tour").addEventListener("click", () => (tour ? endTour("You take it from here.") : startTour()));
+  TOUR_LABEL = $("tour").textContent;
+  if (!TOURS.length) $("tour").hidden = true;
+  $("tour").addEventListener("click", tourButton);
   $("mute").addEventListener("click", toggleMute);
   if (flowsReady()) { $("flows").hidden = false; $("flows").addEventListener("click", toggleFlows); }
   $("mute").setAttribute("aria-pressed", String(sound.muted));
   panels = setupPanels({
     open(name) {
       if (name === "map") openMap();
-      if (name === "money" && !moneyDone) {
-        moneyDone = true;
-        const body = $("money-body");
+      const mod = SITE.renderers && SITE.renderers[name];
+      if (mod && !rendered.has(name)) {
+        // The site's own panel (Money, say): its module renders into #<name>-body the first time it opens.
+        rendered.add(name);
+        const body = $(`${name}-body`);
         body.textContent = "Working it out…";
-        (NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null))
-          .then((n) => renderMoney(body, n && n.version === 1 ? n : null));
+        Promise.all([
+          import(fromSite(mod)),
+          NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
+        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement }))
+          .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
       }
+      if (name === "tours") renderTours($("tours-body"), TOURS, (def) => { panels.close(); startTour(def); });
     },
   });
   $("map-canvas").addEventListener("click", (e) => {
@@ -1534,7 +1599,8 @@ function setupUI() {
  */
 function setupIterations() {
   const ITERATION = params.get("iteration");
-  fetch("/archive/index.json").then((r) => (r.ok ? r.json() : null)).then((idx) => {
+  if (!SITE.archive) return;
+  fetch(fromSite(SITE.archive)).then((r) => (r.ok ? r.json() : null)).then((idx) => {
     const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
     if (!its.length || HERO) return;
     renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null);
@@ -1606,7 +1672,7 @@ function closeIntro(tourToo) {
   $("intro").hidden = true;
   try { localStorage.setItem(INTRO_KEY, "1"); } catch { /* private window: it'll show again next time */ }
   lastInputT = t;
-  if (tourToo && !tour) startTour();
+  if (tourToo && !tour) tourButton();
   else { hintGone = false; $("hint").classList.remove("gone"); setTimeout(hideHint, 9000); }
 }
 function hideHint() {
