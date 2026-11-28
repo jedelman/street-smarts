@@ -46,6 +46,7 @@ import chorus as ghent_chorus  # noqa: E402
 
 SURVEY = os.path.join(ROOT, "data/ghent/survey.json")
 PROPOSAL = os.path.join(ROOT, "data/ghent/proposal.json")
+EVERYDAY = os.path.join(ROOT, "data/ghent/everyday.json")
 SITE_DIR = os.path.join(ROOT, "public/sites/ghent-streets")
 SQFT = 10.7639
 
@@ -53,7 +54,7 @@ HOUSE_USES = ("Single Family", "Duplex", "Triplex", "Fourplex")
 STREET_HALF = {"arterial/collector": 6.0, "residential": 4.5}   # half a carriageway, metres (ours)
 SIDEWALK_W = 2.1
 Y = {"street": 0.02, "lot": 0.08, "sidewalk": 0.14, "line": 0.15}
-FIRST_FLOOR = 0.6     # a Ghent house's first floor stands above the ground (ours)
+FIRST_FLOOR = 0.85    # a Ghent house's first floor stands above the ground: about five steps up (tools/ghent/yard-photos.md)
 FLOOR_M = 3.1
 
 COLORS = {
@@ -63,8 +64,44 @@ COLORS = {
     "wall_brick": "#8f4c37", "wall_brick2": "#a0603f", "wall_cream": "#e6dbc0", "wall_white": "#efeadf",
     "wall_blue": "#9eabb1", "wall_sage": "#a8ae8d", "wall_yellow": "#d8c38a",
     "wall_stone": "#cdc1a6", "wall_context": "#b3ad9f", "roof_context": "#8b867c",
+    "wall_brick_dark": "#7a3b2c", "wall_buff": "#c2a27a", "wall_painted": "#ece6d8", "wall_grey": "#b9b8b1",
+    "shingle_brown": "#6e5340", "shingle_olive": "#6f6b4a", "shingle_cream": "#d9ccb0", "shingle_grey": "#8c8b84",
+    "stucco_tan": "#c9b38e",
 }
 HOUSE_WALLS = ["wall_brick", "wall_brick2", "wall_cream", "wall_white", "wall_blue", "wall_sage", "wall_yellow"]
+# Walls by form, from the assessor's photos (tools/ghent/yard-photos.md): (weight, ground floor, upper floors or None).
+# Two-tone is mostly a brick ground floor with shingle or siding above.
+BRICKS = [(0.6, "wall_brick"), (0.1, "wall_brick_dark"), (0.1, "wall_brick2"), (0.1, "wall_buff"), (0.1, "wall_painted")]
+UPPERS = [(0.35, "shingle_brown"), (0.2, "shingle_olive"), (0.2, "shingle_cream"), (0.15, "wall_blue"), (0.1, "wall_white")]
+SIDINGS = [(0.35, "wall_white"), (0.25, "wall_yellow"), (0.15, "wall_sage"), (0.15, "wall_blue"), (0.1, "wall_cream")]
+WALL_SCHEMES = {
+    "house": [(0.47, "brick"), (0.32, "two-tone"), (0.12, "siding"), (0.05, "shingle"), (0.04, "stucco")],
+    "row": [(0.78, "brick"), (0.22, "two-tone")],
+    "apartment": [(0.78, "brick"), (0.09, "two-tone"), (0.07, "siding"), (0.06, "stucco")],
+}
+
+
+def weighted(u, options):
+    t = sum(w for w, _ in options)
+    for w, v in options:
+        u -= w / t
+        if u <= 0:
+            return v
+    return options[-1][1]
+
+
+def wall_scheme(bi, form):
+    """A building's walls: (ground-floor colour, upper colour or None), by its form and a seed of its own."""
+    kind = weighted(h01(bi, "scheme"), WALL_SCHEMES[form])
+    if kind == "brick":
+        return weighted(h01(bi, "brick"), BRICKS if form == "house" else BRICKS[:3] + BRICKS[3:4]), None
+    if kind == "two-tone":
+        return weighted(h01(bi, "brick"), BRICKS[:4]), weighted(h01(bi, "upper"), UPPERS)
+    if kind == "siding":
+        return weighted(h01(bi, "siding"), SIDINGS), None
+    if kind == "shingle":
+        return weighted(h01(bi, "shingle"), [(0.6, "shingle_brown"), (0.4, "shingle_grey")]), None
+    return weighted(h01(bi, "stucco"), [(0.5, "stucco_tan"), (0.5, "wall_cream")]), None
 # The City's inventory forms (survey.tree_form), for late November in Norfolk (ours): oaks bronze, maples and
 # sweetgums turned, crape myrtles and dogwoods red, conifers and magnolias green.
 TREE_COLORS = {"oak": "#7d6a3c", "plane": "#a38c4c", "maple": "#b65a2f", "round": "#6f7d42", "crape": "#a2583a",
@@ -78,6 +115,20 @@ TREE_FORMS = {  # the explorer's: height and crown radius = min(a + b·cm, cap)
 }
 TREE_UNKNOWN_DBH = 7
 CAMERA_YFOV = 1.08
+
+
+# The yard grammar's forms, from the assessor's use (the walk's yards.js reads them).
+YARD_FORM = {"Single Family - Detached": "house", "Duplex": "house", "Triplex": "house", "Fourplex": "house",
+             "Single Family - Attached": "row", "Apartment": "apartment", "Condominium": "apartment", "Co-op": "apartment"}
+
+
+def survey_lines(g):
+    """A geometry's line pieces (an intersection can be empty, a line, or several)."""
+    if g.is_empty:
+        return []
+    if g.geom_type == "LineString":
+        return [g]
+    return [q for q in getattr(g, "geoms", []) if q.geom_type == "LineString"]
 
 
 def h01(*key):
@@ -265,6 +316,61 @@ def roof(geo, rect, form, pitch, eave, overhang=0.3):
     return top, (P(0, 0, eave), P(0, W2, eave), r0, P(L2, 0, eave), P(L2, W2, eave), r1) if form == "gable" else None
 
 
+def everyday_bundle(parcels, plan, detail, doors):
+    """The "Day to day" panel's data: the walk network (from everyday.py), the places open today, the proposal's
+    ground floors at their doors, where each lot is on the network and which tract it's in, what has opened, rent,
+    and the metro's rates of new places."""
+    E = json.load(open(EVERYDAY))
+    nodes, edges = E["graph"]["nodes"], E["graph"]["edges"]
+    lines = [LineString([nodes[i], nodes[j]]) for i, j, _ in edges]
+    tree = shapely.STRtree(lines)
+
+    def snap(x, y):
+        p = Point(x, y)
+        k = int(tree.nearest(p))
+        return [k, round(lines[k].project(p), 1), round(lines[k].distance(p), 1)]
+    kinds = [k["id"] for k in E["kinds"]]
+    kind_of = {b: k["id"] for k in E["kinds"] for b in k["businesses"]}
+    proposed = []
+    for sh in detail["shops"]:
+        w = detail["walls"][sh["wall"]]
+        x, y = w["ax"] + w["dx"] * sh["door"] + w["nx"] * 1.6, w["ay"] + w["dy"] * sh["door"] + w["ny"] * 1.6
+        k = kind_of.get(sh["business"])
+        g = sh["source"].split(":", 1)[1]
+        sector = {"food": "food", "retail": "shop"}.get(plan[g]["kind"], "service")
+        proposed.append(snap(x, y) + [kinds.index(k) if k else -1, g, sector])
+    tracts = [(Polygon(t["rings"][0]).buffer(0), i) for i, t in enumerate(E["tracts"])]
+    lots = {}
+    for g, p in parcels.items():
+        if g in doors:
+            x, y = doors[g]
+        else:
+            c = Polygon(p["poly"]).buffer(0).representative_point()
+            x, y = c.x, c.y
+        tract = next((i for poly, i in tracts if poly.contains(Point(x, y))), -1)
+        lots[g] = snap(x, y) + [tract]
+    keep = ("median_rent", "median_rent_moe", "homes", "renting", "rent_burdened", "geoid", "name", "rings")
+    return {
+        "version": 1,
+        "speed_mps": E["walk"]["speed_mps"], "note": E["walk"]["note"], "retrieved": E["retrieved"],
+        "kinds": E["kinds"],
+        "nodes": nodes, "edges": edges,
+        # [edge, along, offset, kind index]
+        "today": [[e, a, o, kinds.index(k)] for e, a, o, k in E["places"]],
+        # [edge, along, offset, kind index (-1: an office, not a kind a neighbour walks to), gpin, sector]
+        "proposed": proposed,
+        # gpin -> [edge, along, offset, tract index]
+        "lots": lots,
+        "opened": E["opened"],
+        "tracts": [{k: t[k] for k in keep} for t in E["tracts"]],
+        "bds": E["bds"],
+        # Brief 2's pace: of HC-G2's ground floors, 15 to 40 open at its steady state; the map opens them all.
+        "pace": {"lo": 15, "hi": 40, "of": sum(1 for r in plan.values() if r.get("status") == "converted" and r["amendment"]),
+                 "says": next(c["says"] for c in ghent_chorus.CITED if c["name"] == "pace"), "source": ghent_chorus.BRIEF2[0]},
+        "sources": E["sources"],
+    }
+
+
 def main(check=False):
     S = json.load(open(SURVEY))
     PR = json.load(open(PROPOSAL))
@@ -310,10 +416,12 @@ def main(check=False):
     facts["sidewalks"] = {"name": "the sidewalk", "answer": ["A sidewalk, drawn along every street: the City maps its sidewalks as lines, and this model infers their width."]}
     taken = covered.union(walks)
 
+    lot_of = {}
     for gpin, p in parcels.items():
         lot = Polygon(p["poly"]).buffer(0).difference(taken)
         if lot.is_empty:
             continue
+        lot_of[gpin] = lot
         r = plan.get(gpin, {})
         geo = Geo()
         for q in polys(lot):
@@ -335,6 +443,8 @@ def main(check=False):
 
     # --- the buildings
     detail = {"walls": [], "openings": [], "shops": []}
+    doors = {}  # gpin -> the main building's front door, a step out
+    yards = []  # one per house front: what the walk's yard and porch grammar grows from
     # Every footprint, to keep a front door from opening into a neighbour's wall.
     all_polys = [Polygon(b["poly"]).buffer(0) if len(b["poly"]) >= 3 else Polygon() for b in S["buildings"]]
     # The survey cuts a row's footprint at each lot line; a slice past every lot line (a bay or stoop drawn over the
@@ -394,13 +504,28 @@ def main(check=False):
             eave = 6.8 if poly.area > 45 else 3.0
             bstats["heights_inferred"] += 1
         context = not b["in_area"]
-        wall_c = "wall_context" if context else (
-            "wall_stone" if b["type"] in ("institutional", "university", "hospital", "school", "library", "public safety")
-            else "wall_brick" if b["type"] == "commercial" else HOUSE_WALLS[int(h01(bi, "paint") * len(HOUSE_WALLS))])
+        wall_form = YARD_FORM.get(p["use"]) if (p and main_b and b["type"] == "residential") else None
+        upper_c = None
+        if context:
+            wall_c = "wall_context"
+        elif b["type"] in ("institutional", "university", "hospital", "school", "library", "public safety"):
+            wall_c = "wall_stone"
+        elif b["type"] == "commercial":
+            wall_c = "wall_brick"
+        elif wall_form:
+            wall_c, upper_c = wall_scheme(bi, wall_form)
+        else:
+            wall_c = HOUSE_WALLS[int(h01(bi, "paint") * len(HOUSE_WALLS))]
         roof_c = "roof_context" if context else ["roof_slate", "roof_brown", "roof_red"][int(h01(bi, "roof") * 3)] if form[0] != "flat" else "roof_flat"
-        wg, rg = Geo(), Geo()
+        wg, rg, ug = Geo(), Geo(), Geo()
         ring = list(poly.exterior.coords)[:-1]
-        walls(wg, ring, 0.0, eave)
+        split = (FIRST_FLOOR if house else 0.0) + FLOOR_M
+        if upper_c and eave > split + 0.8:
+            walls(wg, ring, 0.0, split)
+            walls(ug, ring, split, eave)
+        else:
+            upper_c = None
+            walls(wg, ring, 0.0, eave)
         top = eave
         if form[0] == "flat":
             rg.flat(poly, eave)
@@ -410,12 +535,12 @@ def main(check=False):
             if gab:  # the gable ends, in the wall's colour
                 for tri in (gab[:3], gab[3:]):
                     n = np.cross(np.subtract(tri[1], tri[0]), np.subtract(tri[2], tri[0]))
-                    wg.face(list(tri), n)
+                    (ug if upper_c else wg).face(list(tri), n)
         floors = stories or max(1, round((eave - (FIRST_FLOOR if house else 0)) / FLOOR_M))
         src = f"parcel:{b['parcel']}" if b["parcel"] else f"building:{bi}"
         U.node(f"building_{bi}", {"group": "buildings", "kind": "building_shaped" if not context else "context", "source": src,
                                   "typology": b["type"], "floors": int(math.ceil(floors)), "area": round(poly.area, 1)},
-               {wall_c: wg, roof_c: rg})
+               {wall_c: wg, roof_c: rg, **({upper_c: ug} if upper_c else {})})
 
         # Street-level detail: the walls of buildings in the area, their windows and doors (inferred), and the
         # converted ground floors. Not for garages, sheds or towers.
@@ -489,6 +614,26 @@ def main(check=False):
                         continue
                     detail["openings"].append({"wall": wid, "kind": "window", "floor": f, "along": s, "z": y0 + 0.8,
                                                "width": min(win_w, L / n - 0.5), "height": win_h})
+        # Where the lot's front door is, a step out (the everyday panel walks from it).
+        if main_b and front_w and door_at is not None:
+            w = detail["walls"][front_w[0]]
+            doors[b["parcel"]] = (w["ax"] + w["dx"] * door_at + w["nx"] * 1.6, w["ay"] + w["dy"] * door_at + w["ny"] * 1.6)
+            # The front yard: how deep it is from the wall to the lot's front line (out from the door), and how far the
+            # lot runs along the wall. The walk's yard grammar grows its porch, steps, walk, beds and edge in it.
+            lot = lot_of.get(b["parcel"])
+            form = YARD_FORM.get(p["use"]) if p else None
+            if lot is not None and form and b["type"] == "residential":
+                d0 = (w["ax"] + w["dx"] * door_at, w["ay"] + w["dy"] * door_at)
+                ray = LineString([(d0[0] + w["nx"] * 0.05, d0[1] + w["ny"] * 0.05), (d0[0] + w["nx"] * 30, d0[1] + w["ny"] * 30)])
+                hit = ray.intersection(lot)
+                first_piece = min(survey_lines(hit), key=lambda q: Point(d0).distance(q), default=None)
+                depth = 0.0 if first_piece is None or Point(d0).distance(first_piece) > 0.5 else \
+                    max(Point(d0).distance(Point(c)) for c in first_piece.coords)
+                along = [(x - w["ax"]) * w["dx"] + (y - w["ay"]) * w["dy"] for x, y in lot.exterior.coords] if lot.geom_type == "Polygon" \
+                    else [(x - w["ax"]) * w["dx"] + (y - w["ay"]) * w["dy"] for q in lot.geoms for x, y in q.exterior.coords]
+                yards.append([front_w[0], round(door_at, 2), round(min(depth, 14.0), 2), round(max(min(along), -3.0), 2),
+                              round(min(max(along), front_w[1] + 3.0), 2), form, round(first, 2), nf, p["built"] or 0,
+                              1 if r.get("status") == "converted" else 0, b["parcel"]])
         # The converted ground floor.
         if main_b and r.get("status") == "converted" and front_w and door_at is not None:
             wid, L = front_w[0], front_w[1]
@@ -570,6 +715,8 @@ def main(check=False):
     gltf, binc = pack_glb.add_detail(gltf, binc, detail)
     table = gltf["nodes"][0]["extras"]["streetSmarts"]
     table["facts"] = facts
+    # [front wall, door along, yard depth, lot from, lot to (along the wall), form, first floor, floors, built, converted, gpin]
+    table["yards"] = {"version": 1, "rows": yards}
     table["site"] = {"id": "ghent-streets", "pipeline": "adaptive reuse (tools/ghent)", "inferred": [
         "building heights where the City's field is missing", "roof shapes", "windows and doors", "sidewalks", "tree sizes"]}
 
@@ -648,8 +795,8 @@ def main(check=False):
         "pipeline": "adaptive reuse",
         "model": "model.glb",
         "numbers": "numbers.json",
-        "renderers": {"money": "money.js", "corners": "corners.js", "place": "place.js"},
-        "live": ["place"],
+        "renderers": {"money": "money.js", "corners": "corners.js", "place": "place.js", "everyday": "everyday.js"},
+        "live": ["place", "everyday"],
         "views": False,
         "tours": [{**t, "max": len(t["stops"])} for t in PR["tours"]],
         "corners": [corner_entry(g) for g in PR["corners"]],
@@ -670,23 +817,26 @@ def main(check=False):
     }
     chorus_text = json.dumps(ghent_chorus.build(sets), indent=1, ensure_ascii=False) + "\n"
     site["chorus"] = "chorus.json"
+    everyday_text = json.dumps(everyday_bundle(parcels, plan, detail, doors), separators=(",", ":"), ensure_ascii=False) + "\n"
     site_text = json.dumps(site, indent=1, ensure_ascii=False) + "\n"
     numbers_text = json.dumps(numbers, indent=1) + "\n"
     if check:
         bad = []
-        for fn, text in (("site.json", site_text), ("numbers.json", numbers_text), ("chorus.json", chorus_text)):
+        for fn, text in (("site.json", site_text), ("numbers.json", numbers_text), ("chorus.json", chorus_text),
+                         ("everyday.json", everyday_text)):
             path = os.path.join(SITE_DIR, fn)
             if not os.path.exists(path) or open(path).read() != text:
                 bad.append(fn)
         if bad:
             sys.exit(f"stale: {', '.join(bad)} (run tools/ghent/build.py and commit)")
-        print("site.json, numbers.json and chorus.json are current")
+        print("site.json, numbers.json, chorus.json and everyday.json are current")
     os.makedirs(SITE_DIR, exist_ok=True)
     pack_glb.write_glb(os.path.join(SITE_DIR, "model.glb"), gltf, binc)
     if not check:
         open(os.path.join(SITE_DIR, "site.json"), "w").write(site_text)
         open(os.path.join(SITE_DIR, "numbers.json"), "w").write(numbers_text)
         open(os.path.join(SITE_DIR, "chorus.json"), "w").write(chorus_text)
+        open(os.path.join(SITE_DIR, "everyday.json"), "w").write(everyday_text)
     size = os.path.getsize(os.path.join(SITE_DIR, "model.glb"))
     print(f"model.glb {size / 1e6:.2f} MB: {len(table['elements'])} elements, {len(gltf['meshes'])} meshes, "
           f"{len(detail['walls'])} walls, {len(detail['openings'])} openings, {len(detail['shops'])} shops, {len(trees)} trees, "

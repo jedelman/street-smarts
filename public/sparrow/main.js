@@ -1105,7 +1105,8 @@ function renderLive(name) {
   const mod = SITE.renderers && SITE.renderers[name];
   const body = $(`${name}-body`);
   if (!mod || !body) return;
-  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, flyTo, goToElement }))
+  const here = { x: bird.pos.x, z: bird.pos.z };
+  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, here, flyTo, goToElement }))
     .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
 }
 /** Fly to an element and touch it on arrival (a panel's list of places, say). */

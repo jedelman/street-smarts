@@ -20,7 +20,10 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
 - waypoints as glTF camera nodes (`extras: { waypoint, source, title, look }`), so a tour's stops travel with the
   model and any glTF viewer can show them as viewpoints;
 - shop rows a pipeline typed (`typology`, `business`): a `storefront` replaces the ground floor's openings, any
-  other typology keeps the building's own doors and windows and lights them with the new use.
+  other typology keeps the building's own doors and windows and lights them with the new use;
+- `yards` (Ghent): one row per house front, `[front wall, door along, yard depth, lot from, lot to, form, first
+  floor, floors, built, converted, gpin]`. The walk's yard grammar (`public/sparrow/yards.js`) grows each one's
+  porch, steps, walk, beds, edge and tree from it, with weights from `tools/ghent/yard-photos.md`.
 
 **`site.json`** holds what the walk reads but isn't a place:
 - `model`, and what's published beside it: `numbers` (a pipeline's measurements), `chorus`, `archive`;
@@ -29,7 +32,10 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
   `{ "waypoint": "<id>" }` (a waypoint the model carries: where to stand, what to look at). One tour starts from
   the button; several open a list;
 - `renderers`: `{ "<panel>": "<module>" }`. The walk imports the module the first time that panel opens and calls
-  `render(el, { numbers, site, elements, flyTo, goToElement })` into `#<panel>-body`.
+  `render(el, { numbers, site, elements, flyTo, goToElement })` into `#<panel>-body`. A panel listed in `live`
+  renders afresh each time it opens, and also gets `place` (the element last touched) and `here` (where the
+  sparrow stands, glTF x/z). A module may fetch its own data beside it: Ghent's "Day to day" (`everyday.js`) reads
+  `everyday.json` (the walk network, places, rent and rates; `tools/ghent/everyday.py`, then `build.py`).
 
 **The page** holds the site's words: its intro, its panels' prose, its help. It names its bundle with
 `<meta name="street-smarts-site" content="/sites/<id>/site.json">`, links `/sparrow/walk.css`, and loads

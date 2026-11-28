@@ -9,10 +9,12 @@
  "renderers": {
   "money": "money.js",
   "corners": "corners.js",
-  "place": "place.js"
+  "place": "place.js",
+  "everyday": "everyday.js"
  },
  "live": [
-  "place"
+  "place",
+  "everyday"
  ],
  "views": false,
  "tours": [
