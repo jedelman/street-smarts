@@ -823,7 +823,7 @@ def main(check=False):
                       "gallery": "/sparrow/gallery.js"},
         # This build's showcase shots (tools/ghent/showcase.mjs chooses and photographs them).
         "showcase": "showcase.json",
-        "live": ["place", "everyday"],
+        "live": ["place", "everyday", "money"],
         "views": False,
         # Earlier builds, for a before and after (tools/sparrow/archive_site.py uploads them; the Worker serves them).
         "archive": "/archive/ghent-streets/index.json",

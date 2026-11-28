@@ -17,26 +17,28 @@ const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const pct = (f) => `${Math.round(f * 100)}%`;
 const list = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
-export async function render(el, ctx) {
-  if (!data) {
-    el.textContent = "Working it out…";
-    data = prepare(await (await fetch(new URL("./everyday.json", import.meta.url))).json());
-  }
-  const factsOf = new Map(ctx.elements.filter((e) => e.source && e.source.startsWith("parcel:")).map((e) => [e.source.slice(7), e]));
+/** The walk network and its places (everyday.json), loaded once and shared with the Money panel. */
+export async function loadEveryday() {
+  if (!data) data = prepare(await (await fetch(new URL("./everyday.json", import.meta.url))).json());
+  return data;
+}
+
+/** Where a panel speaks from: the lot last touched (unless asked otherwise), else where the sparrow stands. */
+export function locate(d, ctx, prefer = from) {
   const lotEl = ctx.place && ctx.place.source && ctx.place.source.startsWith("parcel:") ? ctx.place : null;
-  const lot = lotEl && data.lots[lotEl.source.slice(7)];
-  const useLot = from === "lot" && lot;
-  let origin, tract, title;
-  if (useLot) {
-    origin = lot.slice(0, 3);
-    tract = lot[3];
-    title = (lotEl.facts && lotEl.facts.name) || lotEl.name || "the lot you touched";
-  } else {
-    const x = ctx.here ? ctx.here.x : 0, y = ctx.here ? -ctx.here.z : 0;
-    origin = snap(data, x, y);
-    tract = tractAt(data, x, y);
-    title = "where you're standing";
+  const lot = lotEl && d.lots[lotEl.source.slice(7)];
+  if (prefer === "lot" && lot) {
+    return { origin: lot.slice(0, 3), tract: lot[3], title: (lotEl.facts && lotEl.facts.name) || lotEl.name || "the lot you touched", lot, useLot: true };
   }
+  const x = ctx.here ? ctx.here.x : 0, y = ctx.here ? -ctx.here.z : 0;
+  return { origin: snap(d, x, y), tract: tractAt(d, x, y), title: "where you're standing", lot, useLot: false };
+}
+
+export async function render(el, ctx) {
+  if (!data) el.textContent = "Working it out…";
+  await loadEveryday();
+  const factsOf = new Map(ctx.elements.filter((e) => e.source && e.source.startsWith("parcel:")).map((e) => [e.source.slice(7), e]));
+  const { origin, tract, title, lot, useLot } = locate(data, ctx);
   const S = summary(data, origin, minutes);
   el.replaceChildren();
   const p = (html, cls) => { const q = document.createElement("p"); if (cls) q.className = cls; q.innerHTML = html; el.append(q); return q; };

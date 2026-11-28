@@ -16,7 +16,8 @@
  "showcase": "showcase.json",
  "live": [
   "place",
-  "everyday"
+  "everyday",
+  "money"
  ],
  "views": false,
  "archive": "/archive/ghent-streets/index.json",
