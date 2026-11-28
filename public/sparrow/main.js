@@ -14,6 +14,7 @@ import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
+import { buildLamps } from "./lamps.js";
 import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
@@ -42,7 +43,7 @@ const fromSite = (url) => (url ? new URL(url, new URL(SITE_URL, location.href)).
 const GLB_URL = params.get("glb") || fromSite(SITE.model);
 // The plan's measurements, for panels like Money: published beside the model, or in the iteration's archive folder.
 const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
-  : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
+  : /^\/archive\/.+\/(clean_baseline|model)\.glb$/.test(GLB_URL) ? GLB_URL.replace(/[^/]+\.glb$/, "numbers.json") : null;
 const VIEWS_URL = SITE.views === false ? null : GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
 const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
@@ -112,6 +113,7 @@ let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
 let panels = null, plan = null; // the flyout panels, the site map's image
+let lamps = null; // streetlights (lamps.js)
 let lastPlace = null; // the last place touched that has a card
 const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
@@ -188,6 +190,8 @@ let present = [];
   // Every window, and storefronts at the doors that open onto a street or square.
   if (site.detail) await facesReady;
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
+  // The streetlights a site's data places (Ghent's, from Dominion's records).
+  if (site.detail && site.detail.lights.length) lamps = buildLamps(scene, site.detail.lights, { coarse: COARSE });
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
   pigeons = buildPigeons(scene, pigeonSpots());
@@ -203,7 +207,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -1497,6 +1501,7 @@ function frame() {
   tourTick();
   if (trees) trees.update(t, camera);
   if (frontages) frontages.update(camera);
+  if (lamps) lamps.update(camera);
   if (flowLines) flowLines.update(t, dt);
   waterTime.value = t;
   if (wetland) wetland.update(t);
@@ -1695,7 +1700,7 @@ function setupIterations() {
   fetch(fromSite(SITE.archive)).then((r) => (r.ok ? r.json() : null)).then((idx) => {
     const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
     if (!its.length || HERO) return;
-    renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null);
+    renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null, location.pathname);
     $("its-btn").hidden = false;
     const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const k = its.findIndex((i) => i.id === ITERATION);
@@ -1704,7 +1709,7 @@ function setupIterations() {
       note.innerHTML = "";
       const b = document.createElement("b"); b.textContent = `Iteration ${k + 1} of ${its.length}: ${it.title}`;
       note.append(b, document.createTextNode(` (${short(it.date)}${it.pr ? `, PR #${it.pr}` : ""}). ${it.summary} `));
-      const back = document.createElement("a"); back.href = "/"; back.textContent = "Back to now";
+      const back = document.createElement("a"); back.href = location.pathname; back.textContent = "Back to now";
       note.append(back);
       note.hidden = false;
       logLine(`You're walking iteration ${k + 1} of ${its.length}: ${it.title}.`, "note");

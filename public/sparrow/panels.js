@@ -59,14 +59,27 @@ export function renderTours(el, tours, start) {
 }
 
 /** The Iterations panel: every archived version, newest first, each one walkable. */
-export function renderIterations(el, its, currentId) {
+export function renderIterations(el, its, currentId, page = "/") {
   const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const li = (href, img, head, body, here) => `<li${here ? ' class="here"' : ""}>${img ? `<img src="${img}" alt="" loading="lazy">` : ""}<div><b>${head}</b>${body}${here ? ' <em>You&rsquo;re here.</em>' : ` <a href="${href}">Walk it</a>`}</div></li>`;
   const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  el.innerHTML = `<ol class="its">${li("/", null, "Now", " The plan as it is today.", !currentId)}${its.slice().reverse().map((it) => {
+  el.innerHTML = `<ol class="its">${li(page, null, "Now", " The plan as it is today.", !currentId)}${its.slice().reverse().map((it) => {
     const id = encodeURIComponent(it.id);
-    const href = `/?glb=/archive/${id}/clean_baseline.glb&chorus=/archive/${id}/chorus.json&iteration=${id}`;
-    const img = (it.files || []).includes("isometric.png") ? `/archive/${id}/isometric.png` : null;
+    // A site bundle's build (tools/sparrow/archive_site.py) names its folder and files; Eastside's milestones keep
+    // the older layout (tools/vibe-render/archive_milestone.py).
+    const href = iterationHref(it, page);
+    const img = it.folder ? (it.thumb ? it.folder + it.thumb : null)
+      : (it.files || []).includes("isometric.png") ? `/archive/${id}/isometric.png` : null;
     return li(href, img, `${short(it.date)} · ${esc(it.title)}`, ` ${esc(it.summary)}${it.pr ? ` (PR #${it.pr})` : ""}`, it.id === currentId);
   }).join("")}</ol>`;
+}
+
+/** The address that walks an archived build. */
+export function iterationHref(it, page = "/") {
+  const id = encodeURIComponent(it.id);
+  if (!it.folder) return `/?glb=/archive/${id}/clean_baseline.glb&chorus=/archive/${id}/chorus.json&iteration=${id}`;
+  const q = [`glb=${it.folder}${it.model || "model.glb"}`];
+  if (it.chorus) q.push(`chorus=${it.folder}${it.chorus}`);
+  q.push(`iteration=${id}`);
+  return `${it.page || page}?${q.join("&")}`;
 }

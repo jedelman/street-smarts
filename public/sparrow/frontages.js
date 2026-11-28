@@ -73,6 +73,8 @@ export async function readDetail(parser, table) {
     shops: d.shops.rows, strings: table.strings,
     // Ghent's house fronts (tools/ghent/build.py): what the yard grammar grows from.
     yards: (table.yards && table.yards.version === 1 && table.yards.rows) || [],
+    // Ghent's streetlights (lamps.js draws them).
+    lights: (table.lights && table.lights.version === 1 && table.lights.rows) || [],
   };
 }
 
@@ -383,10 +385,10 @@ const BOX = (() => {
 const QUAD = new THREE.PlaneGeometry(1, 1);
 // The yards' shapes: a whole box (it stands free), a rounded shrub, a cone, a post, and a gable (a triangular prism,
 // its base on y = -0.5, apex at y = 0.5, depth along z).
-const FULL_BOX = new THREE.BoxGeometry(1, 1, 1);
-const SHRUB = new THREE.IcosahedronGeometry(0.5, 1);
-const CONE = new THREE.ConeGeometry(0.5, 1, 8);
-const POST = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
+export const FULL_BOX = new THREE.BoxGeometry(1, 1, 1);
+export const SHRUB = new THREE.IcosahedronGeometry(0.5, 1);
+export const CONE = new THREE.ConeGeometry(0.5, 1, 8);
+export const POST = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
 const GABLE = (() => {
   const v = [-0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0, 0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0, 0.5, -0.5];
   const g = new THREE.BufferGeometry();
@@ -426,7 +428,7 @@ function railMaterial() {
   return m;
 }
 
-class Parts {
+export class Parts {
   constructor(kinds) {
     this.kinds = kinds; // name -> { geometry, material, uv, reach }
     this.items = Object.fromEntries(Object.keys(kinds).map((k) => [k, { m: [], c: [], uv: [] }]));
@@ -442,7 +444,7 @@ class Parts {
     for (const [name, it] of Object.entries(this.items)) {
       const kind = this.kinds[name];
       const n = it.c.length / 3;
-      const byChunk = new Map(), size = CHUNK[name];
+      const byChunk = new Map(), size = kind.chunk || CHUNK[name];
       for (let i = 0; i < n; i++) {
         const key = `${Math.floor(it.m[i * 16 + 12] / size)},${Math.floor(it.m[i * 16 + 14] / size)}`;
         if (!byChunk.has(key)) byChunk.set(key, []);

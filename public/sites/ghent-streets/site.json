@@ -17,6 +17,7 @@
   "everyday"
  ],
  "views": false,
+ "archive": "/archive/ghent-streets/index.json",
  "tours": [
   {
    "id": "six",

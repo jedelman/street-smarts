@@ -47,6 +47,7 @@ import chorus as ghent_chorus  # noqa: E402
 SURVEY = os.path.join(ROOT, "data/ghent/survey.json")
 PROPOSAL = os.path.join(ROOT, "data/ghent/proposal.json")
 EVERYDAY = os.path.join(ROOT, "data/ghent/everyday.json")
+LIGHTS = os.path.join(ROOT, "data/ghent/lights.json")
 SITE_DIR = os.path.join(ROOT, "public/sites/ghent-streets")
 SQFT = 10.7639
 
@@ -717,6 +718,28 @@ def main(check=False):
     table["facts"] = facts
     # [front wall, door along, yard depth, lot from, lot to (along the wall), form, first floor, floors, built, converted, gpin]
     table["yards"] = {"version": 1, "rows": yards}
+    # The streetlights, where Dominion's data puts them (tools/ghent/lights.py): [x, z (glTF), family, pole, yaw]. A light
+    # that falls inside a footprint (a geocoding slip) steps out of it; an arm-mounted head faces its nearest street.
+    L = json.load(open(LIGHTS))
+    street_lines = [LineString(st["line"]) for st in S["streets"] if len(st["line"]) >= 2]
+    stree = shapely.STRtree(street_lines)
+    light_rows = []
+    for x, y, fam, pole, code in L["lights"]:
+        p0 = Point(x, y)
+        for j in btree.query(p0):
+            if all_polys[j].contains(p0):
+                edge = all_polys[j].exterior
+                q = edge.interpolate(edge.project(p0))
+                dx, dy = q.x - x, q.y - y
+                d = math.hypot(dx, dy) or 1.0
+                x, y = q.x + dx / d * 0.6, q.y + dy / d * 0.6
+                p0 = Point(x, y)
+                break
+        k = stree.nearest(p0)
+        near = street_lines[k].interpolate(street_lines[k].project(p0))
+        yaw = math.atan2(near.x - x, -(near.y - y))  # glTF: toward +x is yaw pi/2; the street lies at (near.x, -near.y)
+        light_rows.append([round(x, 2), round(-y, 2), fam, pole, round(yaw, 3)])
+    table["lights"] = {"version": 1, "source": L["source"], "families": L["families"], "rows": light_rows}
     table["site"] = {"id": "ghent-streets", "pipeline": "adaptive reuse (tools/ghent)", "inferred": [
         "building heights where the City's field is missing", "roof shapes", "windows and doors", "sidewalks", "tree sizes"]}
 
@@ -798,6 +821,8 @@ def main(check=False):
         "renderers": {"money": "money.js", "corners": "corners.js", "place": "place.js", "everyday": "everyday.js"},
         "live": ["place", "everyday"],
         "views": False,
+        # Earlier builds, for a before and after (tools/sparrow/archive_site.py uploads them; the Worker serves them).
+        "archive": "/archive/ghent-streets/index.json",
         "tours": [{**t, "max": len(t["stops"])} for t in PR["tours"]],
         "corners": [corner_entry(g) for g in PR["corners"]],
         "spawn": {"waypoint": PR["waypoints"][0]["id"]},
