@@ -1299,6 +1299,8 @@ const director = (() => {
       zoom = clamp(zoom * f, 0.3, 45); lastInputT = t;
     },
     zoomTo(z) { hold = null; zoom = clamp(z, 0.3, 45); lastInputT = t; },
+    /** Set the tilt outright (a warp's), in radians, within a drag's limits: the same view from wherever you were. */
+    pitchTo(p) { pitch = pitchT = clamp(p, bird.air ? -0.6 : -0.12, 1.35); pitchV = 0; },
     /** Swoop down from above the whole site to the bird. */
     crane() {
       if (REDUCED) return;
@@ -1996,7 +1998,9 @@ function warpTo(shot, done) {
     bird.heading = Math.atan2(lx - sx, lz - sz);
     director.snapBehind();
     director.zoomTo(shot.zoom || 1);
-    if (shot.pitch) director.drag(0, shot.pitch);
+    // A shot's pitch is in drag units from the walk's resting tilt (0.3 rad; showcase.mjs writes -60): set outright,
+    // not nudged from wherever the camera was, so a shot looks the same however you came to it.
+    director.pitchTo(0.3 + (shot.pitch || 0) * 0.004);
     $("fade").classList.remove("on");
     if (done) done();
   }, 360);
