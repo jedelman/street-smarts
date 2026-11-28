@@ -19,6 +19,12 @@
   "everyday",
   "money"
  ],
+ "surface": [
+  "gallery",
+  "money",
+  "place",
+  "everyday"
+ ],
  "views": false,
  "archive": "/archive/ghent-streets/index.json",
  "tours": [

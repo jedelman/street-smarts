@@ -127,3 +127,60 @@ export function setupHudMenu() {
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) close(); });
   addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) close(); });
 }
+
+/**
+ * A panel offered in context: a small card saying what one panel has to say about what you just touched or where
+ * you are, with chips for the others that have something too. Tapping one opens its panel; nothing opens by itself.
+ * It goes after a while, when a panel opens, or when dismissed. items: [{ panel, title, text, open? }]; `open` runs
+ * before the panel does (the gallery uses it to turn to a shot).
+ */
+export function setupPeek(openPanel) {
+  const el = document.createElement("div");
+  el.id = "peek";
+  el.className = "peek";
+  el.hidden = true;
+  el.setAttribute("role", "status");
+  document.body.append(el);
+  let timer = 0;
+  const hide = () => { el.hidden = true; clearTimeout(timer); };
+  const go = (it) => { hide(); if (it.open) it.open(); openPanel(it.panel); };
+  function show(items, { linger = 14000 } = {}) {
+    if (!items.length) return;
+    const [lead, ...more] = items;
+    el.replaceChildren();
+    const main = document.createElement("button");
+    main.type = "button";
+    main.className = "peek-main";
+    const b = document.createElement("b");
+    b.textContent = lead.title;
+    const s = document.createElement("span");
+    s.textContent = lead.text;
+    main.append(b, s);
+    main.addEventListener("click", () => go(lead));
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "peek-close";
+    x.setAttribute("aria-label", "Dismiss");
+    x.textContent = "×";
+    x.addEventListener("click", hide);
+    el.append(main, x);
+    if (more.length) {
+      const row = document.createElement("p");
+      row.className = "peek-more";
+      row.append("Also: ");
+      for (const it of more) {
+        const c = document.createElement("button");
+        c.type = "button";
+        c.textContent = it.title;
+        c.title = it.text;
+        c.addEventListener("click", () => go(it));
+        row.append(c);
+      }
+      el.append(row);
+    }
+    el.hidden = false;
+    clearTimeout(timer);
+    timer = setTimeout(hide, linger);
+  }
+  return { show, hide, get shown() { return !el.hidden; } };
+}

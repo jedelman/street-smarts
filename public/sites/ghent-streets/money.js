@@ -1,5 +1,5 @@
-// Ghent Streets' Money panel, at two scales side by side: what the city pays and gets, and what a household here pays
-// and gets, today and after the change. Adaptive reuse, so nothing is built.
+// Ghent Streets' Money panel, at three scales side by side: what the city pays and gets, what a household here pays and
+// gets, and what a ground floor would rent for, today and after the change. Adaptive reuse, so nothing is built.
 //   - The city: Policy Brief No. 2's figures, quoted, not recomputed (it prices 15 to 40 businesses that might open;
 //     the walk shows every ground floor that could).
 //   - A household: the census tract's rent (ACS 2020-2024), and the places within a walk, from Day to day's data
@@ -28,13 +28,36 @@ const money = (v) => `$${Math.round(v).toLocaleString("en-US")}`;
 const esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const pct = (f) => `${Math.round(f * 100)}%`;
 const src = (k) => `(<a href="${STUDIES[k].url}" target="_blank" rel="noopener">${STUDIES[k].cite}</a>)`;
+let shopRents = null;
+const loadShopRents = () => shopRents || (shopRents = fetch(new URL("./shoprents.json", import.meta.url)).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+
+/**
+ * In context (main.js surface): touching a lot, what it would rent for as a shop if the proposal converts it (by
+ * comparison, as the panel's ground-floor card works it out), else the rent a household pays here today.
+ */
+export async function peek(ctx) {
+  const el = ctx.reason === "touch" && ctx.touched;
+  if (!el || !el.source || !el.source.startsWith("parcel:") || !el.facts) return null;
+  const gpin = el.source.slice(7);
+  const d = await loadEveryday();
+  if (el.facts.status === "converted") {
+    const sr = await loadShopRents();
+    const zip = sr && sr.lot_zips[gpin], sqft = d.units && d.units[gpin];
+    if (!zip || !sqft || !sr.ghent_zips.some((g) => g.zip === zip)) return null;
+    const r = range(indexed(sr), zip);
+    return { key: `money:${gpin}`, text: `As a shop, its ${sqft.toLocaleString("en-US")} sq ft would rent for about ${money(monthly(r.median, sqft))} a month, going by districts like it in other cities.` };
+  }
+  const lot = d.lots[gpin], t = lot && d.tracts[lot[3]];
+  if (!t) return null;
+  return { key: `money:${gpin}`, text: `Rent here is ${money(t.median_rent)} a month, the tract's median. What the change might do to it, and what the city gets.` };
+}
 
 export async function render(el, ctx) {
   el.textContent = "Working it out…";
   const [d, n, sr] = await Promise.all([
     loadEveryday(),
     fetch(new URL("./numbers.json", import.meta.url)).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    fetch(new URL("./shoprents.json", import.meta.url)).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    loadShopRents(),
   ]);
   const at = locate(d, ctx), t = d.tracts[at.tract];
   const S = summary(d, at.origin, 10);
@@ -64,11 +87,11 @@ export async function render(el, ctx) {
   let floor = "", floorHow = "";
   if (sr) {
     const ix = indexed(sr);
-    const gpin = at.useLot && ctx.place.source.slice(7);
+    const gpin = at.useLot && at.el.source.slice(7);
     const zip = (gpin && sr.lot_zips[gpin]) || null;
     const z = sr.ghent_zips.find((g) => g.zip === zip) || null;
     const sqft = (gpin && d.units && d.units[gpin]) || 1500;
-    const biz = gpin && ctx.place.facts && ctx.place.facts.business;
+    const biz = gpin && at.el.facts && at.el.facts.business;
     const BIZ = { coffee: "a coffee shop", bistro: "a bistro", bakery: "a bakery", books: "a bookshop", greengrocer: "a greengrocer's",
       florist: "a florist's", hardware: "a hardware store", bikes: "a bike shop", records: "a record shop", hairdresser: "a hairdresser's",
       barber: "a barbershop", cleaners: "a dry cleaner's", tailor: "a tailor's", accountant: "an accountant's office", architect: "an architects' studio",

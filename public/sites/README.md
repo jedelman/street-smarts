@@ -33,9 +33,14 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
   the button; several open a list;
 - `renderers`: `{ "<panel>": "<module>" }`. The walk imports the module the first time that panel opens and calls
   `render(el, { numbers, site, elements, flyTo, goToElement })` into `#<panel>-body`. A panel listed in `live`
-  renders afresh each time it opens, and also gets `place` (the element last touched) and `here` (where the
-  sparrow stands, glTF x/z). A module may fetch its own data beside it: Ghent's "Day to day" (`everyday.js`) reads
-  `everyday.json` (the walk network, places, rent and rates; `tools/ghent/everyday.py`, then `build.py`).
+  renders afresh each time it opens and when you touch something while it's open, and also gets `place` (the
+  element last touched that has a card), `lot` (the parcel last touched) and `here` (where the sparrow stands, glTF
+  x/z). A module may fetch its own data beside it: Ghent's "Day to day" (`everyday.js`) reads `everyday.json` (the
+  walk network, places, rent and rates; `tools/ghent/everyday.py`, then `build.py`);
+- `surface`: panels that may offer themselves in context, most telling first. Each module may export
+  `peek(ctx)`: the live context plus `touched` (the element just touched, `reason: "touch"`) or `reason: "near"`
+  (checked as you go), returning `{ key, text, open? }` or null. The first to answer leads a small card and the rest
+  follow as chips; tapping opens the panel. A touch always asks; a place you walk past offers itself once.
 
 **The page** holds the site's words: its intro, its panels' prose, its help. It names its bundle with
 `<meta name="street-smarts-site" content="/sites/<id>/site.json">`, links `/sparrow/walk.css`, and loads

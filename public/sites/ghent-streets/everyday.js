@@ -25,13 +25,26 @@ export async function loadEveryday() {
 
 /** Where a panel speaks from: the lot last touched (unless asked otherwise), else where the sparrow stands. */
 export function locate(d, ctx, prefer = from) {
-  const lotEl = ctx.place && ctx.place.source && ctx.place.source.startsWith("parcel:") ? ctx.place : null;
+  const lotEl = [ctx.lot, ctx.place].find((e) => e && e.source && e.source.startsWith("parcel:")) || null;
   const lot = lotEl && d.lots[lotEl.source.slice(7)];
   if (prefer === "lot" && lot) {
-    return { origin: lot.slice(0, 3), tract: lot[3], title: (lotEl.facts && lotEl.facts.name) || lotEl.name || "the lot you touched", lot, useLot: true };
+    return { origin: lot.slice(0, 3), tract: lot[3], title: (lotEl.facts && lotEl.facts.name) || lotEl.name || "the lot you touched", lot, el: lotEl, useLot: true };
   }
   const x = ctx.here ? ctx.here.x : 0, y = ctx.here ? -ctx.here.z : 0;
-  return { origin: snap(d, x, y), tract: tractAt(d, x, y), title: "where you're standing", lot, useLot: false };
+  return { origin: snap(d, x, y), tract: tractAt(d, x, y), title: "where you're standing", lot, el: null, useLot: false };
+}
+
+const minutesText = (m) => (!isFinite(m) || m > 15 ? "over 15 minutes" : m < 1 ? "under a minute" : Math.round(m) === 1 ? "a minute" : `${Math.round(m)} minutes`);
+/** In context (main.js surface): touching a lot, how far a walk coffee and groceries are from it today. */
+export async function peek(ctx) {
+  const el = ctx.reason === "touch" && ctx.touched;
+  if (!el || !el.source || !el.source.startsWith("parcel:")) return null;
+  await loadEveryday();
+  const lot = data.lots[el.source.slice(7)];
+  if (!lot) return null;
+  const S = summary(data, lot.slice(0, 3), 10);
+  const away = (id) => { const k = S.kinds.find((x) => x.id === id); return minutesText(k ? k.today.nearest / S.mps / 60 : Infinity); };
+  return { key: `everyday:${el.source}`, text: `On foot from here today: coffee ${away("coffee")}, groceries ${away("groceries")}. And with the proposal, kind by kind.` };
 }
 
 export async function render(el, ctx) {

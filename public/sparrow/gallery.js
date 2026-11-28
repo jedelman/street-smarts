@@ -2,7 +2,38 @@
 // Tap a shot and you're there; the panel turns to why it was chosen. An archived build carries its own showcase
 // beside its model, so walking a "before" shows the before's shots.
 
-let state = null; // { sc, base, i } across openings
+let state = null; // { sc, base, i, seen } across openings
+let loading = null;
+
+/** The build's showcase.json, loaded once. */
+async function load(url) {
+  if (state) return state;
+  if (!loading) {
+    loading = fetch(url).then((r) => (r && r.ok ? r.json() : null)).catch(() => null).then((sc) => {
+      if (sc && Array.isArray(sc.shots) && sc.shots.length) state = { sc, base: new URL(url, location.href), i: null, seen: new Set() };
+      return state;
+    });
+  }
+  return loading;
+}
+
+/**
+ * In context (main.js surface): walking up to where a shot was taken (within 14 m of where it stands or what it looks
+ * at), that shot and why it was chosen. Not a shot you've already opened here.
+ */
+export async function peek(ctx) {
+  if (ctx.reason !== "near" || !ctx.showcase || !ctx.here) return null;
+  const st = await load(ctx.showcase);
+  if (!st) return null;
+  let best = -1, bd = 14;
+  st.sc.shots.forEach((s, i) => {
+    const d = Math.min(Math.hypot(s.stand[0] - ctx.here.x, s.stand[1] - ctx.here.z), Math.hypot(s.look[0] - ctx.here.x, s.look[2] - ctx.here.z));
+    if (d < bd && !st.seen.has(i)) { bd = d; best = i; }
+  });
+  if (best < 0) return null;
+  const s = st.sc.shots[best];
+  return { key: `gallery:${s.id}`, text: `${s.title}. ${s.caption}`, open: () => { st.i = best; } };
+}
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -13,13 +44,10 @@ export async function render(el, ctx) {
   }
   if (!state) {
     el.textContent = "Working it out…";
-    const r = await fetch(ctx.showcase).catch(() => null);
-    const sc = r && r.ok ? await r.json() : null;
-    if (!sc || !Array.isArray(sc.shots) || !sc.shots.length) {
+    if (!(await load(ctx.showcase))) {
       el.innerHTML = "<p>This build has no showcase.</p>";
       return;
     }
-    state = { sc, base: new URL(ctx.showcase, location.href), i: null };
   }
   const { sc, base } = state;
   const src = (s) => new URL(s.image, base).pathname;
@@ -33,6 +61,7 @@ export async function render(el, ctx) {
   };
   const detail = (i) => {
     state.i = i;
+    state.seen.add(i);
     const s = sc.shots[i], n = sc.shots.length;
     el.innerHTML = `<p class="gallery-nav"><button type="button" class="linklike" data-back>&larr; All shots</button>`
       + `<span>${i + 1} of ${n}</span>`

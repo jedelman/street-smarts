@@ -826,6 +826,8 @@ def main(check=False):
         # This build's showcase shots (tools/ghent/showcase.mjs chooses and photographs them).
         "showcase": "showcase.json",
         "live": ["place", "everyday", "money"],
+        # The panels that may offer themselves in context (each module's peek()), most telling first.
+        "surface": ["gallery", "money", "place", "everyday"],
         "views": False,
         # Earlier builds, for a before and after (tools/sparrow/archive_site.py uploads them; the Worker serves them).
         "archive": "/archive/ghent-streets/index.json",

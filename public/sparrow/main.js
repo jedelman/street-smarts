@@ -15,11 +15,12 @@ import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
 import { buildLamps } from "./lamps.js";
+import { seeThrough, solid, update as updateSee } from "./seethrough.js";
 import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
-import { setupPanels, renderIterations, renderTours, setupHudMenu } from "./panels.js";
+import { setupPanels, renderIterations, renderTours, setupHudMenu, setupPeek } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
@@ -116,8 +117,10 @@ let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
 let panels = null, plan = null; // the flyout panels, the site map's image
+let peek = null; // a panel offered in context (surface below)
 let lamps = null; // streetlights (lamps.js)
 let lastPlace = null; // the last place touched that has a card
+let lastLot = null; // the last lot touched (a parcel), card or not: where Money and Day to day speak from
 const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
@@ -195,6 +198,14 @@ let present = [];
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
   // The streetlights a site's data places (Ghent's, from Dominion's records).
   if (site.detail && site.detail.lights.length) lamps = buildLamps(scene, site.detail.lights, { coarse: COARSE });
+  // What stands up (buildings, roofs, canopies, trees, every front's parts and the lamps) thins out by its normals
+  // where it comes between you and the camera (seethrough.js); the ground, streets and squares never do.
+  const STANDING = new Set(["buildings", "canopies", "wall_niches", "context"]);
+  for (const m of site.meshes) {
+    const { groups, kinds } = m.userData;
+    if (solid(m.material) && ([...groups].some((g) => STANDING.has(g)) || (kinds.size && [...kinds].every((k) => /^platform_(canopy|post)$/.test(k))))) seeThrough(m.material);
+  }
+  for (const m of [...(trees ? trees.meshes : []), ...(frontages ? frontages.meshes : []), ...(lamps ? lamps.meshes : [])]) if (solid(m.material)) seeThrough(m.material);
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
   pigeons = buildPigeons(scene, pigeonSpots());
@@ -837,8 +848,11 @@ function touch(el, { look = true } = {}) {
     // A place with a card (the assessor's photo, Street View, a case study): the Place panel shows it.
     lastPlace = el;
     $("place-btn").hidden = false;
-    if (panels && panels.current === "place") renderLive("place");
   }
+  if (el.source && el.source.startsWith("parcel:")) lastLot = el;
+  // An open live panel follows what you touch (the Lot, the Money, Day to day).
+  if (panels && panels.current && (SITE.live || []).includes(panels.current)) renderLive(panels.current);
+  surface("touch", el);
   if (sculptures && sculptures.byElement.has(el)) {
     logLine(sculptures.byElement.get(el) === "cat"
       ? "On it, a bronze cat, sitting, round as a loaf, its tail wrapped round its paws: after Fernando Botero. Ours, not data."
@@ -1112,9 +1126,51 @@ function renderLive(name) {
   const mod = SITE.renderers && SITE.renderers[name];
   const body = $(`${name}-body`);
   if (!mod || !body) return;
-  const here = { x: bird.pos.x, z: bird.pos.z };
-  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, here, flyTo, goToElement, warp: warpTo, showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] }))
+  import(fromSite(mod)).then((m) => m.render(body, panelCtx()))
     .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
+}
+/** What a site's panel module is told: the site, the last place touched with a card, where you are, and how to go places. */
+function panelCtx() {
+  return { site: SITE, elements: site.elements, place: lastPlace, lot: lastLot, here: { x: bird.pos.x, z: bird.pos.z }, flyTo, goToElement, warp: warpTo,
+    showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] };
+}
+
+// ---------------------------------------------------------------- panels, offered in context
+// A site's panel module may export peek(ctx): one line on what its panel has to say about what you just touched
+// (ctx.touched, ctx.reason "touch") or where you've got to (ctx.reason "near"), or null. The first to answer, in the
+// order of the site's `surface` list, leads a small card and the rest follow as chips (panels.js setupPeek); tapping
+// opens the panel. Nothing opens by itself; a touch always asks, but a place you walk past offers itself only once.
+const peekedNear = new Set();
+let peekAsk = 0, nearAt = null, nearT = 0;
+async function surface(reason, touched = null) {
+  if (!peek || HERO || !Array.isArray(SITE.surface)) return;
+  const ask = ++peekAsk;
+  const ctx = { ...panelCtx(), touched, reason };
+  const said = await Promise.all(SITE.surface.map(async (name) => {
+    const mod = SITE.renderers && SITE.renderers[name];
+    const btn = document.querySelector(`[data-open="${name}"]`);
+    if (!mod || !btn) return null;
+    try {
+      const m = await import(fromSite(mod));
+      const r = m.peek ? await m.peek(ctx) : null;
+      return r && r.text ? { ...r, panel: name, title: btn.textContent.trim() } : null;
+    } catch { return null; }
+  }));
+  if (ask !== peekAsk) return; // something newer asked meanwhile
+  let items = said.filter((r) => r && r.panel !== (panels && panels.current));
+  if (reason === "near") {
+    items = items.filter((r) => !peekedNear.has(r.key)).slice(0, 1);
+    for (const r of items) peekedNear.add(r.key);
+  }
+  if (items.length) peek.show(items);
+}
+/** Now and then while you go about: has where you've got to something to offer? */
+function surfaceNear() {
+  if (!peek || t - nearT < 1.2) return;
+  nearT = t;
+  if (nearAt && Math.hypot(bird.pos.x - nearAt.x, bird.pos.z - nearAt.z) < 5) return;
+  nearAt = { x: bird.pos.x, z: bird.pos.z };
+  if (!bird.air || bird.speed < 3) surface("near");
 }
 /** Fly to an element and touch it on arrival (a panel's list of places, say). */
 function goToElement(el) {
@@ -1169,7 +1225,7 @@ function peekInside(i) {
 // ---------------------------------------------------------------- the camera director
 const director = (() => {
   let yaw = 0, yawT = 0, yawV = 0, pitch = 0.3, pitchT = 0.3, pitchV = 0;
-  let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0, collided = Infinity;
+  let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0;
   const look = new THREE.Vector3(), lookV = new THREE.Vector3(), lookT = new THREE.Vector3();
   const cam = new THREE.Vector3(), head = new THREE.Vector3(), dir = new THREE.Vector3(), eye = new THREE.Vector3();
   let shot = null;
@@ -1276,19 +1332,12 @@ const director = (() => {
           rollT *= 1 - w;
         }
       }
-      // Don't let walls come between you and the camera: pull in at once, ease back out.
+      // Walls, curbs and posts don't push the camera in (it jumped whenever one crossed the line): it keeps its place,
+      // and what's in the way thins out instead (seethrough.js, updated below).
       head.copy(bird.pos).y += 0.1;
-      dir.subVectors(cam, head);
-      const want = dir.length();
-      if (want > 0.05 && eyes < 0.5) {
-        dir.divideScalar(want);
-        const hit = castRay(head, dir, want, false); // trees pass between you and the camera, as leaves do
-        const allowed = hit ? Math.max(0.12, hit.distance - 0.08) : want;
-        collided = allowed < collided ? allowed : collided + (allowed - collided) * Math.min(1, dt * 2.5);
-        cam.copy(head).addScaledVector(dir, Math.min(want, collided));
-      }
-      // Never under the ground: the ground right below the camera (a sidewalk stands above the street), not only the site's lowest.
-      const under = castDown(cam.x, cam.y + 1.5, cam.z, 3);
+      // Never under the ground: the ground right below the camera (a sidewalk stands above the street), not only the
+      // site's lowest. Looked for from just above the camera, so a porch roof or a crown overhead never lifts it.
+      const under = castDown(cam.x, cam.y + 0.3, cam.z, 2.3, false);
       const floorY = under ? under.point.y : world.groundY;
       cam.y = Math.max(cam.y, floorY + 0.1, world.groundY + 0.04);
       [fov, fovV] = smoothDamp(fov, fovT, fovV, 0.6, dt);
@@ -1304,6 +1353,7 @@ const director = (() => {
         camera.updateProjectionMatrix();
       }
       sparrow.root.visible = eyes < 0.6;
+      updateSee(camera, head, eyes < 0.5);
     },
   };
 })();
@@ -1514,6 +1564,7 @@ function frame() {
   waterTime.value = t;
   if (wetland) wetland.update(t);
   if (plan && panels && panels.current === "map" && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) drawMap();
+  if (active) surfaceNear();
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });
@@ -1655,6 +1706,7 @@ function setupUI() {
   $("mute").setAttribute("aria-pressed", String(sound.muted));
   panels = setupPanels({
     open(name) {
+      if (peek) peek.hide();
       if (name === "map") openMap();
       const mod = SITE.renderers && SITE.renderers[name];
       if (mod && (SITE.live || []).includes(name)) renderLive(name);
@@ -1674,6 +1726,7 @@ function setupUI() {
     },
   });
   setupHudMenu();
+  peek = setupPeek((name) => panels.open(name));
   $("map-canvas").addEventListener("click", (e) => {
     if (!plan) return;
     const r = e.currentTarget.getBoundingClientRect();
