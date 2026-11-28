@@ -22,20 +22,22 @@
 <div id="iteration-note" hidden></div>
 
 <div class="hud top-right">
-  <button type="button" data-open="gallery" aria-pressed="false" title="This build's showcase: tap a shot to go there">Gallery</button>
-  <button type="button" data-open="map" aria-pressed="false" title="The map: tap it to fly there">Map</button>
-  <button type="button" data-open="money" aria-pressed="false" title="What the city and a household here pay and get, today and after">Money</button>
-  <button type="button" data-open="everyday" aria-pressed="false" title="Rent here, and how far a walk it is to coffee, groceries or a haircut">Day to day</button>
-  <button type="button" data-open="corners" aria-pressed="false" title="The corner lots the campaign identified">Corners</button>
-  <button type="button" id="place-btn" data-open="place" hidden aria-pressed="false" title="The lot you last touched">Lot</button>
-  <button type="button" data-open="iterations" id="its-btn" hidden aria-pressed="false" title="This build next to the ones before it">Before &amp; after</button>
+  <button type="button" data-open="gallery" data-group="explore" aria-pressed="false" title="This build's showcase: tap a shot to go there">Gallery</button>
+  <button type="button" data-open="map" data-group="explore" aria-pressed="false" title="The map: tap it to fly there">Map</button>
+  <button type="button" data-open="money" data-group="numbers" aria-pressed="false" title="What the city and a household here pay and get, today and after">Money</button>
+  <button type="button" data-open="everyday" data-group="numbers" aria-pressed="false" title="Rent here, and how far a walk it is to coffee, groceries or a haircut">Day to day</button>
+  <button type="button" data-open="corners" data-group="explore" aria-pressed="false" title="The corner lots the campaign identified">Corners</button>
+  <button type="button" id="place-btn" data-open="place" data-group="explore" hidden aria-pressed="false" title="The lot you last touched">Lot</button>
+  <button type="button" data-open="iterations" data-group="build" id="its-btn" hidden aria-pressed="false" title="This build next to the ones before it">Before &amp; after</button>
   <button type="button" id="met" data-open="patterns" hidden aria-pressed="false">Patterns <span id="met-count">0 / 0</span></button>
   <button type="button" id="inside" hidden>Inside</button>
   <button type="button" id="flows" hidden aria-pressed="false">Flows</button>
   <button type="button" id="tour" aria-pressed="false">Show me around</button>
+  <button type="button" id="menu-btn" class="menu-btn" aria-expanded="false" aria-controls="hud-menu">Panels</button>
   <button type="button" id="mute" aria-pressed="false" title="Sound (M)" aria-label="Sound">&#9834;</button>
   <button type="button" id="help-btn" data-open="help" aria-pressed="false" aria-label="How to play">?</button>
   <div id="flows-legend" hidden></div>
+  <div id="hud-menu" class="hud-menu" hidden data-groups='[["explore", "Look around"], ["numbers", "Money and everyday life"], ["build", "This build"]]'></div>
 </div>
 
 <div id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="intro-h">

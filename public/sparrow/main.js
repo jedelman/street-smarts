@@ -19,7 +19,7 @@ import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
-import { setupPanels, renderIterations, renderTours } from "./panels.js";
+import { setupPanels, renderIterations, renderTours, setupHudMenu } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
 import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
@@ -1673,6 +1673,7 @@ function setupUI() {
       if (name === "tours") renderTours($("tours-body"), TOURS, (def) => { panels.close(); startTour(def); });
     },
   });
+  setupHudMenu();
   $("map-canvas").addEventListener("click", (e) => {
     if (!plan) return;
     const r = e.currentTarget.getBoundingClientRect();

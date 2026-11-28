@@ -22,16 +22,18 @@
 <div id="iteration-note" hidden></div>
 
 <div class="hud top-right">
-  <button type="button" data-open="map" aria-pressed="false" title="The site map: tap it to fly there">Map</button>
-  <button type="button" data-open="money" aria-pressed="false" title="What it would cost, and who would pay">Money</button>
-  <button type="button" data-open="iterations" id="its-btn" hidden aria-pressed="false" title="Earlier iterations of the plan">Iterations</button>
-  <button type="button" id="met" data-open="patterns" aria-pressed="false" title="Patterns you've met here">Patterns <span id="met-count">0 / 0</span></button>
-  <button type="button" id="inside" hidden title="Go inside a ground-floor room">Inside</button>
-  <button type="button" id="flows" hidden aria-pressed="false" title="Where the neighbourhood's money goes (O)">Flows</button>
+  <button type="button" data-open="map" data-group="explore" aria-pressed="false" title="The site map: tap it to fly there">Map</button>
+  <button type="button" data-open="money" data-group="numbers" aria-pressed="false" title="What it would cost, and who would pay">Money</button>
+  <button type="button" data-open="iterations" data-group="build" id="its-btn" hidden aria-pressed="false" title="Earlier iterations of the plan">Iterations</button>
+  <button type="button" id="met" data-open="patterns" data-group="explore" aria-pressed="false" title="Patterns you've met here">Patterns <span id="met-count">0 / 0</span></button>
+  <button type="button" id="inside" data-group="explore" hidden title="Go inside a ground-floor room">Inside</button>
+  <button type="button" id="flows" data-group="numbers" hidden aria-pressed="false" title="Where the neighbourhood's money goes (O)">Flows</button>
   <button type="button" id="tour" aria-pressed="false">Show me around</button>
+  <button type="button" id="menu-btn" class="menu-btn" aria-expanded="false" aria-controls="hud-menu">Panels</button>
   <button type="button" id="mute" aria-pressed="false" title="Sound (M)" aria-label="Sound">&#9834;</button>
   <button type="button" id="help-btn" data-open="help" aria-pressed="false" aria-label="How to play">?</button>
   <div id="flows-legend" hidden><span class="sw home"></span>homes &nbsp;<span class="sw desk"></span>desks &nbsp;<span class="sw tram"></span>tram riders (not sized)<small>Thicker carries more; rings are what a building's shop fronts take in.</small></div>
+  <div id="hud-menu" class="hud-menu" hidden data-groups='[["explore", "Look around"], ["numbers", "Money and flows"], ["build", "This plan"]]'></div>
 </div>
 
 <div id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="intro-h">

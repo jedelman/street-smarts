@@ -83,3 +83,47 @@ export function iterationHref(it, page = "/") {
   q.push(`iteration=${id}`);
   return `${it.page || page}?${q.join("&")}`;
 }
+
+/**
+ * On a phone, the HUD's panel buttons fold into one: "Panels" opens a menu of them, grouped (each button's
+ * data-group; the groups' names and order are #hud-menu's data-groups, as JSON pairs). A button that's hidden (a
+ * panel the site or the moment doesn't offer) is left out; the menu is rebuilt each time it opens, so one that
+ * appears later (the Lot, say) shows up. The buttons themselves do the work: the menu clicks them.
+ */
+export function setupHudMenu() {
+  const btn = $("menu-btn"), menu = $("hud-menu");
+  if (!btn || !menu) return;
+  let groups = [];
+  try { groups = JSON.parse(menu.dataset.groups || "[]"); } catch { /* none */ }
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  const build = () => {
+    menu.innerHTML = "";
+    for (const [key, label] of groups) {
+      const items = [...document.querySelectorAll(`.hud.top-right [data-group="${key}"]`)].filter((b) => !b.hidden);
+      if (!items.length) continue;
+      const h = document.createElement("p");
+      h.className = "group";
+      h.textContent = label;
+      const row = document.createElement("div");
+      row.className = "row";
+      for (const b of items) {
+        const c = document.createElement("button");
+        c.type = "button";
+        c.textContent = b.textContent.trim();
+        c.setAttribute("aria-pressed", b.getAttribute("aria-pressed") || "false");
+        if (b.title) c.title = b.title;
+        c.addEventListener("click", () => { close(); b.click(); });
+        row.append(c);
+      }
+      menu.append(h, row);
+    }
+  };
+  btn.addEventListener("click", () => {
+    if (!menu.hidden) return close();
+    build();
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+  });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) close(); });
+  addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) close(); });
+}
