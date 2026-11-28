@@ -23,7 +23,7 @@ import { buildWetland } from "./wetland.js";
 import { setupPanels, renderIterations, renderTours, setupHudMenu, setupPeek } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
-import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
+import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor, swingToward, distanceToShow } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
 import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
 import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.js";
@@ -755,6 +755,24 @@ function personEl(i) {
   el.box.max.set(p.pos.x + 0.3, p.pos.y + 1.8, p.pos.z + 0.3);
   return el;
 }
+/** The nearest point of an element's own surface in the model to `p` (within 30 m), or null (a tree, a person). */
+const _near = new THREE.Vector3();
+function nearestOn(el, p, out) {
+  const geo = site.bvh.geometry, idx = geo.index, elem = geo.attributes.element;
+  let best = 30;
+  let found = false;
+  site.bvh.shapecast({
+    intersectsBounds: (box) => box.distanceToPoint(p) < best,
+    intersectsTriangle: (tri, i) => {
+      if (elem.getX(idx.getX(i * 3)) !== el.index) return false;
+      tri.closestPointToPoint(p, _near);
+      const d = _near.distanceTo(p);
+      if (d < best) { best = d; out.copy(_near); found = true; }
+      return false;
+    },
+  });
+  return found ? out : null;
+}
 function anchorOf(el, out) {
   if (el.kind === "person") return people.headOf(el.person, out).add(_tmp2.set(0, 0.3, 0));
   const b = el.box;
@@ -883,7 +901,7 @@ function touch(el, { look = true } = {}) {
   } else {
     sparrow.chirp(); sound.chirp();
   }
-  if (el.center && look) director.lookAt(el);
+  if (el.center && look) director.frame(el);
 }
 function interact() { touch(focus); }
 
@@ -934,7 +952,7 @@ function nextLine() {
     done: () => { if (!talk) return; people.speak(line.who, 0.2); setTimeout(nextLine, 380); },
   });
   people.speak(line.who, ms / 1000 + 1, faceTo);
-  director.lookAt(personEl(line.who)); // a two-shot: you and whoever's talking
+  director.frame(personEl(line.who)); // you and whoever's talking, in one view
 }
 function endTalk() {
   if (talk && talk.who >= 0) people.speak(talk.who, 0);
@@ -1226,6 +1244,9 @@ function peekInside(i) {
 const director = (() => {
   let yaw = 0, yawT = 0, yawV = 0, pitch = 0.3, pitchT = 0.3, pitchV = 0;
   let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0;
+  // Framing what you touched: one swing of at most 30°, slow, then back away until it's on screen (frame below).
+  const SWING = THREE.MathUtils.degToRad(30), FRAME_MAX = 24;
+  let hold = null, yawSlowUntil = 0, distSlowUntil = 0, lastBase = 1.15;
   const look = new THREE.Vector3(), lookV = new THREE.Vector3(), lookT = new THREE.Vector3();
   const cam = new THREE.Vector3(), head = new THREE.Vector3(), dir = new THREE.Vector3(), eye = new THREE.Vector3();
   let shot = null;
@@ -1242,12 +1263,16 @@ const director = (() => {
       lookV.set(0, 0, 0);
     },
     drag(dx, dy) {
+      yawSlowUntil = 0; // your hand, not a swing: it answers at once
       yawT -= dx * 0.006;
       pitchT = clamp(pitchT + dy * 0.004, bird.air ? -0.6 : -0.12, 1.35);
       lastLookT = t; lastInputT = t;
     },
-    zoomBy(f) { zoom = clamp(zoom * f, 0.3, 45); lastInputT = t; },
-    zoomTo(z) { zoom = clamp(z, 0.3, 45); lastInputT = t; },
+    zoomBy(f) {
+      if (hold) { zoom = clamp(hold.dist / lastBase, 0.3, 45); hold = null; } // pinch from where the framing left you
+      zoom = clamp(zoom * f, 0.3, 45); lastInputT = t;
+    },
+    zoomTo(z) { hold = null; zoom = clamp(z, 0.3, 45); lastInputT = t; },
     /** Swoop down from above the whole site to the bird. */
     crane() {
       if (REDUCED) return;
@@ -1263,20 +1288,31 @@ const director = (() => {
       const from = new THREE.Vector3(c.x - span * 0.08, b.max.y + span * 0.35, c.z + span * 0.62);
       play(() => ({ pos: from, look: c, fov: 55 }), { dur: 9, blendIn: 1.6, blendOut: 2.4 });
     },
-    /** Frame you and the thing you touched, from the side. */
-    lookAt(el) {
-      if (REDUCED) return;
-      const target = anchorOf(el, new THREE.Vector3());
-      play(() => {
-        const mid = new THREE.Vector3().addVectors(bird.pos, target).multiplyScalar(0.5);
-        const span = Math.hypot(target.x - bird.pos.x, target.z - bird.pos.z);
-        const side = new THREE.Vector3(-(target.z - bird.pos.z), 0, target.x - bird.pos.x);
-        if (side.lengthSq() < 1e-4) side.set(Math.cos(yaw), 0, -Math.sin(yaw));
-        side.normalize();
-        if (side.dot(dir.set(-Math.sin(yaw), 0, -Math.cos(yaw))) > 0) side.negate(); // stay on the camera's side
-        const d = clamp(span * 1.3 + 0.9, 1.1, 10);
-        return { pos: mid.clone().addScaledVector(side, d).addScaledVector(UP, 0.35 + d * 0.3), look: mid, fov: 56 };
-      }, { dur: 3.2, blendIn: 0.7, blendOut: 1.1 });
+    /**
+     * Show you the thing you touched (or whoever's talking) without swinging round it: turn toward it by at most
+     * 30° (the camera goes round behind you, so you face it), slowly, then back straight away until it's on screen,
+     * up to 24 m. Another touch turns another 30°. If backing away can't show it (it's on the camera's side of you), the turn is all. The framing holds
+     * while you stay; moving off, flying or pinching lets it go, and the camera eases back in.
+     */
+    frame(el) {
+      if (REDUCED || !el) return;
+      const hx = bird.pos.x, hy = bird.pos.y + 0.1, hz = bird.pos.z;
+      // What to show: the part of it you touched (its nearest side, at window height and the top of its ground floor:
+      // a whole roofline beside you would need 30 m or a tilt up), or, if you're on it (a lot, a square) or it's
+      // someone, where it glints.
+      const b = el.box, pts = [];
+      const side = el.kind !== "person" && b && !b.isEmpty() && nearestOn(el, new THREE.Vector3(hx, bird.pos.y + 1.2, hz), new THREE.Vector3());
+      if (!side || Math.hypot(side.x - hx, side.z - hz) < 0.3) pts.push(anchorOf(el, new THREE.Vector3()));
+      else pts.push(new THREE.Vector3(side.x, clamp(bird.pos.y + 1.2, b.min.y, b.max.y), side.z), new THREE.Vector3(side.x, Math.min(b.max.y, bird.pos.y + 3.5), side.z));
+      const aim = pts[0];
+      if (Math.hypot(aim.x - hx, aim.z - hz) > 0.6) {
+        yawT = swingToward(yaw, Math.atan2(hx - aim.x, hz - aim.z), SWING);
+        yawSlowUntil = t + 1.8;
+      }
+      const now = lastBase * zoom;
+      const d = distanceToShow(pts.map((v) => [v.x, v.y, v.z]), [hx, hy, hz], yawT, pitchT,
+        { from: Math.max(now, dist), max: FRAME_MAX, fov: camera.fov, aspect: camera.aspect });
+      if (d && d > now * 1.05) { hold = { dist: d, x: bird.pos.x, z: bird.pos.z }; distSlowUntil = t + 4; }
     },
     update(dt) {
       const air = bird.air;
@@ -1293,12 +1329,14 @@ const director = (() => {
         const facingSun = Math.max(0, -(Math.sin(camDir) * SUN_DIR.x + Math.cos(camDir) * SUN_DIR.z));
         yawT += dt * 0.07 * (1 - 0.7 * facingSun);
       }
-      [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, 0.14, dt);
+      [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, t < yawSlowUntil ? 0.6 : 0.14, dt);
       [pitch, pitchV] = smoothDamp(pitch, pitchT, pitchV, 0.14, dt);
       const attract = HERO && !active; // the hero's attract tour: higher and wider, so the place reads
       if (attract) pitchT += (0.28 - pitchT) * Math.min(1, dt * 0.8);
       const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1) * (attract ? 2.4 : 1);
-      [dist, distV] = smoothDamp(dist, base * zoom, distV, 0.35, dt);
+      lastBase = base;
+      if (hold && (air || Math.hypot(bird.pos.x - hold.x, bird.pos.z - hold.z) > 2.5)) { hold = null; distSlowUntil = t + 2.5; }
+      [dist, distV] = smoothDamp(dist, hold ? Math.max(base * zoom, hold.dist) : base * zoom, distV, t < distSlowUntil ? 1.2 : 0.35, dt);
       const eyesT = zoom < 0.42 ? 1 : 0;
       eyes += (eyesT - eyes) * Math.min(1, dt * 6);
 
