@@ -69,3 +69,9 @@ test("Ghent's mask: the sidewalks connect, and the lots aren't on it", () => {
   assert.ok(way, "a way between them");
   for (let i = 1; i < way.length; i++) assert.ok(m.clear(way[i - 1].x, way[i - 1].z, way[i].x, way[i].z), `leg ${i} on the mask`);
 });
+
+test("spots sampled from a mask are on it", () => {
+  const m = fromRows(["#.........", "..........", ".........#"]);
+  let seed = 3; const rng = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 20; i++) { const q = m.sample(rng); assert.ok(q && m.walkable(q.x, q.z)); }
+});

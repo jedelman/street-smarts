@@ -565,7 +565,7 @@
   "y0": -971,
   "w": 2487,
   "h": 3883,
-  "walkable": 642540,
+  "walkable": 634779,
   "note": "Rows south to north (survey y; the walk's z is -y), a bit a cell, high bit first, zlib."
  },
  "chorus": "chorus.json"

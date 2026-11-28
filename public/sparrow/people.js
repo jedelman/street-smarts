@@ -185,13 +185,16 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
       const dx = sp.x - bird.pos.x, dz = sp.z - bird.pos.z, d = Math.hypot(dx, dz);
       if (d < (anywhere ? 8 : 25) || d > 120) continue;
       if (!anywhere && (dx * fx + dz * fz) / (d * fl) > -0.2) continue; // behind you
+      // Not where someone already is: after a long flight or a warp many come back at once, and on the sidewalks
+      // they'd all set off together, a parade.
+      if (!anywhere && tries < 16 && people.some((q) => q !== p && q.walker && q.leader < 0 && Math.abs(q.pos.x - sp.x) < 4 && Math.abs(q.pos.z - sp.z) < 4)) continue;
       if (p.path && p.path.seat && p.path.seat.taken === p) p.path.seat.taken = null;
       p.path = null;
       const at = scatter(sp, 1);
       p.pos.set(at.x, at.y, at.z);
       p.yaw = rng() * Math.PI * 2;
       p.state = "stand";
-      p.timer = rng() * 2;
+      p.timer = anywhere ? rng() * 2 : 0.5 + rng() * 5; // and they set off at their own times
       for (const j of p.followers || []) { const f = people[j]; place(f, p); f.state = "stand"; }
       return true;
     }

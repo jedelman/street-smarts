@@ -21,6 +21,9 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
   model and any glTF viewer can show them as viewpoints;
 - shop rows a pipeline typed (`typology`, `business`): a `storefront` replaces the ground floor's openings, any
   other typology keeps the building's own doors and windows and lights them with the new use;
+- `water` (Ghent): `{ version, level, rings }`, open water's outlines as glTF `[x, z, ...]` rings, so the walk's
+  ground disc stays at the land's level and leaves the water open below it. Elements of kind `water` take the
+  walk's water material; `bank` is the edge down to it; `bridge` decks cross it;
 - `yards` (Ghent): one row per house front, `[front wall, door along, yard depth, lot from, lot to, form, first
   floor, floors, built, converted, gpin, two-tone]`. The walk's yard grammar (`public/sparrow/yards.js`) grows each one's
   porch, steps, walk, beds, edge and tree from it, with weights from `tools/ghent/yard-photos.md`.

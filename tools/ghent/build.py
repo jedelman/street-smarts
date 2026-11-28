@@ -37,6 +37,7 @@ from collections import deque
 import numpy as np
 import shapely
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
+from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -50,18 +51,20 @@ SURVEY = os.path.join(ROOT, "data/ghent/survey.json")
 PROPOSAL = os.path.join(ROOT, "data/ghent/proposal.json")
 EVERYDAY = os.path.join(ROOT, "data/ghent/everyday.json")
 LIGHTS = os.path.join(ROOT, "data/ghent/lights.json")
+WATER = os.path.join(ROOT, "data/ghent/water.json")  # tools/ghent/water.py
 SITE_DIR = os.path.join(ROOT, "public/sites/ghent-streets")
 SQFT = 10.7639
 
 HOUSE_USES = ("Single Family", "Duplex", "Triplex", "Fourplex")
 STREET_HALF = {"arterial/collector": 6.0, "residential": 4.5}   # half a carriageway, metres (ours)
 SIDEWALK_W = 2.1
-Y = {"street": 0.02, "lot": 0.08, "sidewalk": 0.14, "line": 0.15}
+Y = {"street": 0.02, "lot": 0.08, "sidewalk": 0.14, "line": 0.15, "water": -0.9}  # the water a metre down, behind a bank (ours)
 FIRST_FLOOR = 0.85    # a Ghent house's first floor stands above the ground: about five steps up (tools/ghent/yard-photos.md)
 FLOOR_M = 3.1
 
 COLORS = {
     "lawn": "#8b995c", "lawn_converted": "#a9a55e", "street": "#57544f", "sidewalk": "#cdc6b6",
+    "water": "#4d6f7c", "bank": "#7f7668", "deck": "#bdb5a6",
     "line_hcg2": "#c99a3e", "line_league": "#efe9da",
     "roof_slate": "#4b4f53", "roof_brown": "#5d4f45", "roof_red": "#6e3d30", "roof_flat": "#6f6a62",
     "wall_brick": "#8f4c37", "wall_brick2": "#a0603f", "wall_cream": "#e6dbc0", "wall_white": "#efeadf",
@@ -320,14 +323,19 @@ def roof(geo, rect, form, pitch, eave, overhang=0.3):
 
 
 WALK_CELL = 0.5  # the walking mask's cell, metres
+# Half the width of a bridge's deck, by Overture's class (ours: the data has the line, not the width). Wide enough that
+# the streetlights Dominion's records put on each bridge stand on its deck: a footway's within 0.6 m of its line, a
+# cycleway's 2.4 m out, at its rail.
+BRIDGE_HALF = {"footway": 1.5, "path": 2.0, "cycleway": 2.8, "pedestrian": 2.0}
+ROAD_BRIDGE_HALF = 4.5
 
 
-def walk_mask(league, parcels, lines, carriage, walks, buildings):
+def walk_mask(league, parcels, lines, carriage, walks, buildings, water=None, decks=None):
     """
     Where people walk: the sidewalks, as a raster the walk's people route on (Jason: "people here generally keep to the
     sidewalks"). From the parcels: the public right of way is what no parcel covers inside the League's area. People
     keep to it, and to the sidewalk strip the model draws, out of the carriageway, within 7.5 m of a curb (so not out
-    over open water or a park's middle), and never inside a building. They cross the street at corners: a crosswalk
+    over open water or a park's middle), never on the water itself (water.py), and never inside a building. They cross the street at corners: a crosswalk
     2.5 m wide on each leg of every intersection of three or more streets, just clear of the cross street's curb (ours:
     there's no data on crosswalks here). Only the largest connected network is kept, so nobody is stranded on a sliver.
     Returns (meta, bytes): cells WALK_CELL square from (x0, y0), rows south to north, packed a bit a cell (high bit
@@ -356,7 +364,12 @@ def walk_mask(league, parcels, lines, carriage, walks, buildings):
             ul = math.hypot(ux, uy) or 1.0
             nx, ny, span = -uy / ul, ux / ul, half(row) + 1.2
             cross.append(LineString([(c.x + nx * span, c.y + ny * span), (c.x - nx * span, c.y - ny * span)]).buffer(1.25, cap_style="flat"))
-    walk = side.union(unary_union(cross).intersection(league)).difference(unary_union(buildings).buffer(0.3)).buffer(0)
+    walk = side.union(unary_union(cross).intersection(league)).difference(unary_union(buildings).buffer(0.3))
+    if water is not None and not water.is_empty:
+        walk = walk.difference(water.buffer(0.3))
+    if decks is not None and not decks.is_empty:
+        walk = walk.union(decks.buffer(-0.2))  # across the footbridges
+    walk = walk.buffer(0)
     minx, miny, maxx, maxy = league.bounds
     x0, y0 = math.floor(minx), math.floor(miny)
     w, h = int(math.ceil((maxx - x0) / WALK_CELL)), int(math.ceil((maxy - y0) / WALK_CELL))
@@ -492,14 +505,75 @@ def main(check=False):
             f"{nice}: {'an arterial or collector street' if st['row'] == 'arterial/collector' else 'a residential street'}, in the City's classification."
             + (" NFK2050 points a neighborhood's shops toward streets like this one (p. 69)." if st["row"] == "arterial/collector" else "")
             + (" Jason's maximal proposal opens its whole frontage." if name in ("GRAYDON AVENUE", "BLOW STREET") else "")]}
+    # Open water (water.py, from the City's Water layer): sidewalks and lots stop at its edge; streets cross it (bridges).
+    W = json.load(open(WATER)) if os.path.exists(WATER) else {"bodies": []}
+    water_bodies = [(b, unary_union([Polygon(p[0], p[1:]).buffer(0) for p in b["polygons"]])) for b in W["bodies"]]
+    water = unary_union([g for _, g in water_bodies]) if water_bodies else Polygon()
     walks = unary_union([ln.buffer(STREET_HALF.get(by_name[n]["row"], 4.5) + SIDEWALK_W, quad_segs=3, cap_style="flat")
-                         for n in by_name for ln in by_name[n]["lines"]]).simplify(0.25).difference(covered).buffer(0)
+                         for n in by_name for ln in by_name[n]["lines"]]).simplify(0.25).difference(covered).difference(water).buffer(0)
     geo = Geo()
     for q in polys(walks):
         geo.flat(q, Y["sidewalk"])
     U.node("sidewalks", {"group": "sidewalks", "kind": "sidewalk", "source": "sidewalks"}, {"sidewalk": geo})
     facts["sidewalks"] = {"name": "the sidewalk", "answer": ["A sidewalk, drawn along every street: the City maps its sidewalks as lines, and this model infers their width."]}
-    taken = covered.union(walks)
+    taken = covered.union(walks).union(water)
+    # The water itself, a metre down (ours), and a bank from it up to the street wherever it meets land: not where the
+    # City's polygon was cut off at the edge of what's drawn.
+    edge_of_drawing = league.buffer(400 * 0.3048).boundary  # survey.py's ring of neighbours, 400 ft
+    for wi, (b, g) in enumerate(water_bodies):
+        src = f"water:{b['id']}" + ("" if b["name"] else f":{wi}")
+        surface, bank = Geo(), Geo()
+        for q in polys(g):
+            surface.flat(q, Y["water"])
+            q = orient(q, 1.0)  # exterior anticlockwise, holes clockwise: the water lies to the left of every ring
+            for r in [q.exterior, *q.interiors]:
+                cs = list(r.coords)
+                for (x1, y1), (x2, y2) in zip(cs, cs[1:]):
+                    d = math.hypot(x2 - x1, y2 - y1)
+                    if d < 0.05 or edge_of_drawing.distance(Point((x1 + x2) / 2, (y1 + y2) / 2)) < 0.8:
+                        continue
+                    nx, ny = -(y2 - y1) / d, (x2 - x1) / d
+                    bank.face([[x1, Y["water"], -y1], [x2, Y["water"], -y2], [x2, Y["street"], -y2], [x1, Y["street"], -y1]], [nx, 0.0, -ny])
+        U.node(f"water_{wi}", {"group": "water", "kind": "water", "source": src}, {"water": surface})
+        U.node(f"bank_{wi}", {"group": "water", "kind": "bank", "source": src}, {"bank": bank})
+        nm = b["name"]
+        facts[src] = {"name": nm or "the water", "arrival": f"Over {nm}." if nm else "Over open water.", "answer": [
+            f"{nm[0].upper() + nm[1:] if nm else 'Open water'}, where the City's GIS maps it (its Water layer). "
+            "The bank is drawn about a metre above the water: that height is ours."]}
+    # Bridges over the water (water.py: Overture's lines flagged is_bridge): a deck at the sidewalk's height for a path,
+    # the street's for a road, with its slab's edge showing over the water. Their widths are ours (BRIDGE_HALF).
+    foot_decks = []
+    hague = next((b["name"] for b, _ in water_bodies if b["name"]), None) or "the water"
+    for bi, br in enumerate(W.get("bridges", [])):
+        line = LineString(br["line"])
+        road = br["class"] not in BRIDGE_HALF
+        deck = line.buffer(ROAD_BRIDGE_HALF if road else BRIDGE_HALF[br["class"]], cap_style="flat").difference(covered)
+        if not road:
+            deck = deck.difference(walks)
+        deck = deck.buffer(0)
+        if deck.area < 2:
+            continue
+        top = Y["street"] + 0.01 if road else Y["sidewalk"]
+        geo = Geo()
+        for q in polys(deck):
+            geo.flat(q, top)
+            for r in [orient(q, 1.0).exterior, *orient(q, 1.0).interiors]:
+                cs = list(r.coords)
+                for (x1, y1), (x2, y2) in zip(cs, cs[1:]):
+                    d = math.hypot(x2 - x1, y2 - y1)
+                    if d < 0.05 or not water.contains(Point((x1 + x2) / 2, (y1 + y2) / 2)):
+                        continue
+                    nx, ny = (y2 - y1) / d, -(x2 - x1) / d  # right of the ring: outward
+                    geo.face([[x1, top, -y1], [x2, top, -y2], [x2, top - 0.55, -y2], [x1, top - 0.55, -y1]], [nx, 0.0, -ny])
+        if not road:
+            foot_decks.append(deck)
+        src = f"bridge:{bi}"
+        U.node(f"bridge_{bi}", {"group": "bridges", "kind": "bridge", "source": src}, {"street" if road else "deck": geo})
+        what = {"footway": "a footway", "path": "a path", "cycleway": "a cycleway", "pedestrian": "a walkway"}.get(br["class"], "a road")
+        name = br["name"] or what
+        facts[src] = {"name": f"{name}'s bridge" if br["name"] else f"{what}'s bridge", "arrival": f"Onto the bridge over {hague}.", "answer": [
+            f"{name[0].upper() + name[1:]}, on a bridge over {hague}, where OpenStreetMap maps it (via Overture Maps). How wide it's drawn is ours."]}
+    foot_decks = unary_union(foot_decks) if foot_decks else Polygon()
 
     lot_of = {}
     for gpin, p in parcels.items():
@@ -534,7 +608,7 @@ def main(check=False):
     all_polys = [Polygon(b["poly"]).buffer(0) if len(b["poly"]) >= 3 else Polygon() for b in S["buildings"]]
     # Where people walk (the sidewalks and corner crossings), from the parcels: walk_mask above.
     mask_meta, mask_bytes = walk_mask(league, parcels, [(LineString(s["line"]), s["row"]) for s in S["streets"]], covered, walks,
-                                      [q for q in all_polys if not q.is_empty])
+                                      [q for q in all_polys if not q.is_empty], water, foot_decks)
     # The survey cuts a row's footprint at each lot line; a slice past every lot line (a bay or stoop drawn over the
     # right-of-way) belongs to no parcel. Where it overlaps a parcel's building and shares its City height (so it was
     # one footprint), it goes back into that building, so the facade is its outer face.
@@ -828,6 +902,10 @@ def main(check=False):
         yaw = math.atan2(near.x - x, -(near.y - y))  # glTF: toward +x is yaw pi/2; the street lies at (near.x, -near.y)
         light_rows.append([round(x, 2), round(-y, 2), fam, pole, round(yaw, 3)])
     table["lights"] = {"version": 1, "source": L["source"], "families": L["families"], "rows": light_rows}
+    # The water's outlines (glTF x, z pairs), so the walk's ground disc leaves a hole where the water lies below it.
+    table["water"] = {"version": 1, "level": Y["water"], "rings": [
+        [c for x, y in list(orient(q, 1.0).exterior.coords)[:-1] for c in (round(x, 2), round(-y, 2))]
+        for _, g in water_bodies for q in polys(g)]}
     table["site"] = {"id": "ghent-streets", "pipeline": "adaptive reuse (tools/ghent)", "inferred": [
         "building heights where the City's field is missing", "roof shapes", "windows and doors", "sidewalks", "tree sizes"]}
 

@@ -282,8 +282,9 @@ async function capture(base, shots, outDir, page = "/ghent/", glb = null) {
   p.on("pageerror", (e) => errs.push(String(e)));
   await p.goto(`${base}${page}?debug${glb ? `&glb=${glb}` : ""}`, { waitUntil: "load" });
   await p.waitForFunction(() => window.__walk && window.__walk.frontages, null, { timeout: 240000 });
-  await p.addStyleTag({ content: ".hud, #log, #hint, #prompt, #bubble, #intro, #pad, #iteration-note, #flyout { display: none !important; }" });
-  await p.waitForTimeout(9000); // past the opening crane shot
+  await p.addStyleTag({ content: ".hud, #log, #hint, #prompt, #bubble, #intro, #pad, #iteration-note, #flyout, #peek { display: none !important; }" });
+  await p.waitForTimeout(9000); // past the opening crane shot: by the walk's own clock, which a slow machine runs slower
+  await p.waitForFunction(() => !window.__walk.director.shooting, null, { timeout: 120000 });
   mkdirSync(`${outDir}showcase`, { recursive: true });
   for (const s of shots) {
     await p.evaluate((s) => new Promise((done) => window.__walk.warp(s, done)), s);

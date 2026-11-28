@@ -132,5 +132,14 @@ export function makeMask(bits, { x0, y0, cell, w, h }) {
     return out;
   }
 
-  return { walkable: (x, z) => ok(col(x), row(z)), nearest, carve, clear, path, cell };
+  /** A walkable spot chosen evenly over the mask (rng: () => [0, 1)), or null after `tries` misses. */
+  function sample(rng, tries = 400) {
+    for (let k = 0; k < tries; k++) {
+      const c = Math.floor(rng() * w), r = Math.floor(rng() * h);
+      if (ok(c, r)) return { x: cx(c), z: cz(r) };
+    }
+    return null;
+  }
+
+  return { walkable: (x, z) => ok(col(x), row(z)), nearest, carve, clear, path, sample, cell };
 }

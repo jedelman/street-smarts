@@ -159,7 +159,10 @@ let present = [];
     return;
   }
   for (const m of site.meshes) { m.updateMatrix(); scene.add(m); }
-  world = buildWorld(scene, site.bounds);
+  // With open water below the land (Ghent's Hague), the ground disc stays at the land's level and leaves the water open.
+  let landY = Infinity;
+  for (const m of site.meshes) if (![...m.userData.kinds].some((k) => /^(water|bank|bridge)$/.test(k))) landY = Math.min(landY, m.geometry.boundingBox.min.y);
+  world = buildWorld(scene, site.bounds, site.water && isFinite(landY) ? { floorY: landY, holes: site.water.rings } : {});
   sparrow = buildSparrow();
   sparrow.root.scale.setScalar(SIZE);
   scene.add(sparrow.root);
@@ -174,7 +177,7 @@ let present = [];
   if (site.trees) {
     trees = buildTrees(scene, site.trees, site.elements, (x, z, fromY) => {
       const hit = castDownModel(x, fromY, z, fromY + 5);
-      return hit ? hit.point.y : world.groundY;
+      return hit ? hit.point.y : world.floorY;
     }, blobTexture());
     for (const tr of trees.list) {
       if (!tr.el) continue;
@@ -338,7 +341,7 @@ function spawn() {
 
 function placeBird(at) {
   const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50, false); // start on the ground, not in a crown
-  bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.groundY, at.z);
+  bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.floorY, at.z);
   bird.vel.set(0, 0, 0);
   bird.air = false;
 }
@@ -418,7 +421,10 @@ function collide(dt) {
   push.subVectors(newPos, bird.pos);
   let up = push.y > Math.abs(dt * bird.vel.y * 0.25) && push.y > 1e-5;
   bird.pos.copy(newPos);
-  if (bird.pos.y < world.groundY) { bird.pos.y = world.groundY; up = true; }
+  // The last floor, where nothing of the model is below: the land's level (the ground disc), or the water's where the
+  // ground probe found water under you.
+  const lastFloor = Math.max(world.groundY, Math.min(world.floorY, bird.groundAt ?? world.floorY));
+  if (bird.pos.y < lastFloor) { bird.pos.y = lastFloor; up = true; }
   if (up) {
     if (bird.vel.y < 0) bird.vel.y = 0;
     return true;
@@ -669,7 +675,7 @@ function probeGround() {
   }
   saidRiding = false;
   const hit = castDown(bird.pos.x, bird.pos.y + 0.25, bird.pos.z, 400);
-  bird.groundAt = hit ? hit.point.y : world.groundY;
+  bird.groundAt = hit ? hit.point.y : world.floorY;
   const el = hit && !hit.prop ? hit.el : null;
   bird.under = el;
   bird.onBench = !!(hit && hit.prop) && bird.pos.y - hit.point.y < 0.05;
@@ -995,7 +1001,7 @@ function tapAt(x, y) {
   const hit = firstHit(2500);
   // A person under the tap (people aren't in the model's collider): go to them and eavesdrop.
   // A tap squarely on something to touch (a sculpture, a shop) wants that, unless it's right on someone.
-  const OPEN = /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|marsh|pond|stream|boardwalk)(_grass)?$/;
+  const OPEN = /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|marsh|pond|stream|boardwalk|bridge)(_grass)?$/;
   const onThing = !!(hit && hit.el && !OPEN.test(hit.el.kind || ""));
   const who = pickPerson(x, y, hit ? hit.distance : Infinity, onThing ? 14 : null);
   if (who >= 0) {
@@ -1013,13 +1019,21 @@ function tapAt(x, y) {
     // The bare ground plane.
     const dy = raycaster.ray.direction.y;
     if (dy >= -1e-3) return;
-    const s = (world.groundY - raycaster.ray.origin.y) / dy;
+    const s = (world.floorY - raycaster.ray.origin.y) / dy;
     point = raycaster.ray.at(s, new THREE.Vector3());
+  }
+  // Open water (Ghent's Hague): go to the nearest bank you can stand on, and look out over it from there.
+  if (el && (el.kind === "water" || el.kind === "bank") && walkMask) {
+    const shore = walkMask.nearest(point.x, point.z, 80);
+    if (shore) {
+      const h = castDownModel(shore.x, site.bounds.max.y + 20, shore.z, site.bounds.max.y + 60);
+      point = new THREE.Vector3(shore.x, h ? h.point.y : world.floorY, shore.z);
+    }
   }
   if (tour) endTour("You take it from here.");
   lastInputT = t;
   // Open ground (a square, a street) is somewhere to go; anything else is something to go and touch.
-  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail)(_grass)?$/.test(el.kind);
+  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|bridge)(_grass)?$/.test(el.kind);
   if (el && el.tree) {
     // A tree: fly up and perch on top of its crown, then say what it is.
     const tr = el.tree;
@@ -1266,6 +1280,8 @@ const director = (() => {
   const play = (frame, { dur = 3, blendIn = 0.6, blendOut = 1, start = false } = {}) => { shot = { t0: t, dur, blendIn, blendOut, frame, start }; };
   return {
     get yaw() { return yaw; },
+    /** Whether a shot (the opening crane, the flows' overview) is playing: the showcase's captures wait it out. */
+    get shooting() { return !!shot; },
     get eyes() { return eyes; },
     snapBehind() {
       yaw = yawT = bird.heading + Math.PI;
@@ -1392,7 +1408,7 @@ const director = (() => {
       // Never under the ground: the ground right below the camera (a sidewalk stands above the street), not only the
       // site's lowest. Looked for from just above the camera, so a porch roof or a crown overhead never lifts it.
       const under = castDown(cam.x, cam.y + 0.3, cam.z, 2.3, false);
-      const floorY = under ? under.point.y : world.groundY;
+      const floorY = under ? under.point.y : world.floorY;
       cam.y = Math.max(cam.y, floorY + 0.1, world.groundY + 0.04);
       [fov, fovV] = smoothDamp(fov, fovT, fovV, 0.6, dt);
       [roll, rollV] = smoothDamp(roll, rollT, rollV, 0.45, dt);
@@ -1554,6 +1570,14 @@ function populate() {
       const hit = castDownModel(n.x, site.bounds.max.y + 20, n.z, site.bounds.max.y + 60);
       onMask.push({ x: n.x, y: hit ? hit.point.y : sp.y, z: n.z });
     }
+    // And places along every sidewalk, evenly, so people spread out wherever you are (near the Hague, the street
+    // spots and sidewalk samples above are few).
+    for (let k = 0; k < 1500; k++) {
+      const q = walkMask.sample(rng);
+      if (!q) break;
+      const hit = castDownModel(q.x, site.bounds.max.y + 20, q.z, site.bounds.max.y + 60);
+      onMask.push({ x: q.x, y: hit ? hit.point.y : world.floorY, z: q.z });
+    }
     spots.length = 0;
     spots.push(...onMask);
   }
@@ -1579,7 +1603,7 @@ function populate() {
     },
     groundAt: (x, z, nearY) => {
       const hit = castDownModel(x, nearY + 2.5, z, 6);
-      return hit ? hit.point.y : world.groundY;
+      return hit ? hit.point.y : world.floorY;
     },
     // Along the sidewalks, crossing at corners, where the site has a walking mask.
     route: walkMask ? (a, b) => walkMask.path(a, b) : null,
