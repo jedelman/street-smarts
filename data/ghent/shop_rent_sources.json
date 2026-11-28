@@ -1,0 +1,98 @@
+{
+ "version": 1,
+ "rule": "One district per city: the closest match to Ghent (historic, walkable, early-twentieth-century residential fabric with small neighborhood shops). From it, asking rents for ground-floor shop space listed in 2024 or later, triple net or 'plus expenses', under about 4,500 sq ft. Metro averages, undated listing-site averages, figures with unclear units, and anything older than 2024 are left out. Gathered 2026-11-28 by a research pass; 'checked' says whether the figure was then read again from its page (twice) or the listing site refused a second look (once).",
+ "comparables": [
+  {
+   "city": "Asheville, NC",
+   "district": "West Asheville, Haywood Road",
+   "zip": "28806",
+   "rent_low": 28,
+   "rent_high": 28,
+   "lease_type": "net (\"+ Expenses\")",
+   "date": "listing updated 2024-12-13",
+   "listings": ["785 Haywood Rd: a 2,760 sq ft storefront at $6,440 a month plus expenses, $28 a sq ft a year"],
+   "source": "TenantBase listing",
+   "url": "https://tenantbase.com/us/building/178772",
+   "quote": "785 Haywood Road · Asheville, NC 28806 … $6,440 + Expenses … 2,760 SF … Listing updated Dec 13, 2024",
+   "checked": "twice"
+  },
+  {
+   "city": "Charleston, SC",
+   "district": "Upper King",
+   "zip": "29403",
+   "rent_low": 30,
+   "rent_high": 60,
+   "lease_type": "NNN",
+   "date": "listings updated November 2026",
+   "listings": ["677 King St: a 1,920 sq ft ground floor in a 2021 building, $60", "517 King St #4: 4,334 sq ft over two floors (2,743 on the ground), $30"],
+   "source": "PropertyShark listings",
+   "url": "https://www.propertyshark.com/cre/commercial-property/us/sc/charleston/677-king-street/",
+   "urls": ["https://www.propertyshark.com/cre/commercial-property/us/sc/charleston/677-king-street/", "https://www.propertyshark.com/cre/commercial-property/us/sc/charleston/517-king-street-4/"],
+   "quote": "677 King Street, Charleston, SC 29403 … $60/SF/YR … NNN … 1,920 SF; 517 King St #4: $30/SF/YR … NNN … 4,334 SF … The ground floor has 2,743 sf and the second floor has 1,591 sf.",
+   "checked": "once",
+   "notes": "Neither is a clean match: one is new construction, the other blends a second floor into its rate. Their midpoint stands for the district."
+  },
+  {
+   "city": "Raleigh, NC",
+   "district": "Five Points",
+   "zip": "27608",
+   "rent_low": 40,
+   "rent_high": 40,
+   "lease_type": "NNN (plus $5.78 a sq ft in common charges)",
+   "date": "broker's listing page, 2026",
+   "listings": ["1700 Glenwood Ave: a 2,604 sq ft first floor, $40 NNN"],
+   "source": "The broker's listing page",
+   "url": "https://ayus1700glenwoodavenue.sharplaunch.com",
+   "quote": "Lease rate $40.00/sf NNN, plus $5.78/sf TICAM … First Floor … 2,604 SF",
+   "checked": "twice"
+  },
+  {
+   "city": "Savannah, GA",
+   "district": "Starland and the Bull Street corridor",
+   "zip": "31401",
+   "rent_low": 30,
+   "rent_high": 38,
+   "lease_type": "NNN",
+   "date": "listings updated January 2025 and October 2026",
+   "listings": ["2202 Bull St, at E 38th in Starland: 1,318 sq ft, built 1900, $38 (October 2026)", "1915 Bull St: 1,200 sq ft, built 1900, $30 (January 2025)"],
+   "source": "CommercialCafe listings",
+   "url": "https://www.commercialcafe.com/commercial-property/us/ga/savannah/2202-bull-street-starland-corner-commercial/",
+   "urls": ["https://www.commercialcafe.com/commercial-property/us/ga/savannah/2202-bull-street-starland-corner-commercial/", "https://www.commercialcafe.com/commercial-property/us/ga/savannah/1915-bull-st/"],
+   "quote": "2202 Bull St, Savannah, GA 31401 … $38/SF/YR … NNN … 1,318 SF … Starland District; 1915 Bull St: $30/SF/YR … NNN … 1,200 SF",
+   "checked": "twice for 2202 Bull St, once for 1915 Bull St"
+  },
+  {
+   "city": "Norfolk, VA",
+   "district": "Ghent: the Center Shops, 721 W 21st St",
+   "zip": "23517",
+   "rent_low": 24,
+   "rent_high": 24,
+   "lease_type": "NNN",
+   "date": "listing updated October 2026",
+   "listings": ["The Center Shops: spaces of about 1,200 sq ft, $24"],
+   "source": "PropertyShark listing",
+   "url": "https://www.propertyshark.com/cre/commercial-property/us/va/norfolk/the-center-shops/",
+   "quote": "721 West 21st Street, Norfolk, VA 23517 … $24/SF/YR … NNN … 1,200 SF",
+   "checked": "once",
+   "check": true
+  },
+  {
+   "city": "Norfolk, VA",
+   "district": "The whole city, all retail",
+   "zip": "23517",
+   "rent_low": 15.17,
+   "rent_high": 15.17,
+   "lease_type": "NNN",
+   "date": "Q2 2026",
+   "listings": ["Cushman & Wakefield Thalhimer's average asking rent for the Norfolk submarket"],
+   "source": "Cushman & Wakefield Thalhimer, Hampton Roads Retail MarketBeat, Q2 2026",
+   "url": "https://thalhimer.com/wp-content/uploads/2026/07/Hampton_Roads_Americas_Alliance_MarketBeat_Retail_Q22026.pdf",
+   "quote": "Norfolk … OVERALL AVG ASKING RENT (NNN)* $15.17 … *Rental rates reflect Triple Net asking $PSF/Year",
+   "checked": "twice",
+   "check": true
+  }
+ ],
+ "left_out": [
+  {"city": "Charlottesville, VA", "why": "No district-level figure from 2024 or later: the best found is a 2018 city-commissioned study (the Downtown submarket at $21.19). The metro's Q2 2026 net asking rent is $23.59 (Cushman & Wakefield Thalhimer), but that's the whole metro, not a district like Ghent."}
+ ]
+}
