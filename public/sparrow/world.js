@@ -13,7 +13,11 @@ export const SKY = {
 // Low in the west-southwest, the hour the gallery's own HDRI was chosen for.
 export const SUN_DIR = new THREE.Vector3(-0.78, 0.32, 0.36).normalize();
 
-export function buildWorld(scene, bounds) {
+/**
+ * The sky, the sun and a wide ground disc. opts.floorY: the land's level, where the disc goes, when there's water
+ * below it (Ghent's Hague); opts.holes: rings of [x, z, x, z, ...] where the disc stays open over that water.
+ */
+export function buildWorld(scene, bounds, opts = {}) {
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   const span = Math.max(size.x, size.z);
@@ -62,16 +66,30 @@ export function buildWorld(scene, bounds) {
   sky.frustumCulled = false;
   scene.add(sky);
 
-  // Ground: a wide disc just under the model, fading into the fog.
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(span * 4, 64).rotateX(-Math.PI / 2),
-    new THREE.MeshLambertMaterial({ color: SKY.ground }),
-  );
-  ground.position.set(center.x, bounds.min.y - 0.02, center.z);
+  // Ground: a wide disc just under the model, fading into the fog; open where there's water below the land.
+  const floorY = opts.floorY ?? bounds.min.y;
+  let discGeo;
+  if (opts.holes && opts.holes.length) {
+    const disc = new THREE.Shape();
+    disc.absarc(0, 0, span * 4, 0, Math.PI * 2, false);
+    for (const ring of opts.holes) {
+      const hole = new THREE.Path();
+      for (let i = 0; i < ring.length; i += 2) {
+        const x = ring[i] - center.x, y = -(ring[i + 1] - center.z); // the shape's y is the world's -z
+        if (i === 0) hole.moveTo(x, y); else hole.lineTo(x, y);
+      }
+      disc.holes.push(hole);
+    }
+    discGeo = new THREE.ShapeGeometry(disc, 48).rotateX(-Math.PI / 2);
+  } else discGeo = new THREE.CircleGeometry(span * 4, 64).rotateX(-Math.PI / 2);
+  const ground = new THREE.Mesh(discGeo, new THREE.MeshLambertMaterial({ color: SKY.ground }));
+  ground.position.set(center.x, floorY - 0.02, center.z);
   scene.add(ground);
 
   return {
     sky, sun, hemi, ground, groundY: bounds.min.y,
+    /** Where to stand when nothing of the model is below: the disc (the land), not the water's level. */
+    floorY,
     follow(camera) { sky.position.copy(camera.position); sky.scale.setScalar(camera.far * 0.9); },
   };
 }

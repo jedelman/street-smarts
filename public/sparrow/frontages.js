@@ -19,6 +19,7 @@
 import * as THREE from "three";
 import { ALL_BUSINESSES, chooseBusiness, growFront, growKeep } from "./shopfronts.js";
 import { nameFor, faceFor, lettered, cssFont, packSigns } from "./signs.js";
+import { growYard } from "./yards.js";
 
 // ---------------------------------------------------------------- the businesses
 // Which business stands at each shop front, and how its front grows: the
@@ -36,8 +37,10 @@ const BAY = 3.3; // the explorer's pier spacing
 // A storefront thins out with distance: its sign band, cornice and door read
 // from 150 m ("mid"), its piers, bulkheads and trims from 75 m ("detail"),
 // its capitals, brass and props only up close ("near").
-const REACH = { windows: 900, glass: 260, display: 200, awnings: 150, mid: 150, letters: 130, detail: 75, near: 45, icons: 45 };
-const CHUNK = { windows: 400, glass: 200, display: 200, awnings: 160, mid: 160, letters: 200, detail: 60, near: 50, icons: 120 };
+const REACH = { windows: 900, glass: 260, display: 200, awnings: 150, mid: 150, letters: 130, detail: 75, near: 45, icons: 45,
+  yard: 170, shrub: 140, cone: 160, post: 130, rail: 80, gable: 220 };
+const CHUNK = { windows: 400, glass: 200, display: 200, awnings: 160, mid: 160, letters: 200, detail: 60, near: 50, icons: 120,
+  yard: 120, shrub: 100, cone: 120, post: 100, rail: 60, gable: 160 };
 const FRAME_M = 0.08; // a window's painted frame, drawn by its own quad's shader
 const FRAME_COLOR = "#e8dfc8";
 
@@ -68,6 +71,10 @@ export async function readDetail(parser, table) {
     walls: new Float32Array(w, 0, d.walls.count * 9), nWalls: d.walls.count,
     openings: new Uint16Array(o, 0, d.openings.count * 6), nOpenings: d.openings.count,
     shops: d.shops.rows, strings: table.strings,
+    // Ghent's house fronts (tools/ghent/build.py): what the yard grammar grows from.
+    yards: (table.yards && table.yards.version === 1 && table.yards.rows) || [],
+    // Ghent's streetlights (lamps.js draws them).
+    lights: (table.lights && table.lights.version === 1 && table.lights.rows) || [],
   };
 }
 
@@ -376,8 +383,52 @@ const BOX = (() => {
   return g;
 })();
 const QUAD = new THREE.PlaneGeometry(1, 1);
+// The yards' shapes: a whole box (it stands free), a rounded shrub, a cone, a post, and a gable (a triangular prism,
+// its base on y = -0.5, apex at y = 0.5, depth along z).
+export const FULL_BOX = new THREE.BoxGeometry(1, 1, 1);
+export const SHRUB = new THREE.IcosahedronGeometry(0.5, 1);
+export const CONE = new THREE.ConeGeometry(0.5, 1, 8);
+export const POST = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
+const GABLE = (() => {
+  const v = [-0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0, 0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0, 0.5, -0.5];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
+  g.setIndex([0, 1, 2, 4, 3, 5, 1, 4, 5, 1, 5, 2, 3, 0, 2, 3, 2, 5]);
+  g.computeVertexNormals();
+  return g;
+})();
 
-class Parts {
+/**
+ * Railings, fences and lattice, drawn by the fragment shader: one quad per run, its pattern in the instance's
+ * aUvRect ([pattern, bar spacing in metres, bar share, 0]; yards.js RAIL): 0 balusters, 1 iron pickets, 2 lattice,
+ * 3 pickets, 4 Chinese Chippendale.
+ */
+function railMaterial() {
+  const m = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec4 aUvRect;\nvarying vec2 vR, vSz;\nvarying vec4 vPat;")
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+        vR = uv; vPat = aUvRect;
+        vSz = vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vR, vSz;\nvarying vec4 vPat;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+        float u = vR.x * vSz.x, v = vR.y * vSz.y, sp = max(vPat.y, 0.02), bw = vPat.z;
+        int pat = int(vPat.x + 0.5);
+        float bands = step(vSz.y - 0.07, v) + step(v, 0.06);
+        float keep = 0.0;
+        if (pat == 0) keep = max(bands, step(fract(u / sp), bw));
+        else if (pat == 1) keep = max(step(vSz.y - 0.04, v) + step(v, 0.05) + step(abs(v - vSz.y * 0.82), 0.02), step(fract(u / sp), bw));
+        else if (pat == 2) keep = max(step(fract((u + v) / sp), bw), step(fract((u - v) / sp), bw));
+        else if (pat == 3) { float f = fract(u / sp); keep = step(f, bw) * step(v, vSz.y - 0.1 * abs(f / bw * 2.0 - 1.0)) + step(abs(v - vSz.y * 0.65), 0.03) + step(abs(v - 0.15), 0.03); }
+        else { float f = fract(u / sp), y = clamp((v - 0.07) / max(vSz.y - 0.14, 0.01), 0.0, 1.0); keep = max(bands, max(step(abs(f - y), 0.05), max(step(abs(1.0 - f - y), 0.05), step(f, 0.04)))); }
+        if (keep < 0.5) discard;`);
+  };
+  return m;
+}
+
+export class Parts {
   constructor(kinds) {
     this.kinds = kinds; // name -> { geometry, material, uv, reach }
     this.items = Object.fromEntries(Object.keys(kinds).map((k) => [k, { m: [], c: [], uv: [] }]));
@@ -393,7 +444,7 @@ class Parts {
     for (const [name, it] of Object.entries(this.items)) {
       const kind = this.kinds[name];
       const n = it.c.length / 3;
-      const byChunk = new Map(), size = CHUNK[name];
+      const byChunk = new Map(), size = kind.chunk || CHUNK[name];
       for (let i = 0; i < n; i++) {
         const key = `${Math.floor(it.m[i * 16 + 12] / size)},${Math.floor(it.m[i * 16 + 14] / size)}`;
         if (!byChunk.has(key)) byChunk.set(key, []);
@@ -443,6 +494,12 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     near: { geometry: BOX, material: lambert, reach: REACH.near },
     letters: { geometry: QUAD, material: null, uv: true, reach: REACH.letters, order: 1 }, // set once the signs are lettered
     icons: { geometry: QUAD, material: atlasMaterial(THREE.MeshBasicMaterial, { color: 0xffffff, map: icons.map, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide }), uv: true, reach: REACH.icons },
+    yard: { geometry: FULL_BOX, material: lambert, reach: REACH.yard },
+    shrub: { geometry: SHRUB, material: lambert, reach: REACH.shrub },
+    cone: { geometry: CONE, material: lambert, reach: REACH.cone },
+    post: { geometry: POST, material: lambert, reach: REACH.post },
+    rail: { geometry: QUAD, material: railMaterial(), uv: true, reach: REACH.rail },
+    gable: { geometry: GABLE, material: lambert, reach: REACH.gable },
   });
 
   // One wall's frame: x along it (to a viewer's right), y up, z out of the wall.
@@ -482,9 +539,29 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
   }
   const shopAt = (wall, along) => (shopsByWall.get(wall) || []).find((s) => along > s.lo - 0.1 && along < s.hi + 0.1) || null;
 
-  // ---- every window and door that isn't part of a shop front
+  // ---- the yards and porches (Ghent's house fronts): each grown from its row, its front windows and a seed of its own
   const O = detail.openings;
   const walls = new Array(detail.nWalls);
+  const yardOf = new Map(), frontWindows = new Map();
+  for (const y of detail.yards || []) yardOf.set(y[0], y);
+  if (yardOf.size) {
+    for (let i = 0; i < detail.nOpenings; i++) {
+      const o = i * 6;
+      if (!yardOf.has(O[o]) || (O[o + 1] & 3) !== 0) continue;
+      if (!frontWindows.has(O[o])) frontWindows.set(O[o], []);
+      frontWindows.get(O[o]).push({ x: O[o + 2] / 100, y0: O[o + 3] / 100, y1: (O[o + 3] + O[o + 5]) / 100, w: O[o + 4] / 100, floor: O[o + 1] >> 2 });
+    }
+  }
+  const grownYards = new Map();
+  for (const [wi, y] of yardOf) {
+    const w = walls[wi] || (walls[wi] = wallAt(wi));
+    const row = { door: y[1], depth: y[2], lotLo: y[3], lotHi: y[4], form: y[5], first: y[6], floors: y[7], built: y[8], converted: y[9] === 1 };
+    const g = growYard({ row, L: w.length, windows: frontWindows.get(wi) || [], rng: rngFor(`yard:${y[10]}`) });
+    grownYards.set(wi, g);
+    for (const q of g.parts) add(q.k, w, q.x, q.y, q.out, q.sx, q.sy, q.sz, q.color, q.tex, q.rx || 0, q.ry || 0);
+  }
+
+  // ---- every window and door that isn't part of a shop front
   const glassCol = new THREE.Color(), lit = new THREE.Color("#f2c27a");
   // P9's floor uses, by building id (from the element table): a floor of work reads as
   // offices and studios, more of them lit, in cooler daylight than a home's lamps.
@@ -515,7 +592,8 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     const cy = bottom + height / 2;
     const framed = (color) => add("windows", w, along, cy, 0.03, width + 2 * FRAME_M, height + 2 * FRAME_M, 1, color);
     if (door) {
-      framed(w.courtyard ? "#5a3a26" : "#3a2a1e"); // the leaf, framed
+      const yd = grownYards.get(wi);
+      framed(yd ? yd.doorColor : w.courtyard ? "#5a3a26" : "#3a2a1e"); // the leaf, framed
       add("glass", w, along, bottom + height * 0.72, 0.04, width * 0.55, height * 0.32, 1, "#d8b77a");
       continue;
     }
@@ -564,7 +642,9 @@ export function buildFrontages(scene, detail, { coarse = false, uses = null } = 
     const grown = sh.keep
       ? growKeep({ biz, L, door: sh.door || { x: at, top: 2.6 }, windows: sh.windows, rng, flip: w.flip })
       : growFront({ biz, L, at, doorWidth, rng, arcade: !!underArcade, flip: w.flip });
+    const porch = grownYards.get(wi) && grownYards.get(wi).porch;
     for (const q of grown.parts) {
+      if (porch && q.k === "awnings" && X(q.x) > porch.lo - 0.3 && X(q.x) < porch.hi + 0.3) continue; // under a porch roof
       const color = typeof q.color === "number" ? col.setScalar(q.color) : q.color;
       const tex = q.tex;
       if (tex && tex.atlas === "letters") {

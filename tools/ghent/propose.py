@@ -280,7 +280,7 @@ def main():
             line = LineString([back, (look[0] - dx / L * 1.5, look[1] - dy / L * 1.5)])
             if not trunks.query(line, predicate="intersects").size and not blockers.query(line, predicate="crosses").size:
                 return (sx, sy)
-        return stand
+        return None
     feats, cands = [], []
     eras = lambda y: 0 if not y else 1 if y < 1900 else 2 if y < 1920 else 3 if y < 1950 else 4
     for gpin, r in out.items():
@@ -292,8 +292,15 @@ def main():
         mx, my = (f["a"][0] + f["c"][0]) / 2, (f["a"][1] + f["c"][1]) / 2
         n = f["n"]
         stand = (mx + n[0] * (f["street"] * 2 if f["street"] < 14 else f["street"] + 6), my + n[1] * (f["street"] * 2 if f["street"] < 14 else f["street"] + 6))
-        stand = clear_stand(stand, (mx, my), (f["a"][0] - f["c"][0], f["a"][1] - f["c"][1]) and
-                            ((f["c"][0] - f["a"][0]) / (math.dist(f["a"], f["c"]) or 1), (f["c"][1] - f["a"][1]) / (math.dist(f["a"], f["c"]) or 1)))
+        along = ((f["c"][0] - f["a"][0]) / (math.dist(f["a"], f["c"]) or 1), (f["c"][1] - f["a"][1]) / (math.dist(f["a"], f["c"]) or 1))
+        clear = clear_stand(stand, (mx, my), along)
+        # A front far from its street (a store facing a parking lot): if nothing's clear from across the street, step
+        # in toward the front until the view is.
+        for d in (20, 16, 12, 9):
+            if clear:
+                break
+            clear = clear_stand((mx + n[0] * d, my + n[1] * d), (mx, my), along)
+        stand = clear or stand
         cands.append({"gpin": gpin, "stand": stand, "look": (mx, my)})
         feats.append([
             ["house", "flats", "storefront", "institution"].index(r["typology"]),

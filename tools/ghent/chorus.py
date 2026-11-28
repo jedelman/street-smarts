@@ -24,6 +24,7 @@ import sys
 
 SITE = "https://jason-edelman.org/ghent-streets/"
 BRIEF1 = ("Ghent Streets, Policy Brief No. 1", SITE + "policy/brief-01.html", "ghent-streets/policy/brief-01.html")
+BRIEF2 = ("Ghent Streets, Policy Brief No. 2", SITE + "policy/brief-02.html", "ghent-streets/policy/brief-02.html")
 ZINE1 = ("Ghent Streets, Zine No. 1", SITE + "zines/zine-01.html", "ghent-streets/zines/zine-01.html")
 ZINE2 = ("Ghent Streets, Zine No. 2", SITE + "zines/zine-02.html", "ghent-streets/zines/zine-02.html")
 NFK2050 = "https://www.norfolk.gov/DocumentCenter/View/108574"
@@ -94,6 +95,11 @@ OPINIONS = [
      "neighborhood interiors."},
 ]
 
+# Quoted elsewhere in the walk (the "Day to day" panel), and checked the same way.
+CITED = [
+    {"name": "pace", "doc": BRIEF2, "says": "a steady state of 15–40 in years 6–10"},
+]
+
 QUESTIONS = [
     {"question": "You live in one of the most beautiful, walkable neighborhoods in Virginia. So why can't you walk to get a "
                  "cup of coffee?", "doc": ZINE1,
@@ -138,7 +144,7 @@ def verify(checkout):
         return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s)))
     cache, bad = {}, []
     norm = lambda t: t.replace("’", "'").replace("“", '"').replace("”", '"')
-    for item in OPINIONS + QUESTIONS:
+    for item in OPINIONS + QUESTIONS + CITED:
         rel = item["doc"][2]
         page = cache.setdefault(rel, norm(text(rel)))
         for key in ("says", "question", "why"):
@@ -146,7 +152,8 @@ def verify(checkout):
                 bad.append((rel, item[key][:70]))
     for rel, q in bad:
         print("NOT FOUND", rel, "|", q)
-    print(f"{len(OPINIONS) + len(QUESTIONS) - len(bad)} of {len(OPINIONS) + len(QUESTIONS)} quotations found verbatim")
+    n = len(OPINIONS) + len(QUESTIONS) + len(CITED)
+    print(f"{n - len(bad)} of {n} quotations found verbatim")
     return not bad
 
 

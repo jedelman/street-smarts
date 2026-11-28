@@ -59,14 +59,128 @@ export function renderTours(el, tours, start) {
 }
 
 /** The Iterations panel: every archived version, newest first, each one walkable. */
-export function renderIterations(el, its, currentId) {
+export function renderIterations(el, its, currentId, page = "/") {
   const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const li = (href, img, head, body, here) => `<li${here ? ' class="here"' : ""}>${img ? `<img src="${img}" alt="" loading="lazy">` : ""}<div><b>${head}</b>${body}${here ? ' <em>You&rsquo;re here.</em>' : ` <a href="${href}">Walk it</a>`}</div></li>`;
   const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  el.innerHTML = `<ol class="its">${li("/", null, "Now", " The plan as it is today.", !currentId)}${its.slice().reverse().map((it) => {
+  el.innerHTML = `<ol class="its">${li(page, null, "Now", " The plan as it is today.", !currentId)}${its.slice().reverse().map((it) => {
     const id = encodeURIComponent(it.id);
-    const href = `/?glb=/archive/${id}/clean_baseline.glb&chorus=/archive/${id}/chorus.json&iteration=${id}`;
-    const img = (it.files || []).includes("isometric.png") ? `/archive/${id}/isometric.png` : null;
+    // A site bundle's build (tools/sparrow/archive_site.py) names its folder and files; Eastside's milestones keep
+    // the older layout (tools/vibe-render/archive_milestone.py).
+    const href = iterationHref(it, page);
+    const img = it.folder ? (it.thumb ? it.folder + it.thumb : null)
+      : (it.files || []).includes("isometric.png") ? `/archive/${id}/isometric.png` : null;
     return li(href, img, `${short(it.date)} · ${esc(it.title)}`, ` ${esc(it.summary)}${it.pr ? ` (PR #${it.pr})` : ""}`, it.id === currentId);
   }).join("")}</ol>`;
+}
+
+/** The address that walks an archived build. */
+export function iterationHref(it, page = "/") {
+  const id = encodeURIComponent(it.id);
+  if (!it.folder) return `/?glb=/archive/${id}/clean_baseline.glb&chorus=/archive/${id}/chorus.json&iteration=${id}`;
+  const q = [`glb=${it.folder}${it.model || "model.glb"}`];
+  if (it.chorus) q.push(`chorus=${it.folder}${it.chorus}`);
+  q.push(`iteration=${id}`);
+  return `${it.page || page}?${q.join("&")}`;
+}
+
+/**
+ * On a phone, the HUD's panel buttons fold into one: "Panels" opens a menu of them, grouped (each button's
+ * data-group; the groups' names and order are #hud-menu's data-groups, as JSON pairs). A button that's hidden (a
+ * panel the site or the moment doesn't offer) is left out; the menu is rebuilt each time it opens, so one that
+ * appears later (the Lot, say) shows up. The buttons themselves do the work: the menu clicks them.
+ */
+export function setupHudMenu() {
+  const btn = $("menu-btn"), menu = $("hud-menu");
+  if (!btn || !menu) return;
+  let groups = [];
+  try { groups = JSON.parse(menu.dataset.groups || "[]"); } catch { /* none */ }
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  const build = () => {
+    menu.innerHTML = "";
+    for (const [key, label] of groups) {
+      const items = [...document.querySelectorAll(`.hud.top-right [data-group="${key}"]`)].filter((b) => !b.hidden);
+      if (!items.length) continue;
+      const h = document.createElement("p");
+      h.className = "group";
+      h.textContent = label;
+      const row = document.createElement("div");
+      row.className = "row";
+      for (const b of items) {
+        const c = document.createElement("button");
+        c.type = "button";
+        c.textContent = b.textContent.trim();
+        c.setAttribute("aria-pressed", b.getAttribute("aria-pressed") || "false");
+        if (b.title) c.title = b.title;
+        c.addEventListener("click", () => { close(); b.click(); });
+        row.append(c);
+      }
+      menu.append(h, row);
+    }
+  };
+  btn.addEventListener("click", () => {
+    if (!menu.hidden) return close();
+    build();
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+  });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) close(); });
+  addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) close(); });
+}
+
+/**
+ * A panel offered in context: a small card saying what one panel has to say about what you just touched or where
+ * you are, with chips for the others that have something too. Tapping one opens its panel; nothing opens by itself.
+ * It goes after a while, when a panel opens, or when dismissed. items: [{ panel, title, text, open? }]; `open` runs
+ * before the panel does (the gallery uses it to turn to a shot).
+ */
+export function setupPeek(openPanel) {
+  const el = document.createElement("div");
+  el.id = "peek";
+  el.className = "peek";
+  el.hidden = true;
+  el.setAttribute("role", "status");
+  document.body.append(el);
+  let timer = 0;
+  const hide = () => { el.hidden = true; clearTimeout(timer); };
+  const go = (it) => { hide(); if (it.open) it.open(); openPanel(it.panel); };
+  function show(items, { linger = 14000 } = {}) {
+    if (!items.length) return;
+    const [lead, ...more] = items;
+    el.replaceChildren();
+    const main = document.createElement("button");
+    main.type = "button";
+    main.className = "peek-main";
+    const b = document.createElement("b");
+    b.textContent = lead.title;
+    const s = document.createElement("span");
+    s.textContent = lead.text;
+    main.append(b, s);
+    main.addEventListener("click", () => go(lead));
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "peek-close";
+    x.setAttribute("aria-label", "Dismiss");
+    x.textContent = "×";
+    x.addEventListener("click", hide);
+    el.append(main, x);
+    if (more.length) {
+      const row = document.createElement("p");
+      row.className = "peek-more";
+      row.append("Also: ");
+      for (const it of more) {
+        const c = document.createElement("button");
+        c.type = "button";
+        c.textContent = it.title;
+        c.title = it.text;
+        c.addEventListener("click", () => go(it));
+        row.append(c);
+      }
+      el.append(row);
+    }
+    el.hidden = false;
+    clearTimeout(timer);
+    timer = setTimeout(hide, linger);
+  }
+  return { show, hide, get shown() { return !el.hidden; } };
 }

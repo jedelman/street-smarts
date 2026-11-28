@@ -20,7 +20,13 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
 - waypoints as glTF camera nodes (`extras: { waypoint, source, title, look }`), so a tour's stops travel with the
   model and any glTF viewer can show them as viewpoints;
 - shop rows a pipeline typed (`typology`, `business`): a `storefront` replaces the ground floor's openings, any
-  other typology keeps the building's own doors and windows and lights them with the new use.
+  other typology keeps the building's own doors and windows and lights them with the new use;
+- `water` (Ghent): `{ version, level, rings }`, open water's outlines as glTF `[x, z, ...]` rings, so the walk's
+  ground disc stays at the land's level and leaves the water open below it. Elements of kind `water` take the
+  walk's water material; `bank` is the edge down to it; `bridge` decks cross it;
+- `yards` (Ghent): one row per house front, `[front wall, door along, yard depth, lot from, lot to, form, first
+  floor, floors, built, converted, gpin, two-tone]`. The walk's yard grammar (`public/sparrow/yards.js`) grows each one's
+  porch, steps, walk, beds, edge and tree from it, with weights from `tools/ghent/yard-photos.md`.
 
 **`site.json`** holds what the walk reads but isn't a place:
 - `model`, and what's published beside it: `numbers` (a pipeline's measurements), `chorus`, `archive`;
@@ -29,7 +35,20 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
   `{ "waypoint": "<id>" }` (a waypoint the model carries: where to stand, what to look at). One tour starts from
   the button; several open a list;
 - `renderers`: `{ "<panel>": "<module>" }`. The walk imports the module the first time that panel opens and calls
-  `render(el, { numbers, site, elements, flyTo, goToElement })` into `#<panel>-body`.
+  `render(el, { numbers, site, elements, flyTo, goToElement })` into `#<panel>-body`. A panel listed in `live`
+  renders afresh each time it opens and when you touch something while it's open, and also gets `place` (the
+  element last touched that has a card), `lot` (the parcel last touched) and `here` (where the sparrow stands, glTF
+  x/z). A module may fetch its own data beside it: Ghent's "Day to day" (`everyday.js`) reads `everyday.json` (the
+  walk network, places, rent and rates; `tools/ghent/everyday.py`, then `build.py`);
+- `walkmask` (optional): where people walk, `{ url, cell, x0, y0, w, h }`: a raster of cells `cell` metres square
+  from survey (x0, y0), rows south to north (the walk's z is -y), a bit a cell, high bit first, zlib-compressed.
+  People route along it (`/sparrow/walkmask.js`: A* in a window round the trip, pulled straight) and each shop door
+  gets a front walk to it; without one they walk straight. Ghent's is the sidewalks and corner crossings, from the
+  parcels (`tools/ghent/build.py` `walk_mask`);
+- `surface`: panels that may offer themselves in context, most telling first. Each module may export
+  `peek(ctx)`: the live context plus `touched` (the element just touched, `reason: "touch"`) or `reason: "near"`
+  (checked as you go), returning `{ key, text, open? }` or null. The first to answer leads a small card and the rest
+  follow as chips; tapping opens the panel. A touch always asks; a place you walk past offers itself once.
 
 **The page** holds the site's words: its intro, its panels' prose, its help. It names its bundle with
 `<meta name="street-smarts-site" content="/sites/<id>/site.json">`, links `/sparrow/walk.css`, and loads

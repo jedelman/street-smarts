@@ -40,7 +40,9 @@ export async function loadSite(url, onProgress) {
     const look = Array.isArray(x.look) ? new THREE.Vector3(...x.look) : eye.clone().add(o.getWorldDirection(new THREE.Vector3()).negate());
     waypoints.set(x.waypoint, { id: x.waypoint, eye, stand: new THREE.Vector3(eye.x, 0.2, eye.z), look, title: x.title || null, source: x.source || null });
   });
-  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [], facts: (table && table.facts) || null, waypoints, overlays: (table && table.overlays) || [] };
+  // Open water's outlines (Ghent's Hague), for a hole in the walk's ground disc where the water lies below it.
+  const water = table && table.water && table.water.version === 1 ? table.water : null;
+  return { ...assemble(parts), trees, detail, transit: (table && table.transit) || [], facts: (table && table.facts) || null, waypoints, overlays: (table && table.overlays) || [], water };
 }
 
 // -> { elements, pieces: [{ geometry (world space, position+normal, indexed), ranges, source material }] }
@@ -166,7 +168,7 @@ function assemble({ elements, pieces }) {
     const color = src.color ? src.color.clone() : new THREE.Color("#999999");
     const isContext = kinds.size === 1 && kinds.has("context");
     if (isContext) color.lerp(new THREE.Color("#d9cfc0"), 0.35); // backdrop, not the model
-    const isWater = kinds.size > 0 && [...kinds].every((k) => k === "pond" || k === "stream");
+    const isWater = kinds.size > 0 && [...kinds].every((k) => k === "pond" || k === "stream" || k === "water");
     const m = isWater ? waterMaterial(color) : new THREE.MeshLambertMaterial({ color });
     if (!isWater) shadeWalls(m, kinds);
     // A slight brightness difference per solid, so neighbors read apart (style, not data).

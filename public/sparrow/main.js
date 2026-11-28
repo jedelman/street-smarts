@@ -14,14 +14,17 @@ import { buildGlints, buildPigeons } from "./life.js";
 import { buildBenches, buildPeople } from "./people.js";
 import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
+import { buildLamps } from "./lamps.js";
+import { seeThrough, solid, update as updateSee } from "./seethrough.js";
+import { loadWalkMask } from "./walkmask.js";
 import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
 import { buildWetland } from "./wetland.js";
-import { setupPanels, renderIterations, renderTours } from "./panels.js";
+import { setupPanels, renderIterations, renderTours, setupHudMenu, setupPeek } from "./panels.js";
 import { renderPlan } from "./sitemap.js";
 import { sound } from "./sound.js";
-import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor } from "./camerawork.js";
+import { smoothDamp, smoothDampAngle, angleTo, shotWeight, bankFor, fovFor, swingToward, distanceToShow } from "./camerawork.js";
 import { createGovernor, median, scaleRange } from "./governor.js";
 import { touchable, promptOf, answerOf, arrivalOf, patternsOf, PATTERNS } from "./answers.js";
 import { makeVoices, pickOpinion, lineFor, questionLine, tidy } from "./chorus.js";
@@ -42,10 +45,13 @@ const fromSite = (url) => (url ? new URL(url, new URL(SITE_URL, location.href)).
 const GLB_URL = params.get("glb") || fromSite(SITE.model);
 // The plan's measurements, for panels like Money: published beside the model, or in the iteration's archive folder.
 const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
-  : /^\/archive\/[^/]+\/clean_baseline\.glb$/.test(GLB_URL) ? GLB_URL.replace(/clean_baseline\.glb$/, "numbers.json") : null;
+  : /^\/archive\/.+\/(clean_baseline|model)\.glb$/.test(GLB_URL) ? GLB_URL.replace(/[^/]+\.glb$/, "numbers.json") : null;
 const VIEWS_URL = SITE.views === false ? null : GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
 const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
+// The build's showcase shots (the gallery): beside an archived model, or the site's own.
+const SHOWCASE_URL = /^\/archive\/.+\/model\.glb$/.test(GLB_URL) ? GLB_URL.replace(/[^/]+\.glb$/, "showcase.json")
+  : GLB_URL === fromSite(SITE.model) ? fromSite(SITE.showcase) : null;
 const TOURS = Array.isArray(SITE.tours) ? SITE.tours : [];
 const STATS = params.has("stats");
 // Hero mode: embedded in the landing page. It runs the tour as attract mode and
@@ -107,12 +113,16 @@ const bird = {
 };
 const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
+let walkMask = null; // where people walk, if the site has a mask (walkmask.js)
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
 let wetland = null; // P64's ponds and marsh, dressed: cattails, lily pads, cypress knees, herons (wetland.js)
 let panels = null, plan = null; // the flyout panels, the site map's image
+let peek = null; // a panel offered in context (surface below)
+let lamps = null; // streetlights (lamps.js)
 let lastPlace = null; // the last place touched that has a card
+let lastLot = null; // the last lot touched (a parcel), card or not: where Money and Day to day speak from
 const rendered = new Set(); // the site's own panels, rendered the first time each opens
 let flowModel = null, flowLines = null; // the flow overlay, built the first time it's switched on
 let chorus = null, talk = null; // talk: { lines, k, speakers, who } while someone is talking
@@ -129,6 +139,8 @@ let present = [];
 // ---------------------------------------------------------------- boot
 (async function boot() {
   const facesReady = loadSignFaces(); // the signs' faces load alongside the model
+  // Where people walk (Ghent's sidewalks and crossings), alongside the model too. Without it, they walk straight.
+  const maskReady = SITE.walkmask ? loadWalkMask(fromSite(SITE.walkmask.url), SITE.walkmask).catch(() => null) : Promise.resolve(null);
   try {
     const [s, v] = await Promise.all([
       loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
@@ -147,7 +159,10 @@ let present = [];
     return;
   }
   for (const m of site.meshes) { m.updateMatrix(); scene.add(m); }
-  world = buildWorld(scene, site.bounds);
+  // With open water below the land (Ghent's Hague), the ground disc stays at the land's level and leaves the water open.
+  let landY = Infinity;
+  for (const m of site.meshes) if (![...m.userData.kinds].some((k) => /^(water|bank|bridge)$/.test(k))) landY = Math.min(landY, m.geometry.boundingBox.min.y);
+  world = buildWorld(scene, site.bounds, site.water && isFinite(landY) ? { floorY: landY, holes: site.water.rings } : {});
   sparrow = buildSparrow();
   sparrow.root.scale.setScalar(SIZE);
   scene.add(sparrow.root);
@@ -162,7 +177,7 @@ let present = [];
   if (site.trees) {
     trees = buildTrees(scene, site.trees, site.elements, (x, z, fromY) => {
       const hit = castDownModel(x, fromY, z, fromY + 5);
-      return hit ? hit.point.y : world.groundY;
+      return hit ? hit.point.y : world.floorY;
     }, blobTexture());
     for (const tr of trees.list) {
       if (!tr.el) continue;
@@ -188,11 +203,22 @@ let present = [];
   // Every window, and storefronts at the doors that open onto a street or square.
   if (site.detail) await facesReady;
   if (site.detail) frontages = buildFrontages(scene, site.detail, { coarse: COARSE, uses: new Map(site.elements.filter((e) => e.uses).map((e) => [e.source, e.uses])) });
+  // The streetlights a site's data places (Ghent's, from Dominion's records).
+  if (site.detail && site.detail.lights.length) lamps = buildLamps(scene, site.detail.lights, { coarse: COARSE });
+  // What stands up (buildings, roofs, canopies, trees, every front's parts and the lamps) thins out by its normals
+  // where it comes between you and the camera (seethrough.js); the ground, streets and squares never do.
+  const STANDING = new Set(["buildings", "canopies", "wall_niches", "context"]);
+  for (const m of site.meshes) {
+    const { groups, kinds } = m.userData;
+    if (solid(m.material) && ([...groups].some((g) => STANDING.has(g)) || (kinds.size && [...kinds].every((k) => /^platform_(canopy|post)$/.test(k))))) seeThrough(m.material);
+  }
+  for (const m of [...(trees ? trees.meshes : []), ...(frontages ? frontages.meshes : []), ...(lamps ? lamps.meshes : [])]) if (solid(m.material)) seeThrough(m.material);
   // P34's light rail: a tram on the line (the line is data; the timetable is ours).
   if (site.transit.length) tram = buildTram(scene, site.transit[0]);
   pigeons = buildPigeons(scene, pigeonSpots());
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
+  walkMask = await maskReady;
   people = populate();
   if (CHORUS_URL) fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
   indexTouchables();
@@ -203,7 +229,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get walkMask() { return walkMask; }, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -315,7 +341,7 @@ function spawn() {
 
 function placeBird(at) {
   const hit = castDown(at.x, site.bounds.max.y + 5, at.z, site.bounds.max.y + 50, false); // start on the ground, not in a crown
-  bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.groundY, at.z);
+  bird.pos.set(at.x, hit ? hit.point.y + 0.01 : world.floorY, at.z);
   bird.vel.set(0, 0, 0);
   bird.air = false;
 }
@@ -395,7 +421,10 @@ function collide(dt) {
   push.subVectors(newPos, bird.pos);
   let up = push.y > Math.abs(dt * bird.vel.y * 0.25) && push.y > 1e-5;
   bird.pos.copy(newPos);
-  if (bird.pos.y < world.groundY) { bird.pos.y = world.groundY; up = true; }
+  // The last floor, where nothing of the model is below: the land's level (the ground disc), or the water's where the
+  // ground probe found water under you.
+  const lastFloor = Math.max(world.groundY, Math.min(world.floorY, bird.groundAt ?? world.floorY));
+  if (bird.pos.y < lastFloor) { bird.pos.y = lastFloor; up = true; }
   if (up) {
     if (bird.vel.y < 0) bird.vel.y = 0;
     return true;
@@ -646,7 +675,7 @@ function probeGround() {
   }
   saidRiding = false;
   const hit = castDown(bird.pos.x, bird.pos.y + 0.25, bird.pos.z, 400);
-  bird.groundAt = hit ? hit.point.y : world.groundY;
+  bird.groundAt = hit ? hit.point.y : world.floorY;
   const el = hit && !hit.prop ? hit.el : null;
   bird.under = el;
   bird.onBench = !!(hit && hit.prop) && bird.pos.y - hit.point.y < 0.05;
@@ -736,6 +765,24 @@ function personEl(i) {
   el.box.min.set(p.pos.x - 0.3, p.pos.y, p.pos.z - 0.3);
   el.box.max.set(p.pos.x + 0.3, p.pos.y + 1.8, p.pos.z + 0.3);
   return el;
+}
+/** The nearest point of an element's own surface in the model to `p` (within 30 m), or null (a tree, a person). */
+const _near = new THREE.Vector3();
+function nearestOn(el, p, out) {
+  const geo = site.bvh.geometry, idx = geo.index, elem = geo.attributes.element;
+  let best = 30;
+  let found = false;
+  site.bvh.shapecast({
+    intersectsBounds: (box) => box.distanceToPoint(p) < best,
+    intersectsTriangle: (tri, i) => {
+      if (elem.getX(idx.getX(i * 3)) !== el.index) return false;
+      tri.closestPointToPoint(p, _near);
+      const d = _near.distanceTo(p);
+      if (d < best) { best = d; out.copy(_near); found = true; }
+      return false;
+    },
+  });
+  return found ? out : null;
 }
 function anchorOf(el, out) {
   if (el.kind === "person") return people.headOf(el.person, out).add(_tmp2.set(0, 0.3, 0));
@@ -830,8 +877,11 @@ function touch(el, { look = true } = {}) {
     // A place with a card (the assessor's photo, Street View, a case study): the Place panel shows it.
     lastPlace = el;
     $("place-btn").hidden = false;
-    if (panels && panels.current === "place") renderLive("place");
   }
+  if (el.source && el.source.startsWith("parcel:")) lastLot = el;
+  // An open live panel follows what you touch (the Lot, the Money, Day to day).
+  if (panels && panels.current && (SITE.live || []).includes(panels.current)) renderLive(panels.current);
+  surface("touch", el);
   if (sculptures && sculptures.byElement.has(el)) {
     logLine(sculptures.byElement.get(el) === "cat"
       ? "On it, a bronze cat, sitting, round as a loaf, its tail wrapped round its paws: after Fernando Botero. Ours, not data."
@@ -862,7 +912,7 @@ function touch(el, { look = true } = {}) {
   } else {
     sparrow.chirp(); sound.chirp();
   }
-  if (el.center && look) director.lookAt(el);
+  if (el.center && look) director.frame(el);
 }
 function interact() { touch(focus); }
 
@@ -913,7 +963,7 @@ function nextLine() {
     done: () => { if (!talk) return; people.speak(line.who, 0.2); setTimeout(nextLine, 380); },
   });
   people.speak(line.who, ms / 1000 + 1, faceTo);
-  director.lookAt(personEl(line.who)); // a two-shot: you and whoever's talking
+  director.frame(personEl(line.who)); // you and whoever's talking, in one view
 }
 function endTalk() {
   if (talk && talk.who >= 0) people.speak(talk.who, 0);
@@ -951,7 +1001,7 @@ function tapAt(x, y) {
   const hit = firstHit(2500);
   // A person under the tap (people aren't in the model's collider): go to them and eavesdrop.
   // A tap squarely on something to touch (a sculpture, a shop) wants that, unless it's right on someone.
-  const OPEN = /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|marsh|pond|stream|boardwalk)(_grass)?$/;
+  const OPEN = /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|marsh|pond|stream|boardwalk|bridge)(_grass)?$/;
   const onThing = !!(hit && hit.el && !OPEN.test(hit.el.kind || ""));
   const who = pickPerson(x, y, hit ? hit.distance : Infinity, onThing ? 14 : null);
   if (who >= 0) {
@@ -969,13 +1019,21 @@ function tapAt(x, y) {
     // The bare ground plane.
     const dy = raycaster.ray.direction.y;
     if (dy >= -1e-3) return;
-    const s = (world.groundY - raycaster.ray.origin.y) / dy;
+    const s = (world.floorY - raycaster.ray.origin.y) / dy;
     point = raycaster.ray.at(s, new THREE.Vector3());
+  }
+  // Open water (Ghent's Hague): go to the nearest bank you can stand on, and look out over it from there.
+  if (el && (el.kind === "water" || el.kind === "bank") && walkMask) {
+    const shore = walkMask.nearest(point.x, point.z, 80);
+    if (shore) {
+      const h = castDownModel(shore.x, site.bounds.max.y + 20, shore.z, site.bounds.max.y + 60);
+      point = new THREE.Vector3(shore.x, h ? h.point.y : world.floorY, shore.z);
+    }
   }
   if (tour) endTour("You take it from here.");
   lastInputT = t;
   // Open ground (a square, a street) is somewhere to go; anything else is something to go and touch.
-  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail)(_grass)?$/.test(el.kind);
+  const isOpen = !el || /^(plaza|common|pocket|undecided|local|pedestrian|arterial|street|meadow|track_bed|rail|bridge)(_grass)?$/.test(el.kind);
   if (el && el.tree) {
     // A tree: fly up and perch on top of its crown, then say what it is.
     const tr = el.tree;
@@ -1105,8 +1163,51 @@ function renderLive(name) {
   const mod = SITE.renderers && SITE.renderers[name];
   const body = $(`${name}-body`);
   if (!mod || !body) return;
-  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, flyTo, goToElement }))
+  import(fromSite(mod)).then((m) => m.render(body, panelCtx()))
     .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
+}
+/** What a site's panel module is told: the site, the last place touched with a card, where you are, and how to go places. */
+function panelCtx() {
+  return { site: SITE, elements: site.elements, place: lastPlace, lot: lastLot, here: { x: bird.pos.x, z: bird.pos.z }, flyTo, goToElement, warp: warpTo,
+    showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] };
+}
+
+// ---------------------------------------------------------------- panels, offered in context
+// A site's panel module may export peek(ctx): one line on what its panel has to say about what you just touched
+// (ctx.touched, ctx.reason "touch") or where you've got to (ctx.reason "near"), or null. The first to answer, in the
+// order of the site's `surface` list, leads a small card and the rest follow as chips (panels.js setupPeek); tapping
+// opens the panel. Nothing opens by itself; a touch always asks, but a place you walk past offers itself only once.
+const peekedNear = new Set();
+let peekAsk = 0, nearAt = null, nearT = 0;
+async function surface(reason, touched = null) {
+  if (!peek || HERO || !Array.isArray(SITE.surface)) return;
+  const ask = ++peekAsk;
+  const ctx = { ...panelCtx(), touched, reason };
+  const said = await Promise.all(SITE.surface.map(async (name) => {
+    const mod = SITE.renderers && SITE.renderers[name];
+    const btn = document.querySelector(`[data-open="${name}"]`);
+    if (!mod || !btn) return null;
+    try {
+      const m = await import(fromSite(mod));
+      const r = m.peek ? await m.peek(ctx) : null;
+      return r && r.text ? { ...r, panel: name, title: btn.textContent.trim() } : null;
+    } catch { return null; }
+  }));
+  if (ask !== peekAsk) return; // something newer asked meanwhile
+  let items = said.filter((r) => r && r.panel !== (panels && panels.current));
+  if (reason === "near") {
+    items = items.filter((r) => !peekedNear.has(r.key)).slice(0, 1);
+    for (const r of items) peekedNear.add(r.key);
+  }
+  if (items.length) peek.show(items);
+}
+/** Now and then while you go about: has where you've got to something to offer? */
+function surfaceNear() {
+  if (!peek || t - nearT < 1.2) return;
+  nearT = t;
+  if (nearAt && Math.hypot(bird.pos.x - nearAt.x, bird.pos.z - nearAt.z) < 5) return;
+  nearAt = { x: bird.pos.x, z: bird.pos.z };
+  if (!bird.air || bird.speed < 3) surface("near");
 }
 /** Fly to an element and touch it on arrival (a panel's list of places, say). */
 function goToElement(el) {
@@ -1161,7 +1262,15 @@ function peekInside(i) {
 // ---------------------------------------------------------------- the camera director
 const director = (() => {
   let yaw = 0, yawT = 0, yawV = 0, pitch = 0.3, pitchT = 0.3, pitchV = 0;
-  let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0, collided = Infinity;
+  let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0;
+  // Framing what you touched: one swing of at most 30°, slow, then back away until it's on screen (frame below).
+  const SWING = THREE.MathUtils.degToRad(30), FRAME_MAX = 24;
+  // No swing the camera makes by itself (following you round, framing, a shot) turns it faster than this: about
+  // 34° a second, for comfort. Your own drag isn't held to it. One number, so it's easy to tune.
+  const SWING_RATE = 0.6;
+  const viewQ = new THREE.Quaternion(), wantQ = new THREE.Quaternion();
+  let viewHeld = false;
+  let hold = null, yawSlowUntil = 0, distSlowUntil = 0, lastBase = 1.15;
   const look = new THREE.Vector3(), lookV = new THREE.Vector3(), lookT = new THREE.Vector3();
   const cam = new THREE.Vector3(), head = new THREE.Vector3(), dir = new THREE.Vector3(), eye = new THREE.Vector3();
   let shot = null;
@@ -1171,6 +1280,8 @@ const director = (() => {
   const play = (frame, { dur = 3, blendIn = 0.6, blendOut = 1, start = false } = {}) => { shot = { t0: t, dur, blendIn, blendOut, frame, start }; };
   return {
     get yaw() { return yaw; },
+    /** Whether a shot (the opening crane, the flows' overview) is playing: the showcase's captures wait it out. */
+    get shooting() { return !!shot; },
     get eyes() { return eyes; },
     snapBehind() {
       yaw = yawT = bird.heading + Math.PI;
@@ -1178,11 +1289,18 @@ const director = (() => {
       lookV.set(0, 0, 0);
     },
     drag(dx, dy) {
+      yawSlowUntil = 0; // your hand, not a swing: it answers at once
       yawT -= dx * 0.006;
       pitchT = clamp(pitchT + dy * 0.004, bird.air ? -0.6 : -0.12, 1.35);
       lastLookT = t; lastInputT = t;
     },
-    zoomBy(f) { zoom = clamp(zoom * f, 0.3, 45); lastInputT = t; },
+    zoomBy(f) {
+      if (hold) { zoom = clamp(hold.dist / lastBase, 0.3, 45); hold = null; } // pinch from where the framing left you
+      zoom = clamp(zoom * f, 0.3, 45); lastInputT = t;
+    },
+    zoomTo(z) { hold = null; zoom = clamp(z, 0.3, 45); lastInputT = t; },
+    /** Set the tilt outright (a warp's), in radians, within a drag's limits: the same view from wherever you were. */
+    pitchTo(p) { pitch = pitchT = clamp(p, bird.air ? -0.6 : -0.12, 1.35); pitchV = 0; },
     /** Swoop down from above the whole site to the bird. */
     crane() {
       if (REDUCED) return;
@@ -1198,20 +1316,31 @@ const director = (() => {
       const from = new THREE.Vector3(c.x - span * 0.08, b.max.y + span * 0.35, c.z + span * 0.62);
       play(() => ({ pos: from, look: c, fov: 55 }), { dur: 9, blendIn: 1.6, blendOut: 2.4 });
     },
-    /** Frame you and the thing you touched, from the side. */
-    lookAt(el) {
-      if (REDUCED) return;
-      const target = anchorOf(el, new THREE.Vector3());
-      play(() => {
-        const mid = new THREE.Vector3().addVectors(bird.pos, target).multiplyScalar(0.5);
-        const span = Math.hypot(target.x - bird.pos.x, target.z - bird.pos.z);
-        const side = new THREE.Vector3(-(target.z - bird.pos.z), 0, target.x - bird.pos.x);
-        if (side.lengthSq() < 1e-4) side.set(Math.cos(yaw), 0, -Math.sin(yaw));
-        side.normalize();
-        if (side.dot(dir.set(-Math.sin(yaw), 0, -Math.cos(yaw))) > 0) side.negate(); // stay on the camera's side
-        const d = clamp(span * 1.3 + 0.9, 1.1, 10);
-        return { pos: mid.clone().addScaledVector(side, d).addScaledVector(UP, 0.35 + d * 0.3), look: mid, fov: 56 };
-      }, { dur: 3.2, blendIn: 0.7, blendOut: 1.1 });
+    /**
+     * Show you the thing you touched (or whoever's talking) without swinging round it: turn toward it by at most
+     * 30° (the camera goes round behind you, so you face it), slowly, then back straight away until it's on screen,
+     * up to 24 m. Another touch turns another 30°. If backing away can't show it (it's on the camera's side of you), the turn is all. The framing holds
+     * while you stay; moving off, flying or pinching lets it go, and the camera eases back in.
+     */
+    frame(el) {
+      if (REDUCED || !el) return;
+      const hx = bird.pos.x, hy = bird.pos.y + 0.1, hz = bird.pos.z;
+      // What to show: the part of it you touched (its nearest side, at window height and the top of its ground floor:
+      // a whole roofline beside you would need 30 m or a tilt up), or, if you're on it (a lot, a square) or it's
+      // someone, where it glints.
+      const b = el.box, pts = [];
+      const side = el.kind !== "person" && b && !b.isEmpty() && nearestOn(el, new THREE.Vector3(hx, bird.pos.y + 1.2, hz), new THREE.Vector3());
+      if (!side || Math.hypot(side.x - hx, side.z - hz) < 0.3) pts.push(anchorOf(el, new THREE.Vector3()));
+      else pts.push(new THREE.Vector3(side.x, clamp(bird.pos.y + 1.2, b.min.y, b.max.y), side.z), new THREE.Vector3(side.x, Math.min(b.max.y, bird.pos.y + 3.5), side.z));
+      const aim = pts[0];
+      if (Math.hypot(aim.x - hx, aim.z - hz) > 0.6) {
+        yawT = swingToward(yaw, Math.atan2(hx - aim.x, hz - aim.z), SWING);
+        yawSlowUntil = t + 1.8;
+      }
+      const now = lastBase * zoom;
+      const d = distanceToShow(pts.map((v) => [v.x, v.y, v.z]), [hx, hy, hz], yawT, pitchT,
+        { from: Math.max(now, dist), max: FRAME_MAX, fov: camera.fov, aspect: camera.aspect });
+      if (d && d > now * 1.05) { hold = { dist: d, x: bird.pos.x, z: bird.pos.z }; distSlowUntil = t + 4; }
     },
     update(dt) {
       const air = bird.air;
@@ -1228,12 +1357,20 @@ const director = (() => {
         const facingSun = Math.max(0, -(Math.sin(camDir) * SUN_DIR.x + Math.cos(camDir) * SUN_DIR.z));
         yawT += dt * 0.07 * (1 - 0.7 * facingSun);
       }
-      [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, 0.14, dt);
+      const yaw0 = yaw, pitch0 = pitch;
+      [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, t < yawSlowUntil ? 0.6 : 0.14, dt);
       [pitch, pitchV] = smoothDamp(pitch, pitchT, pitchV, 0.14, dt);
+      if (t - lastLookT > 0.25) { // nobody's hand on it: hold the swing to SWING_RATE
+        const lim = SWING_RATE * dt, dy = angleTo(yaw0, yaw), dp = pitch - pitch0;
+        if (Math.abs(dy) > lim) { yaw = yaw0 + Math.sign(dy) * lim; yawV = Math.sign(dy) * SWING_RATE; }
+        if (Math.abs(dp) > lim) { pitch = pitch0 + Math.sign(dp) * lim; pitchV = Math.sign(dp) * SWING_RATE; }
+      }
       const attract = HERO && !active; // the hero's attract tour: higher and wider, so the place reads
       if (attract) pitchT += (0.28 - pitchT) * Math.min(1, dt * 0.8);
       const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1) * (attract ? 2.4 : 1);
-      [dist, distV] = smoothDamp(dist, base * zoom, distV, 0.35, dt);
+      lastBase = base;
+      if (hold && (air || Math.hypot(bird.pos.x - hold.x, bird.pos.z - hold.z) > 2.5)) { hold = null; distSlowUntil = t + 2.5; }
+      [dist, distV] = smoothDamp(dist, hold ? Math.max(base * zoom, hold.dist) : base * zoom, distV, t < distSlowUntil ? 1.2 : 0.35, dt);
       const eyesT = zoom < 0.42 ? 1 : 0;
       eyes += (eyesT - eyes) * Math.min(1, dt * 6);
 
@@ -1267,30 +1404,38 @@ const director = (() => {
           rollT *= 1 - w;
         }
       }
-      // Don't let walls come between you and the camera: pull in at once, ease back out.
+      // Walls, curbs and posts don't push the camera in (it jumped whenever one crossed the line): it keeps its place,
+      // and what's in the way thins out instead (seethrough.js, updated below).
       head.copy(bird.pos).y += 0.1;
-      dir.subVectors(cam, head);
-      const want = dir.length();
-      if (want > 0.05 && eyes < 0.5) {
-        dir.divideScalar(want);
-        const hit = castRay(head, dir, want, false); // trees pass between you and the camera, as leaves do
-        const allowed = hit ? Math.max(0.12, hit.distance - 0.08) : want;
-        collided = allowed < collided ? allowed : collided + (allowed - collided) * Math.min(1, dt * 2.5);
-        cam.copy(head).addScaledVector(dir, Math.min(want, collided));
-      }
-      cam.y = Math.max(cam.y, world.groundY + 0.04);
+      // Never under the ground: the ground right below the camera (a sidewalk stands above the street), not only the
+      // site's lowest. Looked for from just above the camera, so a porch roof or a crown overhead never lifts it.
+      const under = castDown(cam.x, cam.y + 0.3, cam.z, 2.3, false);
+      const floorY = under ? under.point.y : world.floorY;
+      cam.y = Math.max(cam.y, floorY + 0.1, world.groundY + 0.04);
       [fov, fovV] = smoothDamp(fov, fovT, fovV, 0.6, dt);
       [roll, rollV] = smoothDamp(roll, rollT, rollV, 0.45, dt);
       camera.position.copy(cam);
       camera.lookAt(lookAt);
       camera.rotateZ(roll);
-      const near = clamp(camera.position.distanceTo(head) * 0.25, 0.01, 0.4);
+      // A shot (the opening crane, the flows' overview) moves the camera itself: its turn is held to SWING_RATE too,
+      // through the shot and until the view has caught up after it. A cut (the crane's first frame) is a cut.
+      if (shot && shot.start) viewHeld = false;
+      else if (shot || viewHeld) {
+        wantQ.copy(camera.quaternion);
+        const gap = viewQ.angleTo(wantQ);
+        if (gap > SWING_RATE * dt) { camera.quaternion.copy(viewQ).rotateTowards(wantQ, SWING_RATE * dt); viewHeld = true; }
+        else viewHeld = !!shot;
+      }
+      viewQ.copy(camera.quaternion);
+      // Near enough not to clip the ground just below a low camera.
+      const near = clamp(Math.min(camera.position.distanceTo(head) * 0.25, (camera.position.y - floorY) * 0.6), 0.01, 0.4);
       if (Math.abs(camera.fov - fov) > 0.05 || Math.abs(camera.near - near) / camera.near > 0.15) {
         camera.fov = fov;
         camera.near = near;
         camera.updateProjectionMatrix();
       }
       sparrow.root.visible = eyes < 0.6;
+      updateSee(camera, head, eyes < 0.5);
     },
   };
 })();
@@ -1404,13 +1549,41 @@ function populate() {
       }
     }
   }
-  // Shop doors: people stop by; outside a café or a bakery, now and then, a few stand and talk.
+  // Shop doors: people stop by; outside a café or a bakery, now and then, a few stand and talk. With a walking mask,
+  // each door gets a front walk to the nearest sidewalk.
+  const doors = [];
   for (const s of frontages ? frontages.shops : []) {
     const hit = castDownModel(s.door.x, site.bounds.max.y + 20, s.door.z, site.bounds.max.y + 60);
     if (!hit) continue;
-    spots.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
+    if (walkMask) {
+      const to = walkMask.nearest(s.door.x, s.door.z, 25);
+      if (!to) continue;
+      walkMask.carve(s.door.x, s.door.z, to.x, to.z, 1.2);
+    }
+    doors.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
     if (/^(coffee|bistro|bakery)$/.test(s.kit) && rng() < 0.35) groups.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
   }
+  // With a walking mask, every place to be going is on it: onto the sidewalk nearby, or not at all.
+  if (walkMask) {
+    const onMask = [];
+    for (const sp of spots) {
+      const n = walkMask.nearest(sp.x, sp.z, 4);
+      if (!n) continue;
+      const hit = castDownModel(n.x, site.bounds.max.y + 20, n.z, site.bounds.max.y + 60);
+      onMask.push({ x: n.x, y: hit ? hit.point.y : sp.y, z: n.z });
+    }
+    // And places along every sidewalk, evenly, so people spread out wherever you are (near the Hague, the street
+    // spots and sidewalk samples above are few).
+    for (let k = 0; k < 1500; k++) {
+      const q = walkMask.sample(rng);
+      if (!q) break;
+      const hit = castDownModel(q.x, site.bounds.max.y + 20, q.z, site.bounds.max.y + 60);
+      onMask.push({ x: q.x, y: hit ? hit.point.y : world.floorY, z: q.z });
+    }
+    spots.length = 0;
+    spots.push(...onMask);
+  }
+  spots.push(...doors);
   if (!spots.length && !benches.length) return null;
   // About 320 people (140 on a phone); the walkers among them stay around you (people.js).
   const count = Math.min(COARSE ? 140 : 320, Math.max(12, benches.length * 2 + groups.length * 3 + Math.floor(spots.length / 2)));
@@ -1432,8 +1605,11 @@ function populate() {
     },
     groundAt: (x, z, nearY) => {
       const hit = castDownModel(x, nearY + 2.5, z, 6);
-      return hit ? hit.point.y : world.groundY;
+      return hit ? hit.point.y : world.floorY;
     },
+    // Along the sidewalks, crossing at corners, where the site has a walking mask.
+    route: walkMask ? (a, b) => walkMask.path(a, b) : null,
+    keepTo: walkMask ? (x, z) => walkMask.walkable(x, z) : null,
   });
 }
 
@@ -1496,10 +1672,12 @@ function frame() {
   tourTick();
   if (trees) trees.update(t, camera);
   if (frontages) frontages.update(camera);
+  if (lamps) lamps.update(camera);
   if (flowLines) flowLines.update(t, dt);
   waterTime.value = t;
   if (wetland) wetland.update(t);
   if (plan && panels && panels.current === "map" && Math.floor(t * 10) !== Math.floor((t - dt) * 10)) drawMap();
+  if (active) surfaceNear();
   sparrow.root.position.copy(bird.pos);
   sparrow.root.rotation.y = bird.heading;
   sparrow.update({ dt, t, air: bird.air, speed: bird.speed, vy: bird.vel.y, turn: bird.turn, climbing: bird.air && intent.up, reduced: REDUCED });
@@ -1641,6 +1819,7 @@ function setupUI() {
   $("mute").setAttribute("aria-pressed", String(sound.muted));
   panels = setupPanels({
     open(name) {
+      if (peek) peek.hide();
       if (name === "map") openMap();
       const mod = SITE.renderers && SITE.renderers[name];
       if (mod && (SITE.live || []).includes(name)) renderLive(name);
@@ -1652,12 +1831,15 @@ function setupUI() {
         Promise.all([
           import(fromSite(mod)),
           NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
-        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement }))
+        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement,
+          warp: warpTo, showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] }))
           .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
       }
       if (name === "tours") renderTours($("tours-body"), TOURS, (def) => { panels.close(); startTour(def); });
     },
   });
+  setupHudMenu();
+  peek = setupPeek((name) => panels.open(name));
   $("map-canvas").addEventListener("click", (e) => {
     if (!plan) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -1694,7 +1876,7 @@ function setupIterations() {
   fetch(fromSite(SITE.archive)).then((r) => (r.ok ? r.json() : null)).then((idx) => {
     const its = idx && Array.isArray(idx.iterations) ? idx.iterations : [];
     if (!its.length || HERO) return;
-    renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null);
+    renderIterations($("its-body"), its, its.some((i) => i.id === ITERATION) ? ITERATION : null, location.pathname);
     $("its-btn").hidden = false;
     const short = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const k = its.findIndex((i) => i.id === ITERATION);
@@ -1703,7 +1885,7 @@ function setupIterations() {
       note.innerHTML = "";
       const b = document.createElement("b"); b.textContent = `Iteration ${k + 1} of ${its.length}: ${it.title}`;
       note.append(b, document.createTextNode(` (${short(it.date)}${it.pr ? `, PR #${it.pr}` : ""}). ${it.summary} `));
-      const back = document.createElement("a"); back.href = "/"; back.textContent = "Back to now";
+      const back = document.createElement("a"); back.href = location.pathname; back.textContent = "Back to now";
       note.append(back);
       note.hidden = false;
       logLine(`You're walking iteration ${k + 1} of ${its.length}: ${it.title}.`, "note");
@@ -1800,6 +1982,27 @@ function flyTo(p) {
     director.snapBehind();
     $("fade").classList.remove("on");
     if (COARSE) panels.close();
+  }, 360);
+}
+/**
+ * From the gallery: a blink, and you're standing where a showcase shot was taken, looking where it looked.
+ * `shot`: { stand: [x, z], look: [x, y, z], pitch, zoom } in glTF metres (tools/ghent/showcase.mjs writes them).
+ */
+function warpTo(shot, done) {
+  $("fade").classList.add("on");
+  setTimeout(() => {
+    goal = null;
+    if (tour) endTour("");
+    const [sx, sz] = shot.stand, [lx, , lz] = shot.look;
+    placeBird({ x: sx, y: 0, z: sz });
+    bird.heading = Math.atan2(lx - sx, lz - sz);
+    director.snapBehind();
+    director.zoomTo(shot.zoom || 1);
+    // A shot's pitch is in drag units from the walk's resting tilt (0.3 rad; showcase.mjs writes -60): set outright,
+    // not nudged from wherever the camera was, so a shot looks the same however you came to it.
+    director.pitchTo(0.3 + (shot.pitch || 0) * 0.004);
+    $("fade").classList.remove("on");
+    if (done) done();
   }, 360);
 }
 /** The intro: once per browser (remembered if storage allows), and again from How to play. */

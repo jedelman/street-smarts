@@ -172,3 +172,26 @@ test("a building's floors say what P9 made of them", () => {
   const [e] = readElements({ version: 1, strings: ["buildings", "building_shaped", "B1", "pwll"], elements: [[0, 1, 2, -1, 4, 3]] });
   assert.equal(e.uses, "pwll");
 });
+
+test("a swing turns the camera at most its limit, the short way round", async () => {
+  const { swingToward } = await import("../../public/sparrow/camerawork.js");
+  const max = Math.PI / 6;
+  assert.ok(Math.abs(swingToward(0, 0.2, max) - 0.2) < 1e-9, "a small turn is made in full");
+  assert.ok(Math.abs(swingToward(0, Math.PI / 2, max) - max) < 1e-9, "a big one stops at 30°");
+  assert.ok(Math.abs(swingToward(0, -2.5, max) + max) < 1e-9, "the other way too");
+  assert.ok(Math.abs(swingToward(3.0, -3.0, max) - (3.0 + (2 * Math.PI - 6.0))) < 1e-9, "the short way across ±π");
+});
+
+test("the camera backs away until what you touched is on screen, and won't back away from what's behind it", async () => {
+  const { distanceToShow } = await import("../../public/sparrow/camerawork.js");
+  const opts = { from: 1.2, max: 24, fov: 62, aspect: 1.6 };
+  // The camera behind you to the south (yaw 0: it sits at +z), looking north; a gable 6 m ahead and 9 m up.
+  const look = [0, 0.1, 0];
+  const d = distanceToShow([[0, 0.1, -6], [0, 9, -6]], look, 0, 0.3, opts);
+  assert.ok(d > 1.2 && d <= 24, `backs out to ${d}`);
+  assert.equal(distanceToShow([[0, 0.1, -6], [0, 9, -6]], look, 0, 0.3, { ...opts, from: d * 0.8 }) > d * 0.8, true);
+  // Already in view: stays where it is.
+  assert.equal(distanceToShow([[0, 0.5, -3]], look, 0, 0.3, opts), 1.2);
+  // Behind the camera (on its side of you, beyond it): no distance shows it.
+  assert.equal(distanceToShow([[0, 1, 30]], look, 0, 0.3, opts), null);
+});

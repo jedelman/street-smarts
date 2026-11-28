@@ -1,0 +1,144 @@
+{
+ "version": 1,
+ "site": "ghent-streets",
+ "intro": "What this build changed, in six places, each chosen by a rule from the build's own data. Tap one to go there.",
+ "method": "Chosen by tools/ghent/showcase.mjs: one shot per criterion, never two of the same lot.",
+ "shots": [
+  {
+   "id": "porches",
+   "title": "A porch street: the 500 block of Mowbray Arch",
+   "caption": "14 of 20 house fronts with a porch, on the even-numbered side.",
+   "why": [
+    "Chosen as the block face in Ghent where the most house fronts get a porch: 14 of its 20 houses, among blocks with at least six.",
+    "Porches come from how often they appear in 121 of the City assessor's own street photos of Ghent: four in five houses have one, mostly on round columns behind white balusters, under a low hip roof (tools/ghent/yard-photos.md).",
+    "The City's footprints are traced from above, so a porch's roof is already inside them: here a porch is cut into the ground floor, a shaded recess with its columns at the wall, and only the steps, the walk and the yard come out in front."
+   ],
+   "look_for": "Round columns and balusters, the shade of the porch, steps down to clipped boxwoods along the foundation.",
+   "source": "parcel:1427780556",
+   "stand": [
+    25.94,
+    700.97
+   ],
+   "look": [
+    27.93,
+    3,
+    685.35
+   ],
+   "pitch": -60,
+   "zoom": 0.75,
+   "image": "showcase/porches.jpg"
+  },
+  {
+   "id": "cafe",
+   "title": "1615 Colonial Avenue: a coffee shop on a porch",
+   "caption": "The house keeps its porch, door and windows; a coffee shop shows through them.",
+   "why": [
+    "Chosen as the converted café or bistro whose house keeps the widest porch (15.8 m): adaptive reuse in one frame.",
+    "Its ground floor would hold a coffee shop (a small restaurant or café), up to 2,754 sq ft. Why it may: On an arterial or collector street, in a Sustain place type.",
+    "Doors and windows stay where they are: the building is adapted, not remodelled. The new use shows through its own windows, with a sign over the door."
+   ],
+   "look_for": "The sign over the door, the lit windows, the porch as it was.",
+   "source": "parcel:1428825801",
+   "stand": [
+    565.05,
+    -564.41
+   ],
+   "look": [
+    560.01,
+    2.6,
+    -556.49
+   ],
+   "pitch": -60,
+   "image": "showcase/cafe.jpg"
+  },
+  {
+   "id": "stacked",
+   "title": "703 W Princess Anne Road: porches stacked",
+   "caption": "An apartment building's porch, one storey on another.",
+   "why": [
+    "Chosen as the apartment building with the widest stacked porch (19.8 m across, 4 storeys).",
+    "In the assessor's photos, half the apartment buildings' porches are stacked two or more storeys (13 of 26), several three or four tiers; their railings are mostly iron, their roofs mostly flat."
+   ],
+   "look_for": "The second porch over the first, its railing, the columns running up through both.",
+   "source": "parcel:1428712833",
+   "stand": [
+    187.14,
+    -254.52
+   ],
+   "look": [
+    179.75,
+    4.4,
+    -261.93
+   ],
+   "pitch": -60,
+   "image": "showcase/stacked.jpg"
+  },
+  {
+   "id": "twotone",
+   "title": "Two-tone houses: the 600 block of Westover Avenue",
+   "caption": "6 of 11 houses brick below, shingle or siding above.",
+   "why": [
+    "Chosen as the block face with the most two-tone houses: 6 of 11.",
+    "A third of the houses in the assessor's photos are two-tone, mostly a brick ground floor with shingle or siding above, so walls are painted by building type from those photos: brick for most apartment buildings, and for houses brick, two-tone, siding, shingle or stucco in the photos' proportions."
+   ],
+   "look_for": "The line where the brick stops and the shingle begins, a storey up.",
+   "source": "parcel:1428713057",
+   "stand": [
+    125.26,
+    -86.97
+   ],
+   "look": [
+    125.73,
+    4.2,
+    -73.22
+   ],
+   "pitch": -60,
+   "zoom": 0.75,
+   "image": "showcase/twotone.jpg"
+  },
+  {
+   "id": "lanterns",
+   "title": "Lanterns",
+   "caption": "16 Colonial lanterns within 45 m of each other.",
+   "why": [
+    "Chosen as the densest run of Colonial lanterns: 16 within 45 m of each other, where Dominion Energy's records (the City's open data) put them.",
+    "670 of the 1160 streetlights in and by the League's area are Colonials, by our reading of the data's fixture codes against Dominion's catalogue: a lantern on a 13-foot pole. The rest are cobra heads and shoeboxes on arms over the busier streets, and floodlights."
+   ],
+   "look_for": "The lanterns lit along the sidewalk, and their pools of light.",
+   "stand": [
+    91.25,
+    -573.82
+   ],
+   "look": [
+    119.53,
+    2.8,
+    -613.86
+   ],
+   "pitch": -60,
+   "image": "showcase/lanterns.jpg"
+  },
+  {
+   "id": "everyday",
+   "title": "737 Graydon Avenue: a hardware store, five minutes from 247 lots",
+   "caption": "It would bring hardware within five minutes of 247 lots where today it's more than ten.",
+   "why": [
+    "Chosen as the ground floor that would change the most neighbours' weeks, among the weekly needs (coffee, bread, groceries, hardware, a haircut, dry cleaning): if it opened, 247 lots would have a place for hardware within a five-minute walk where today the nearest is more than ten minutes away.",
+    "Walks run along the City's street centerlines at 3 miles an hour (ours); today's places are Overture Maps' (open, at confidence 0.6 or more). Day to day shows it from any lot.",
+    "The map opens every ground floor the proposal would allow; Policy Brief No. 2 expects far fewer: “a steady state of 15–40 in years 6–10”. At that pace, any one of them has about a 8% to 21% chance of opening."
+   ],
+   "look_for": "Its sign and its lit windows; then open Day to day from here.",
+   "source": "parcel:1428617707",
+   "stand": [
+    19.1,
+    -252.99
+   ],
+   "look": [
+    14.92,
+    2.6,
+    -249.63
+   ],
+   "pitch": -60,
+   "image": "showcase/everyday.jpg"
+  }
+ ]
+}

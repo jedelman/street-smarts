@@ -54,3 +54,10 @@ export function render(el, { place }) {
     el.append(p);
   }
 }
+
+/** In context (main.js surface): touching a lot the assessor photographed, its photo and the City's record. */
+export function peek({ touched, reason }) {
+  const f = reason === "touch" && touched && touched.facts;
+  if (!f || !f.photo) return null;
+  return { key: `place:${touched.source}`, text: `The assessor's photo of ${f.name}, with the City's record of it.` };
+}
