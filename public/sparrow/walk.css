@@ -160,6 +160,15 @@
   table.everyday thead th { font-weight: 400; font-size: 0.7rem; line-height: 1.25; border-top: 0; }
   table.everyday th[scope="row"] { text-align: left; font-weight: 400; color: var(--ink); }
   table.everyday { margin: 0.4rem 0 0.7rem; }
+  ul.gallery { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  ul.gallery button { font: inherit; text-align: left; color: var(--ink); background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; padding: 0 0 0.45rem; cursor: pointer; width: 100%; overflow: hidden; }
+  ul.gallery button:hover, ul.gallery button:focus-visible { border-color: var(--accent); outline: none; }
+  ul.gallery img { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: cover; background: rgba(255,255,255,0.06); }
+  ul.gallery b { display: block; font-size: 0.78rem; line-height: 1.3; margin: 0.4rem 0.5rem 0.15rem; }
+  ul.gallery span { display: block; font-size: 0.72rem; line-height: 1.3; margin: 0 0.5rem; opacity: 0.85; }
+  .gallery-nav { display: flex; align-items: center; gap: 0.7rem; }
+  .gallery-nav span { margin-left: auto; font-size: 0.76rem; }
+  .gallery-nav [data-step] { font-size: 1.3rem; line-height: 1; text-decoration: none; }
   table.everyday caption { text-align: left; font-size: 0.78rem; color: var(--ink); padding-bottom: 0.2rem; }
   table.everyday tr.changed td:not(:nth-child(2)) { color: var(--accent); font-weight: 600; }
   .its { list-style: none; margin: 0; padding: 0; }

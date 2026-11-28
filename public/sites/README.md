@@ -22,7 +22,7 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
 - shop rows a pipeline typed (`typology`, `business`): a `storefront` replaces the ground floor's openings, any
   other typology keeps the building's own doors and windows and lights them with the new use;
 - `yards` (Ghent): one row per house front, `[front wall, door along, yard depth, lot from, lot to, form, first
-  floor, floors, built, converted, gpin]`. The walk's yard grammar (`public/sparrow/yards.js`) grows each one's
+  floor, floors, built, converted, gpin, two-tone]`. The walk's yard grammar (`public/sparrow/yards.js`) grows each one's
   porch, steps, walk, beds, edge and tree from it, with weights from `tools/ghent/yard-photos.md`.
 
 **`site.json`** holds what the walk reads but isn't a place:

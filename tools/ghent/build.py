@@ -634,7 +634,7 @@ def main(check=False):
                     else [(x - w["ax"]) * w["dx"] + (y - w["ay"]) * w["dy"] for q in lot.geoms for x, y in q.exterior.coords]
                 yards.append([front_w[0], round(door_at, 2), round(min(depth, 14.0), 2), round(max(min(along), -3.0), 2),
                               round(min(max(along), front_w[1] + 3.0), 2), form, round(first, 2), nf, p["built"] or 0,
-                              1 if r.get("status") == "converted" else 0, b["parcel"]])
+                              1 if r.get("status") == "converted" else 0, b["parcel"], 1 if upper_c else 0])
         # The converted ground floor.
         if main_b and r.get("status") == "converted" and front_w and door_at is not None:
             wid, L = front_w[0], front_w[1]
@@ -716,7 +716,8 @@ def main(check=False):
     gltf, binc = pack_glb.add_detail(gltf, binc, detail)
     table = gltf["nodes"][0]["extras"]["streetSmarts"]
     table["facts"] = facts
-    # [front wall, door along, yard depth, lot from, lot to (along the wall), form, first floor, floors, built, converted, gpin]
+    # [front wall, door along, yard depth, lot from, lot to (along the wall), form, first floor, floors, built, converted, gpin,
+    #  two-tone walls]
     table["yards"] = {"version": 1, "rows": yards}
     # The streetlights, where Dominion's data puts them (tools/ghent/lights.py): [x, z (glTF), family, pole, yaw]. A light
     # that falls inside a footprint (a geocoding slip) steps out of it; an arm-mounted head faces its nearest street.
@@ -818,7 +819,10 @@ def main(check=False):
         "pipeline": "adaptive reuse",
         "model": "model.glb",
         "numbers": "numbers.json",
-        "renderers": {"money": "money.js", "corners": "corners.js", "place": "place.js", "everyday": "everyday.js"},
+        "renderers": {"money": "money.js", "corners": "corners.js", "place": "place.js", "everyday": "everyday.js",
+                      "gallery": "/sparrow/gallery.js"},
+        # This build's showcase shots (tools/ghent/showcase.mjs chooses and photographs them).
+        "showcase": "showcase.json",
         "live": ["place", "everyday"],
         "views": False,
         # Earlier builds, for a before and after (tools/sparrow/archive_site.py uploads them; the Worker serves them).

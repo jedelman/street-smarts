@@ -112,3 +112,17 @@ test("Ghent's bundle: six tour stops, every one a waypoint; the corners and the 
   assert.equal(total, numbers.status.converted);
   assert.ok(Math.abs(kinds.food / total - 0.5) < 0.05 && Math.abs(kinds.retail / total - 0.3) < 0.05, "Brief 2's mix, near enough");
 });
+
+test("Ghent's showcase: every shot photographed, placed, and saying why it was chosen", () => {
+  const site = json("sites/ghent-streets/site.json");
+  assert.equal(site.showcase, "showcase.json");
+  const sc = json("sites/ghent-streets/showcase.json");
+  assert.ok(sc.shots.length >= 4);
+  const ids = new Set();
+  for (const s of sc.shots) {
+    assert.ok(!ids.has(s.id), `${s.id} once`); ids.add(s.id);
+    assert.ok(existsSync(pub(`sites/ghent-streets/${s.image}`)), `${s.id}: its photograph`);
+    assert.ok(s.stand.length === 2 && s.look.length === 3 && s.stand.every(Number.isFinite) && s.look.every(Number.isFinite), `${s.id}: where to stand and look`);
+    assert.ok(Array.isArray(s.why) && s.why.length && s.why[0].startsWith("Chosen"), `${s.id}: why it was chosen`);
+  }
+});

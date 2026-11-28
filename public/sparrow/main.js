@@ -47,6 +47,9 @@ const NUMBERS_URL = GLB_URL === fromSite(SITE.model) ? fromSite(SITE.numbers)
 const VIEWS_URL = SITE.views === false ? null : GLB_URL.replace(/\.glb$/, "_interior_views.json");
 // The chorus on the whole site (one cluster is a piece of the same site): what passers-by say.
 const CHORUS_URL = params.get("chorus") || fromSite(SITE.chorus);
+// The build's showcase shots (the gallery): beside an archived model, or the site's own.
+const SHOWCASE_URL = /^\/archive\/.+\/model\.glb$/.test(GLB_URL) ? GLB_URL.replace(/[^/]+\.glb$/, "showcase.json")
+  : GLB_URL === fromSite(SITE.model) ? fromSite(SITE.showcase) : null;
 const TOURS = Array.isArray(SITE.tours) ? SITE.tours : [];
 const STATS = params.has("stats");
 // Hero mode: embedded in the landing page. It runs the tour as attract mode and
@@ -207,7 +210,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -1110,7 +1113,7 @@ function renderLive(name) {
   const body = $(`${name}-body`);
   if (!mod || !body) return;
   const here = { x: bird.pos.x, z: bird.pos.z };
-  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, here, flyTo, goToElement }))
+  import(fromSite(mod)).then((m) => m.render(body, { site: SITE, elements: site.elements, place: lastPlace, here, flyTo, goToElement, warp: warpTo, showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] }))
     .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
 }
 /** Fly to an element and touch it on arrival (a panel's list of places, say). */
@@ -1188,6 +1191,7 @@ const director = (() => {
       lastLookT = t; lastInputT = t;
     },
     zoomBy(f) { zoom = clamp(zoom * f, 0.3, 45); lastInputT = t; },
+    zoomTo(z) { zoom = clamp(z, 0.3, 45); lastInputT = t; },
     /** Swoop down from above the whole site to the bird. */
     crane() {
       if (REDUCED) return;
@@ -1283,13 +1287,17 @@ const director = (() => {
         collided = allowed < collided ? allowed : collided + (allowed - collided) * Math.min(1, dt * 2.5);
         cam.copy(head).addScaledVector(dir, Math.min(want, collided));
       }
-      cam.y = Math.max(cam.y, world.groundY + 0.04);
+      // Never under the ground: the ground right below the camera (a sidewalk stands above the street), not only the site's lowest.
+      const under = castDown(cam.x, cam.y + 1.5, cam.z, 3);
+      const floorY = under ? under.point.y : world.groundY;
+      cam.y = Math.max(cam.y, floorY + 0.1, world.groundY + 0.04);
       [fov, fovV] = smoothDamp(fov, fovT, fovV, 0.6, dt);
       [roll, rollV] = smoothDamp(roll, rollT, rollV, 0.45, dt);
       camera.position.copy(cam);
       camera.lookAt(lookAt);
       camera.rotateZ(roll);
-      const near = clamp(camera.position.distanceTo(head) * 0.25, 0.01, 0.4);
+      // Near enough not to clip the ground just below a low camera.
+      const near = clamp(Math.min(camera.position.distanceTo(head) * 0.25, (camera.position.y - floorY) * 0.6), 0.01, 0.4);
       if (Math.abs(camera.fov - fov) > 0.05 || Math.abs(camera.near - near) / camera.near > 0.15) {
         camera.fov = fov;
         camera.near = near;
@@ -1658,7 +1666,8 @@ function setupUI() {
         Promise.all([
           import(fromSite(mod)),
           NUMBERS_URL ? fetch(NUMBERS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
-        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement }))
+        ]).then(([m, n]) => m.render(body, { numbers: n && n.version === 1 ? n : null, site: SITE, elements: site.elements, flyTo, goToElement,
+          warp: warpTo, showcase: SHOWCASE_URL, shops: frontages ? frontages.shops : [] }))
           .catch((e) => { body.textContent = `This panel couldn’t load (${e.message}).`; });
       }
       if (name === "tours") renderTours($("tours-body"), TOURS, (def) => { panels.close(); startTour(def); });
@@ -1806,6 +1815,25 @@ function flyTo(p) {
     director.snapBehind();
     $("fade").classList.remove("on");
     if (COARSE) panels.close();
+  }, 360);
+}
+/**
+ * From the gallery: a blink, and you're standing where a showcase shot was taken, looking where it looked.
+ * `shot`: { stand: [x, z], look: [x, y, z], pitch, zoom } in glTF metres (tools/ghent/showcase.mjs writes them).
+ */
+function warpTo(shot, done) {
+  $("fade").classList.add("on");
+  setTimeout(() => {
+    goal = null;
+    if (tour) endTour("");
+    const [sx, sz] = shot.stand, [lx, , lz] = shot.look;
+    placeBird({ x: sx, y: 0, z: sz });
+    bird.heading = Math.atan2(lx - sx, lz - sz);
+    director.snapBehind();
+    director.zoomTo(shot.zoom || 1);
+    if (shot.pitch) director.drag(0, shot.pitch);
+    $("fade").classList.remove("on");
+    if (done) done();
   }, 360);
 }
 /** The intro: once per browser (remembered if storage allows), and again from How to play. */

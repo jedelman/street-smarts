@@ -22,6 +22,7 @@
 <div id="iteration-note" hidden></div>
 
 <div class="hud top-right">
+  <button type="button" data-open="gallery" aria-pressed="false" title="This build's showcase: tap a shot to go there">Gallery</button>
   <button type="button" data-open="map" aria-pressed="false" title="The map: tap it to fly there">Map</button>
   <button type="button" data-open="money" aria-pressed="false" title="What it would bring the city, and what it costs">Money</button>
   <button type="button" data-open="everyday" aria-pressed="false" title="Rent here, and how far a walk it is to coffee, groceries or a haircut">Day to day</button>
@@ -45,7 +46,7 @@
       <li><b>Touch a building</b> and it tells you what it is, what its ground floor could hold, and why it may.</li>
       <li><b>Corners</b> lists the corner lots the campaign identified; <b>Money</b> is what opening them could bring the city.</li>
       <li><b>Day to day</b> is the proposal in a neighbour's terms: rent, the walk to coffee or groceries today and with the proposal, and how often something new opens.</li>
-      <li><b>Show me around</b> visits six of the proposal's ground floors, as different from each other as they come.</li>
+      <li><b>Show me around</b> visits six of the proposal's ground floors, as different from each other as they come; the <b>Gallery</b> takes you to the shots that show what this build changed, and says why each was chosen.</li>
       <li><b>Get close to people and eavesdrop:</b> they argue the proposal, in the words of the campaign's briefs and zines and the City's plan.</li>
     </ul>
     <p class="controls" id="intro-controls">WASD to hop, hold Space to fly, drag to look, <b>E</b> to touch.</p>
@@ -69,6 +70,7 @@
 <aside id="flyout" class="flyout" hidden aria-labelledby="flyout-title">
   <header><h2 id="flyout-title"></h2><button type="button" id="flyout-close" aria-label="Close">&times;</button></header>
   <div class="flyout-body">
+    <section data-panel="gallery" data-title="Showcase" hidden><div id="gallery-body"></div></section>
     <section data-panel="map" data-title="Ghent" hidden>
       <div class="map-wrap"><canvas id="map-canvas" aria-label="Ghent from above; tap to fly there"></canvas></div>
       <ul class="map-legend" id="map-legend"></ul>

@@ -10,8 +10,10 @@
   "money": "money.js",
   "corners": "corners.js",
   "place": "place.js",
-  "everyday": "everyday.js"
+  "everyday": "everyday.js",
+  "gallery": "/sparrow/gallery.js"
  },
+ "showcase": "showcase.json",
  "live": [
   "place",
   "everyday"
