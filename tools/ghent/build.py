@@ -362,6 +362,8 @@ def everyday_bundle(parcels, plan, detail, doors):
         "proposed": proposed,
         # gpin -> [edge, along, offset, tract index]
         "lots": lots,
+        # gpin -> the converted ground floor's floor area (sq ft), for what it would rent for
+        "units": {g: r["unit_sqft"] for g, r in plan.items() if r.get("status") == "converted"},
         "opened": E["opened"],
         "tracts": [{k: t[k] for k in keep} for t in E["tracts"]],
         "bds": E["bds"],
