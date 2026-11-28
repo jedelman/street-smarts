@@ -229,7 +229,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get walkMask() { return walkMask; }, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get walkMask() { return walkMask; }, surface, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -1178,10 +1178,13 @@ function panelCtx() {
 // order of the site's `surface` list, leads a small card and the rest follow as chips (panels.js setupPeek); tapping
 // opens the panel. Nothing opens by itself; a touch always asks, but a place you walk past offers itself only once.
 const peekedNear = new Set();
-let peekAsk = 0, nearAt = null, nearT = 0;
+// Touches and walking past are counted apart: only a newer touch replaces a touch's card (arriving somewhere you
+// tapped both touches it and counts as walking past, and the walk-past check mustn't throw the touch's card away);
+// a walk-past offer gives way to any touch, and never covers a touch's card while it's up.
+let touchAsk = 0, nearAsk = 0, touchShownT = -1e9, nearAt = null, nearT = 0;
 async function surface(reason, touched = null) {
   if (!peek || HERO || !Array.isArray(SITE.surface)) return;
-  const ask = ++peekAsk;
+  const ask = reason === "touch" ? ++touchAsk : ++nearAsk, touchesBefore = touchAsk;
   const ctx = { ...panelCtx(), touched, reason };
   const said = await Promise.all(SITE.surface.map(async (name) => {
     const mod = SITE.renderers && SITE.renderers[name];
@@ -1193,13 +1196,16 @@ async function surface(reason, touched = null) {
       return r && r.text ? { ...r, panel: name, title: btn.textContent.trim() } : null;
     } catch { return null; }
   }));
-  if (ask !== peekAsk) return; // something newer asked meanwhile
+  if (reason === "touch" ? ask !== touchAsk : ask !== nearAsk || touchAsk !== touchesBefore) return; // superseded
+  if (reason === "near" && peek.shown && t - touchShownT < 14) return; // a touch's card is up
   let items = said.filter((r) => r && r.panel !== (panels && panels.current));
   if (reason === "near") {
     items = items.filter((r) => !peekedNear.has(r.key)).slice(0, 1);
     for (const r of items) peekedNear.add(r.key);
   }
-  if (items.length) peek.show(items);
+  if (!items.length) return;
+  peek.show(items);
+  if (reason === "touch") touchShownT = t;
 }
 /** Now and then while you go about: has where you've got to something to offer? */
 function surfaceNear() {
