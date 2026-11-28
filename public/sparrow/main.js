@@ -16,6 +16,7 @@ import { buildTrees } from "./trees.js";
 import { buildFrontages } from "./frontages.js";
 import { buildLamps } from "./lamps.js";
 import { seeThrough, solid, update as updateSee } from "./seethrough.js";
+import { loadWalkMask } from "./walkmask.js";
 import { loadSignFaces } from "./signs.js";
 import { buildTram } from "./tram.js";
 import { buildSculptures, hidePosts } from "./sculptures.js";
@@ -112,6 +113,7 @@ const bird = {
 };
 const keys = Object.create(null);
 let site, world, sparrow, glints, pigeons, shadow, benches = [], benchSet = null, people = null, trees = null, frontages = null;
+let walkMask = null; // where people walk, if the site has a mask (walkmask.js)
 let shopTouchables = [];
 let tram = null, tramStep = null, riding = false;
 let sculptures = null; // bronze birds and cats on the markers (sculptures.js)
@@ -137,6 +139,8 @@ let present = [];
 // ---------------------------------------------------------------- boot
 (async function boot() {
   const facesReady = loadSignFaces(); // the signs' faces load alongside the model
+  // Where people walk (Ghent's sidewalks and crossings), alongside the model too. Without it, they walk straight.
+  const maskReady = SITE.walkmask ? loadWalkMask(fromSite(SITE.walkmask.url), SITE.walkmask).catch(() => null) : Promise.resolve(null);
   try {
     const [s, v] = await Promise.all([
       loadSite(GLB_URL, (p) => setLoading(p == null ? "Laying the streets…" : `Laying the streets… ${Math.round(p * 100)}%`, p)),
@@ -211,6 +215,7 @@ let present = [];
   pigeons = buildPigeons(scene, pigeonSpots());
   benches = placeBenches();
   benchSet = buildBenches(scene, benches);
+  walkMask = await maskReady;
   people = populate();
   if (CHORUS_URL) fetch(CHORUS_URL).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && c.version === 1) chorus = c; }).catch(() => {});
   indexTouchables();
@@ -221,7 +226,7 @@ let present = [];
   director.crane();
   setupUI();
   $("loading").classList.add("hidden");
-  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
+  if (params.has("debug")) window.__walk = { bird, camera, site, benches, people, trees, frontages, get lamps() { return lamps; }, get walkMask() { return walkMask; }, warp: warpTo, get sculptures() { return sculptures; }, get wetland() { return wetland; }, get tram() { return tram; }, get riding() { return riding; }, placeBird, get chorus() { return chorus; }, get talk() { return talk; }, eavesdrop, touch, tapAt, toggleFlows, get flows() { return flowLines && { model: flowModel, lines: flowLines }; },
     state() { return { air: bird.air, onGround: bird.onGround, y: +bird.pos.y.toFixed(2), route: goal && goal.route, up: intent.up, down: intent.down, move: +intent.move.length().toFixed(2), holdDownFor: +holdDownFor.toFixed(2) }; },
     goTo(p) { goal = { point: new THREE.Vector3(p.x, p.y, p.z), el: null, stopDist: 0.6, land: true, arrived: () => { window.__arrived = (window.__arrived || 0) + 1; } }; }, director, get goal() { return goal; }, get tour() { return tour; }, get focus() { return focus; }, governor };
   renderer.setAnimationLoop(frame);
@@ -1246,6 +1251,11 @@ const director = (() => {
   let zoom = 1, dist = 1.2, distV = 0, fov = 62, fovV = 0, roll = 0, rollV = 0, eyes = 0;
   // Framing what you touched: one swing of at most 30°, slow, then back away until it's on screen (frame below).
   const SWING = THREE.MathUtils.degToRad(30), FRAME_MAX = 24;
+  // No swing the camera makes by itself (following you round, framing, a shot) turns it faster than this: about
+  // 34° a second, for comfort. Your own drag isn't held to it. One number, so it's easy to tune.
+  const SWING_RATE = 0.6;
+  const viewQ = new THREE.Quaternion(), wantQ = new THREE.Quaternion();
+  let viewHeld = false;
   let hold = null, yawSlowUntil = 0, distSlowUntil = 0, lastBase = 1.15;
   const look = new THREE.Vector3(), lookV = new THREE.Vector3(), lookT = new THREE.Vector3();
   const cam = new THREE.Vector3(), head = new THREE.Vector3(), dir = new THREE.Vector3(), eye = new THREE.Vector3();
@@ -1329,8 +1339,14 @@ const director = (() => {
         const facingSun = Math.max(0, -(Math.sin(camDir) * SUN_DIR.x + Math.cos(camDir) * SUN_DIR.z));
         yawT += dt * 0.07 * (1 - 0.7 * facingSun);
       }
+      const yaw0 = yaw, pitch0 = pitch;
       [yaw, yawV] = smoothDampAngle(yaw, yawT, yawV, t < yawSlowUntil ? 0.6 : 0.14, dt);
       [pitch, pitchV] = smoothDamp(pitch, pitchT, pitchV, 0.14, dt);
+      if (t - lastLookT > 0.25) { // nobody's hand on it: hold the swing to SWING_RATE
+        const lim = SWING_RATE * dt, dy = angleTo(yaw0, yaw), dp = pitch - pitch0;
+        if (Math.abs(dy) > lim) { yaw = yaw0 + Math.sign(dy) * lim; yawV = Math.sign(dy) * SWING_RATE; }
+        if (Math.abs(dp) > lim) { pitch = pitch0 + Math.sign(dp) * lim; pitchV = Math.sign(dp) * SWING_RATE; }
+      }
       const attract = HERO && !active; // the hero's attract tour: higher and wider, so the place reads
       if (attract) pitchT += (0.28 - pitchT) * Math.min(1, dt * 0.8);
       const base = (air ? 1.5 + 1.9 * speed01 : 1.15) * (idle ? 1.35 : 1) * (tour ? 1.25 : 1) * (attract ? 2.4 : 1);
@@ -1383,6 +1399,16 @@ const director = (() => {
       camera.position.copy(cam);
       camera.lookAt(lookAt);
       camera.rotateZ(roll);
+      // A shot (the opening crane, the flows' overview) moves the camera itself: its turn is held to SWING_RATE too,
+      // through the shot and until the view has caught up after it. A cut (the crane's first frame) is a cut.
+      if (shot && shot.start) viewHeld = false;
+      else if (shot || viewHeld) {
+        wantQ.copy(camera.quaternion);
+        const gap = viewQ.angleTo(wantQ);
+        if (gap > SWING_RATE * dt) { camera.quaternion.copy(viewQ).rotateTowards(wantQ, SWING_RATE * dt); viewHeld = true; }
+        else viewHeld = !!shot;
+      }
+      viewQ.copy(camera.quaternion);
       // Near enough not to clip the ground just below a low camera.
       const near = clamp(Math.min(camera.position.distanceTo(head) * 0.25, (camera.position.y - floorY) * 0.6), 0.01, 0.4);
       if (Math.abs(camera.fov - fov) > 0.05 || Math.abs(camera.near - near) / camera.near > 0.15) {
@@ -1505,13 +1531,33 @@ function populate() {
       }
     }
   }
-  // Shop doors: people stop by; outside a café or a bakery, now and then, a few stand and talk.
+  // Shop doors: people stop by; outside a café or a bakery, now and then, a few stand and talk. With a walking mask,
+  // each door gets a front walk to the nearest sidewalk.
+  const doors = [];
   for (const s of frontages ? frontages.shops : []) {
     const hit = castDownModel(s.door.x, site.bounds.max.y + 20, s.door.z, site.bounds.max.y + 60);
     if (!hit) continue;
-    spots.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
+    if (walkMask) {
+      const to = walkMask.nearest(s.door.x, s.door.z, 25);
+      if (!to) continue;
+      walkMask.carve(s.door.x, s.door.z, to.x, to.z, 1.2);
+    }
+    doors.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
     if (/^(coffee|bistro|bakery)$/.test(s.kit) && rng() < 0.35) groups.push({ x: s.door.x, y: hit.point.y, z: s.door.z });
   }
+  // With a walking mask, every place to be going is on it: onto the sidewalk nearby, or not at all.
+  if (walkMask) {
+    const onMask = [];
+    for (const sp of spots) {
+      const n = walkMask.nearest(sp.x, sp.z, 4);
+      if (!n) continue;
+      const hit = castDownModel(n.x, site.bounds.max.y + 20, n.z, site.bounds.max.y + 60);
+      onMask.push({ x: n.x, y: hit ? hit.point.y : sp.y, z: n.z });
+    }
+    spots.length = 0;
+    spots.push(...onMask);
+  }
+  spots.push(...doors);
   if (!spots.length && !benches.length) return null;
   // About 320 people (140 on a phone); the walkers among them stay around you (people.js).
   const count = Math.min(COARSE ? 140 : 320, Math.max(12, benches.length * 2 + groups.length * 3 + Math.floor(spots.length / 2)));
@@ -1535,6 +1581,9 @@ function populate() {
       const hit = castDownModel(x, nearY + 2.5, z, 6);
       return hit ? hit.point.y : world.groundY;
     },
+    // Along the sidewalks, crossing at corners, where the site has a walking mask.
+    route: walkMask ? (a, b) => walkMask.path(a, b) : null,
+    keepTo: walkMask ? (x, z) => walkMask.walkable(x, z) : null,
   });
 }
 

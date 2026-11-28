@@ -558,5 +558,15 @@
  "spawn": {
   "waypoint": "tour-1428706223"
  },
+ "walkmask": {
+  "url": "walkmask.bin",
+  "cell": 0.5,
+  "x0": -622,
+  "y0": -971,
+  "w": 2487,
+  "h": 3883,
+  "walkable": 642540,
+  "note": "Rows south to north (survey y; the walk's z is -y), a bit a cell, high bit first, zlib."
+ },
  "chorus": "chorus.json"
 }

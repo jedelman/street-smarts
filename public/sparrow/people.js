@@ -70,7 +70,13 @@ const SIZES = [[1, 0.34], [2, 0.4], [3, 0.17], [4, 0.09]];
  * Walkers who end up far from you, out of sight, come back on the streets behind you, so
  * wherever you go there are people about.
  */
-export function buildPeople(scene, { benches, spots, groups, count, rng, clearLine, groundAt }) {
+/**
+ * route (optional): (from, to) => [{x, z}, ...] or null: a way along a site's walking mask (walkmask.js), so people
+ * keep to the sidewalks and cross at corners; without one they walk straight, wherever the line is clear.
+ * keepTo (optional): (x, z) => whether that spot is walkable; a companion with no room beside the leader falls in
+ * behind, single file.
+ */
+export function buildPeople(scene, { benches, spots, groups, count, rng, clearLine, groundAt, route = null, keepTo = null }) {
   // Seats: two per bench, a little back from the seat's middle.
   const seats = [];
   for (const b of benches) {
@@ -80,6 +86,11 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
       seats.push({ x: b.x + lx * c + lz * s, y: b.y, z: b.z - lx * s + lz * c, yaw: b.yaw, front: { x: b.x + 0.9 * s + lx * c, y: b.y, z: b.z + 0.9 * c - lx * s }, taken: null });
     }
   }
+  /** A point within `r` metres of a spot, scattered so people don't stack, but never off the walking mask. */
+  const scatter = (sp, r) => {
+    const x = sp.x + (rng() - 0.5) * 2 * r, z = sp.z + (rng() - 0.5) * 2 * r;
+    return !keepTo || keepTo(x, z) ? { x, y: sp.y, z } : { x: sp.x, y: sp.y, z: sp.z };
+  };
   const people = [];
   const makePerson = (child = false) => ({
     h: (child ? 1.05 + rng() * 0.3 : 1.6 + rng() * 0.25) / H,
@@ -126,7 +137,8 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     const sp = spots[Math.floor(rng() * spots.length)];
     const lead = makePerson();
     lead.walker = true;
-    lead.pos.set(sp.x + (rng() - 0.5) * 2, sp.y, sp.z + (rng() - 0.5) * 2);
+    const at = scatter(sp, 1);
+    lead.pos.set(at.x, at.y, at.z);
     lead.timer = rng() * 4;
     const li = people.push(lead) - 1;
     if (size > 1) {
@@ -175,7 +187,8 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
       if (!anywhere && (dx * fx + dz * fz) / (d * fl) > -0.2) continue; // behind you
       if (p.path && p.path.seat && p.path.seat.taken === p) p.path.seat.taken = null;
       p.path = null;
-      p.pos.set(sp.x + (rng() - 0.5) * 2, sp.y, sp.z + (rng() - 0.5) * 2);
+      const at = scatter(sp, 1);
+      p.pos.set(at.x, at.y, at.z);
       p.yaw = rng() * Math.PI * 2;
       p.state = "stand";
       p.timer = rng() * 2;
@@ -196,7 +209,21 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     p.state = "stand";
     p.timer = 0.5 + rng() * 1.5;
   }
-  /** Somewhere to walk to: a bench with room, a square, a marker; in a straight, clear line. */
+  /** A walk along `pts` ({x, z}, at least one), with the ground every 1.5 m or so, sampled once. */
+  function trail(pts, nearY, seat) {
+    const xs = [], zs = [], cum = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (i === 0) { xs.push(pts[0].x); zs.push(pts[0].z); continue; }
+      const a = pts[i - 1], b = pts[i], len = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(len / 1.5));
+      for (let k = 1; k <= n; k++) { xs.push(a.x + ((b.x - a.x) * k) / n); zs.push(a.z + ((b.z - a.z) * k) / n); }
+    }
+    if (xs.length < 2) { xs.push(xs[0]); zs.push(zs[0]); }
+    const ys = xs.map((x, i) => groundAt(x, zs[i], nearY));
+    cum.push(0);
+    for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
+    return { xs, zs, ys, cum, len: cum[cum.length - 1], d: 0, k: 0, seat };
+  }
+  /** Somewhere to walk to: a bench with room, a square, a marker; along the sidewalks where the site has them. */
   function chooseWalk(p) {
     for (let tries = 0; tries < 8; tries++) {
       const wantSeat = !p.followers && rng() < 0.45; // a group walks on together
@@ -210,18 +237,17 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
         const near = spots.filter((s) => { const d = Math.hypot(s.x - p.pos.x, s.z - p.pos.z); return d > 6 && d < 70; });
         if (!near.length) continue;
         const sp = near[Math.floor(rng() * near.length)];
-        to = { x: sp.x + (rng() - 0.5) * 3, y: sp.y, z: sp.z + (rng() - 0.5) * 3 };
+        to = scatter(sp, 1.5);
       }
-      if (!clearLine(p.pos, to)) continue;
+      let pts;
+      if (route) {
+        pts = route(p.pos, to);
+        if (!pts) continue;
+        if (Math.hypot(pts[0].x - p.pos.x, pts[0].z - p.pos.z) > 0.05) pts.unshift({ x: p.pos.x, z: p.pos.z }); // from where they stand
+      }
+      else { if (!clearLine(p.pos, to)) continue; pts = [{ x: p.pos.x, z: p.pos.z }, to]; }
       // The ground along the way, once, so walking needs no raycasts.
-      const len = Math.hypot(to.x - p.pos.x, to.z - p.pos.z);
-      const steps = Math.max(1, Math.ceil(len / 1.5));
-      const ys = [];
-      for (let k = 0; k <= steps; k++) {
-        const f = k / steps;
-        ys.push(groundAt(p.pos.x + (to.x - p.pos.x) * f, p.pos.z + (to.z - p.pos.z) * f, Math.max(p.pos.y, to.y)));
-      }
-      p.path = { from: p.pos.clone(), to: new THREE.Vector3(to.x, to.y, to.z), len, ys, d: 0, seat };
+      p.path = trail(pts, Math.max(p.pos.y, to.y), seat);
       if (seat) seat.taken = p; // reserved
       p.state = "walk";
       return true;
@@ -262,6 +288,7 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
     /** Returns { crumb: true } when someone drops the sparrow a crumb. */
     update(dt, t, bird, camPos) {
       let crumb = false;
+      let routes = route ? 3 : Infinity; // a few new routes a frame at most: nobody minds waiting a moment to set off
       for (let i = 0; i < n; i++) {
         const p = people[i];
         // A walker far from the sparrow, between walks (or very far), comes back somewhere behind you.
@@ -292,7 +319,11 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
           const L = people[p.leader];
           if (L.state === "walk" && !(L.speaking > 0) && !L.followers.some((j) => people[j].speaking > 0) && !speaking) {
             const c = Math.cos(L.yaw), sn = Math.sin(L.yaw);
-            const tx = L.pos.x + p.slot[0] * c + p.slot[1] * sn, tz = L.pos.z - p.slot[0] * sn + p.slot[1] * c;
+            let tx = L.pos.x + p.slot[0] * c + p.slot[1] * sn, tz = L.pos.z - p.slot[0] * sn + p.slot[1] * c;
+            if (keepTo && !keepTo(tx, tz)) { // no room beside: single file, behind
+              const back = 0.85 * (1 + L.followers.indexOf(i));
+              tx = L.pos.x - sn * back; tz = L.pos.z - c * back;
+            }
             const k = Math.min(1, dt * 6);
             p.pos.x += (tx - p.pos.x) * k; p.pos.z += (tz - p.pos.z) * k; p.pos.y = L.pos.y;
             p.yaw = L.yaw;
@@ -310,12 +341,16 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
         } else if (p.state === "walk") {
           const w = p.path;
           w.d = Math.min(w.len, w.d + p.speed * dt);
-          const f = w.len > 0 ? w.d / w.len : 1;
-          const k = f * (w.ys.length - 1), k0 = Math.floor(k), k1 = Math.min(w.ys.length - 1, k0 + 1);
-          p.pos.set(w.from.x + (w.to.x - w.from.x) * f, w.ys[k0] + (w.ys[k1] - w.ys[k0]) * (k - k0), w.from.z + (w.to.z - w.from.z) * f);
-          p.yaw = Math.atan2(w.to.x - w.from.x, w.to.z - w.from.z);
+          while (w.k < w.cum.length - 2 && w.cum[w.k + 1] < w.d) w.k++;
+          const k = w.k, span = w.cum[k + 1] - w.cum[k], f = span > 0 ? (w.d - w.cum[k]) / span : 1;
+          p.pos.set(w.xs[k] + (w.xs[k + 1] - w.xs[k]) * f, w.ys[k] + (w.ys[k + 1] - w.ys[k]) * f, w.zs[k] + (w.zs[k + 1] - w.zs[k]) * f);
+          if (span > 0) { // turning the corner, not snapping round it
+            let dy = Math.atan2(w.xs[k + 1] - w.xs[k], w.zs[k + 1] - w.zs[k]) - p.yaw;
+            dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+            p.yaw += dy * Math.min(1, dt * 7);
+          }
           p.phase += dt * p.speed * 5.2;
-          if (f >= 1) {
+          if (w.d >= w.len) {
             p.path = null;
             if (w.seat && w.seat.taken === p) { sitDown(p, w.seat); p.timer = 12 + rng() * 35; }
             else if (p.followers) { p.state = "talk"; p.timer = 5 + rng() * 15; } // together: they stop and talk
@@ -334,7 +369,9 @@ export function buildPeople(scene, { benches, spots, groups, count, rng, clearLi
             p.yaw += d * Math.min(1, dt * 3);
           }
           if (p.timer <= 0 && !speaking && !groupTalking) { p.state = "stand"; p.timer = 0.5; }
-        } else if (p.timer <= 0 && !speaking && !groupTalking) chooseWalk(p);
+        } else if (p.timer <= 0 && !speaking && !groupTalking) {
+          if (routes-- > 0) chooseWalk(p); else p.timer = 0.1 + rng() * 0.3;
+        }
 
         // They notice the sparrow: heads turn to it.
         toBird.subVectors(bird.pos, p.pos);

@@ -31,6 +31,8 @@ import math
 import os
 import struct
 import sys
+import zlib
+from collections import deque
 
 import numpy as np
 import shapely
@@ -317,6 +319,86 @@ def roof(geo, rect, form, pitch, eave, overhang=0.3):
     return top, (P(0, 0, eave), P(0, W2, eave), r0, P(L2, 0, eave), P(L2, W2, eave), r1) if form == "gable" else None
 
 
+WALK_CELL = 0.5  # the walking mask's cell, metres
+
+
+def walk_mask(league, parcels, lines, carriage, walks, buildings):
+    """
+    Where people walk: the sidewalks, as a raster the walk's people route on (Jason: "people here generally keep to the
+    sidewalks"). From the parcels: the public right of way is what no parcel covers inside the League's area. People
+    keep to it, and to the sidewalk strip the model draws, out of the carriageway, within 7.5 m of a curb (so not out
+    over open water or a park's middle), and never inside a building. They cross the street at corners: a crosswalk
+    2.5 m wide on each leg of every intersection of three or more streets, just clear of the cross street's curb (ours:
+    there's no data on crosswalks here). Only the largest connected network is kept, so nobody is stranded on a sliver.
+    Returns (meta, bytes): cells WALK_CELL square from (x0, y0), rows south to north, packed a bit a cell (high bit
+    first) and zlib-compressed.
+    """
+    half = lambda row: STREET_HALF.get(row, 4.5)
+    row_of_way = league.difference(unary_union([Polygon(p["poly"]).buffer(0) for p in parcels.values()]))
+    side = row_of_way.union(walks).difference(carriage).intersection(carriage.buffer(7.5)).intersection(league)
+    ends = {}
+    for i, (ln, _) in enumerate(lines):
+        cs = list(ln.coords)
+        for end, c in ((0, cs[0]), (-1, cs[-1])):
+            ends.setdefault((round(c[0], 1), round(c[1], 1)), []).append((i, end))
+    cross = []
+    for legs in ends.values():
+        if len(legs) < 3:
+            continue
+        for i, end in legs:
+            ln, row = lines[i]
+            d0 = max(half(lines[j][1]) for j, _ in legs if j != i) + 1.5
+            if ln.length < d0 + 2:
+                continue
+            c = ln.interpolate(d0 if end == 0 else ln.length - d0)
+            c2 = ln.interpolate(d0 + 0.5 if end == 0 else ln.length - d0 - 0.5)
+            ux, uy = c2.x - c.x, c2.y - c.y
+            ul = math.hypot(ux, uy) or 1.0
+            nx, ny, span = -uy / ul, ux / ul, half(row) + 1.2
+            cross.append(LineString([(c.x + nx * span, c.y + ny * span), (c.x - nx * span, c.y - ny * span)]).buffer(1.25, cap_style="flat"))
+    walk = side.union(unary_union(cross).intersection(league)).difference(unary_union(buildings).buffer(0.3)).buffer(0)
+    minx, miny, maxx, maxy = league.bounds
+    x0, y0 = math.floor(minx), math.floor(miny)
+    w, h = int(math.ceil((maxx - x0) / WALK_CELL)), int(math.ceil((maxy - y0) / WALK_CELL))
+    xs = x0 + (np.arange(w) + 0.5) * WALK_CELL
+    ys = y0 + (np.arange(h) + 0.5) * WALK_CELL
+    shapely.prepare(walk)
+    mask = np.zeros((h, w), bool)
+    for r0 in range(0, h, 256):
+        X, Y = np.meshgrid(xs, ys[r0:r0 + 256])
+        mask[r0:r0 + 256] = shapely.contains_xy(walk, X, Y)
+    # The largest network of cells touching (eight ways), found breadth first.
+    flat = mask.ravel()
+    seen = np.zeros(flat.size, bool)
+    best = None
+    for s in np.flatnonzero(flat):
+        if seen[s]:
+            continue
+        seen[s] = True
+        comp, q = [s], deque([s])
+        while q:
+            v = q.popleft()
+            r, c = divmod(int(v), w)
+            for dr in (-1, 0, 1):
+                rr = r + dr
+                if 0 <= rr < h:
+                    for dc in (-1, 0, 1):
+                        cc = c + dc
+                        if (dr or dc) and 0 <= cc < w:
+                            u = rr * w + cc
+                            if flat[u] and not seen[u]:
+                                seen[u] = True
+                                comp.append(u)
+                                q.append(u)
+        if best is None or len(comp) > len(best):
+            best = comp
+    keep = np.zeros(flat.size, bool)
+    keep[np.array(best or [], dtype=np.int64)] = True
+    meta = {"cell": WALK_CELL, "x0": x0, "y0": y0, "w": w, "h": h, "walkable": int(keep.sum()),
+            "note": "Rows south to north (survey y; the walk's z is -y), a bit a cell, high bit first, zlib."}
+    return meta, zlib.compress(np.packbits(keep).tobytes(), 9)
+
+
 def everyday_bundle(parcels, plan, detail, doors):
     """The "Day to day" panel's data: the walk network (from everyday.py), the places open today, the proposal's
     ground floors at their doors, where each lot is on the network and which tract it's in, what has opened, rent,
@@ -450,6 +532,9 @@ def main(check=False):
     yards = []  # one per house front: what the walk's yard and porch grammar grows from
     # Every footprint, to keep a front door from opening into a neighbour's wall.
     all_polys = [Polygon(b["poly"]).buffer(0) if len(b["poly"]) >= 3 else Polygon() for b in S["buildings"]]
+    # Where people walk (the sidewalks and corner crossings), from the parcels: walk_mask above.
+    mask_meta, mask_bytes = walk_mask(league, parcels, [(LineString(s["line"]), s["row"]) for s in S["streets"]], covered, walks,
+                                      [q for q in all_polys if not q.is_empty])
     # The survey cuts a row's footprint at each lot line; a slice past every lot line (a bay or stoop drawn over the
     # right-of-way) belongs to no parcel. Where it overlaps a parcel's building and shares its City height (so it was
     # one footprint), it goes back into that building, so the facade is its outer face.
@@ -834,6 +919,8 @@ def main(check=False):
         "tours": [{**t, "max": len(t["stops"])} for t in PR["tours"]],
         "corners": [corner_entry(g) for g in PR["corners"]],
         "spawn": {"waypoint": PR["waypoints"][0]["id"]},
+        # Where people walk: the sidewalks and corner crossings, from the parcels (walk_mask).
+        "walkmask": {"url": "walkmask.bin", **mask_meta},
     }
     # Who says what, where: the chorus's places, from the proposal.
     src = lambda gs: {f"parcel:{g}" for g in gs}
@@ -860,9 +947,12 @@ def main(check=False):
             path = os.path.join(SITE_DIR, fn)
             if not os.path.exists(path) or open(path).read() != text:
                 bad.append(fn)
+        mpath = os.path.join(SITE_DIR, "walkmask.bin")
+        if not os.path.exists(mpath) or open(mpath, "rb").read() != mask_bytes:
+            bad.append("walkmask.bin")
         if bad:
             sys.exit(f"stale: {', '.join(bad)} (run tools/ghent/build.py and commit)")
-        print("site.json, numbers.json, chorus.json and everyday.json are current")
+        print("site.json, numbers.json, chorus.json, everyday.json and walkmask.bin are current")
     os.makedirs(SITE_DIR, exist_ok=True)
     pack_glb.write_glb(os.path.join(SITE_DIR, "model.glb"), gltf, binc)
     if not check:
@@ -870,6 +960,7 @@ def main(check=False):
         open(os.path.join(SITE_DIR, "numbers.json"), "w").write(numbers_text)
         open(os.path.join(SITE_DIR, "chorus.json"), "w").write(chorus_text)
         open(os.path.join(SITE_DIR, "everyday.json"), "w").write(everyday_text)
+        open(os.path.join(SITE_DIR, "walkmask.bin"), "wb").write(mask_bytes)
     size = os.path.getsize(os.path.join(SITE_DIR, "model.glb"))
     print(f"model.glb {size / 1e6:.2f} MB: {len(table['elements'])} elements, {len(gltf['meshes'])} meshes, "
           f"{len(detail['walls'])} walls, {len(detail['openings'])} openings, {len(detail['shops'])} shops, {len(trees)} trees, "

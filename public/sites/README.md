@@ -37,6 +37,11 @@ each site is a bundle: a page, a `site.json`, and the modules that render its ow
   element last touched that has a card), `lot` (the parcel last touched) and `here` (where the sparrow stands, glTF
   x/z). A module may fetch its own data beside it: Ghent's "Day to day" (`everyday.js`) reads `everyday.json` (the
   walk network, places, rent and rates; `tools/ghent/everyday.py`, then `build.py`);
+- `walkmask` (optional): where people walk, `{ url, cell, x0, y0, w, h }`: a raster of cells `cell` metres square
+  from survey (x0, y0), rows south to north (the walk's z is -y), a bit a cell, high bit first, zlib-compressed.
+  People route along it (`/sparrow/walkmask.js`: A* in a window round the trip, pulled straight) and each shop door
+  gets a front walk to it; without one they walk straight. Ghent's is the sidewalks and corner crossings, from the
+  parcels (`tools/ghent/build.py` `walk_mask`);
 - `surface`: panels that may offer themselves in context, most telling first. Each module may export
   `peek(ctx)`: the live context plus `touched` (the element just touched, `reason: "touch"`) or `reason: "near"`
   (checked as you go), returning `{ key, text, open? }` or null. The first to answer leads a small card and the rest
